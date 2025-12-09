@@ -17,7 +17,7 @@
 
 AWSTemplateFormatVersion: "2010-09-09"
 Transform:  AWS::Serverless-2016-10-31
-Description: "A basic web service using API Gateway and Lambda Python - atlantis-starter-01-basic-apigw-lambda-py"
+Description: "Multi-Bucket CloudFront Invalidation Service - Event-driven cache invalidation for S3-backed CloudFront distributions"
 
 # =============================================================================
 # META DATA
@@ -55,8 +55,10 @@ Metadata:
         Label:
           default: "Lambda Function Settings"
         Parameters:
-          - FunctionTimeOutInSeconds
-          - FunctionMaxMemoryInMB
+          - IngestorTimeoutInSeconds
+          - IngestorMemoryInMB
+          - ProcessorTimeoutInSeconds
+          - ProcessorMemoryInMB
           - FunctionArchitecture
       -
         Label:
@@ -64,6 +66,8 @@ Metadata:
         Parameters:
           - LogRetentionInDaysForPROD
           - LogRetentionInDaysForDEVTEST
+          - AggregationWindowSeconds
+          - MaxPathsPerInvalidation
 
 # =============================================================================
 # PARAMETERS
@@ -170,24 +174,37 @@ Parameters:
   # ---------------------------------------------------------------------------
   # Lambda Function Settings
 
-  FunctionTimeOutInSeconds:
+  IngestorTimeoutInSeconds:
     Type: Number
-    Description: "Time out in seconds for the Lambda function. API Gateway times out after 30 seconds. This web service is ideal for requests that can complete in less than 10 seconds"
+    Description: "Timeout for the Ingestor Lambda function that receives S3 events and queues them for processing"
     Default: 10
     MinValue: 3
     MaxValue: 30
 
-  FunctionMaxMemoryInMB:
+  IngestorMemoryInMB:
     Type: Number
-    Description: "If you are handling large responses, you will need to increase the size. Monitor CloudWatch logs. 1024 MB is a good starting point for most API web service applications."
-    Default: 1024 # 1 GB
+    Description: "Memory allocation for the Ingestor Lambda function"
+    Default: 256
     MinValue: 128
-    MaxValue: 10240 # 10 GB
-    ConstraintDescription: "Must be between 128 and 1024 MB (10 GB). 1024 MB is a good starting point for most API web service applications."
+    MaxValue: 10240
+
+  ProcessorTimeoutInSeconds:
+    Type: Number
+    Description: "Timeout for the Processor Lambda function that processes queued events and submits CloudFront invalidations"
+    Default: 300
+    MinValue: 60
+    MaxValue: 900
+
+  ProcessorMemoryInMB:
+    Type: Number
+    Description: "Memory allocation for the Processor Lambda function"
+    Default: 512
+    MinValue: 128
+    MaxValue: 10240
 
   FunctionArchitecture:
     Type: String
-    Description: "The instruction set architecture for the Lambda function. Lambda functions support x86_64 and arm64 architectures. arm64 has better processing than default x86_64 - but the layers and binaries you use must support it."
+    Description: "The instruction set architecture for the Lambda functions. Lambda functions support x86_64 and arm64 architectures. arm64 has better processing than default x86_64 - but the layers and binaries you use must support it."
     Default: "arm64"
     AllowedValues: ["x86_64", "arm64"]
 
@@ -206,6 +223,20 @@ Parameters:
     Default: 7
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
 
+  AggregationWindowSeconds:
+    Type: Number
+    Description: "Duration of the aggregation window in seconds (time to collect events before processing)"
+    Default: 300
+    MinValue: 60
+    MaxValue: 900
+
+  MaxPathsPerInvalidation:
+    Type: Number
+    Description: "Maximum number of paths per CloudFront invalidation request (CloudFront limit is 3000)"
+    Default: 1000
+    MinValue: 1
+    MaxValue: 3000
+
 # =============================================================================
 # CONDITIONS
 # -----------------------------------------------------------------------------
@@ -221,9 +252,12 @@ Conditions:
   # CreateProdResources: !Equals [!Ref DeployEnvironment, "PROD"]
   # CreateTestResources: !Equals [!Ref DeployEnvironment, "TEST"]
   # CreateDevResources: !Equals [!Ref DeployEnvironment, "DEV"]
-  # UseS3BucketNameOrgPrefix: !Not [!Equals [!Ref S3BucketNameOrgPrefix, ""]]
+  UseS3BucketNameOrgPrefix: !Not [!Equals [!Ref S3BucketNameOrgPrefix, ""]]
   HasPermissionsBoundaryArn: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
-  CreateAlarms: !Equals [!Ref DeployEnvironment, "PROD"] 
+  CreateAlarms: !Equals [!Ref DeployEnvironment, "PROD"]
+  IsProductionWithOrgPrefix: !And
+    - !Equals [!Ref DeployEnvironment, "PROD"]
+    - !Not [!Equals [!Ref S3BucketNameOrgPrefix, ""]]
   # IsArmArch: !Equals [!Ref FunctionArchitecture, "arm64"]
 
 # =============================================================================
@@ -249,20 +283,73 @@ Globals:
 
 Resources:
 
-  # ---------------------------------------------------------------------------
-  # Lambda Function Resources
+  # ===========================================================================
+  # SQS QUEUE RESOURCES
+  # ===========================================================================
 
-  # -- Lambda Function --
-  AppFunction:
+  # -- SQS Dead Letter Queue --
+  EventQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${Prefix}-${ProjectId}-${StageId}-EventQueueDLQ'
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: AllowCloudFrontCacheInvalidation
+          Value: "true"
+
+  # -- SQS Event Queue --
+  EventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${Prefix}-${ProjectId}-${StageId}-EventQueue'
+      VisibilityTimeout: 300  # 5 minutes (matches Processor timeout)
+      MessageRetentionPeriod: 345600  # 4 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EventQueueDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: AllowCloudFrontCacheInvalidation
+          Value: "true"
+
+  # ===========================================================================
+  # DYNAMODB TABLE RESOURCES
+  # ===========================================================================
+
+  # -- DynamoDB Window Tracking Table --
+  WindowTrackingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${Prefix}-${ProjectId}-${StageId}-WindowTracking'
+      BillingMode: PAY_PER_REQUEST  # On-demand pricing for unpredictable traffic
+      AttributeDefinitions:
+        - AttributeName: windowId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: windowId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: windowEndTime
+        Enabled: true
+      Tags:
+        - Key: AllowCloudFrontCacheInvalidation
+          Value: "true"
+
+  # ===========================================================================
+  # LAMBDA FUNCTION RESOURCES - INGESTOR
+  # ===========================================================================
+
+  # -- Ingestor Lambda Function --
+  IngestorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub '${Prefix}-${ProjectId}-${StageId}-AppFunction'
-      Description: "CloudFront Distribution Cache Invalidator"
-      Role: !GetAtt LambdaExecutionRole.Arn
+      FunctionName: !Sub '${Prefix}-${ProjectId}-${StageId}-Ingestor'
+      Description: "S3 Event Ingestor - Filters and queues S3 events for CloudFront invalidation"
+      Role: !GetAtt IngestorExecutionRole.Arn
       PropagateTags: True
 
-      VersionDescription: "Standard Code"
-      AutoPublishCodeSha256: "20251208T0936" # Hash This To Overcome AliasLive Update Errors - Undocumented AWS bug workaround
+      VersionDescription: "Ingestor Code"
+      AutoPublishCodeSha256: "20251209T0000" # Hash This To Overcome AliasLive Update Errors - Undocumented AWS bug workaround
       AutoPublishAlias: live
       DeploymentPreference:
         Enabled: !If [ IsProduction, True,  False] # Gradual deployment only if in production so DEV and TEST aren't hindered
@@ -271,36 +358,40 @@ Resources:
         Alarms:
           Fn::If:
             - CreateAlarms
-            - - !Ref AppFunctionErrorsAlarm
+            - - !Ref IngestorFunctionErrorsAlarm
             - - !Ref 'AWS::NoValue'
 
       CodeUri: src/
-      Handler: index.handler
+      Handler: ingestor.handler.handler
       Runtime: python3.14 # https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
       Architectures:
         - !Ref FunctionArchitecture # arm64 has better processing than default x86_64 - but layers and binaries must support
-      Timeout: !Ref FunctionTimeOutInSeconds
-      MemorySize: !Ref FunctionMaxMemoryInMB
+      Timeout: !Ref IngestorTimeoutInSeconds
+      MemorySize: !Ref IngestorMemoryInMB
 
       Environment:
         Variables:
-          DEPLOY_ENVIRONMENT: !Ref DeployEnvironment # PROD, TEST, DEV - a different category of environment
-          LOG_LEVEL: !If [ IsProduction, "INFO",  "DEBUG"] # 20 for prod, 10 for non-prod (used by logging library)
-          PARAM_STORE_PATH: !Ref ParameterStoreHierarchy # Path to instance specific params /Finance/ops/PROD/acme-myapp-prod/
-          LAMBDA_TIMEOUT_IN_SEC: !Ref FunctionTimeOutInSeconds # so we can calculate any external connection timeout in our code
-
-          AWS_LAMBDA_LOG_LEVEL: !If [ IsProduction, "INFO", "DEBUG"] # 'DEBUG', 'WARN', 'ERROR', 'INFO' - 'CRITICAL' and 'SILENT' are not currently recognized by Cache Data logging
+          DEPLOY_ENVIRONMENT: !Ref DeployEnvironment
+          LOG_LEVEL: !If [ IsProduction, "INFO",  "DEBUG"]
+          LAMBDA_TIMEOUT_IN_SEC: !Ref IngestorTimeoutInSeconds
+          AWS_LAMBDA_LOG_LEVEL: !If [ IsProduction, "INFO", "DEBUG"]
           AWS_LAMBDA_LOG_FORMAT: 'json'
+          
+          # Ingestor-specific environment variables
+          QUEUE_URL: !Ref EventQueue
+          TRACKING_TABLE: !Ref WindowTrackingTable
+          PROCESSOR_FUNCTION_ARN: !GetAtt ProcessorFunction.Arn
+          AGGREGATION_WINDOW_SECONDS: !Ref AggregationWindowSeconds
           
       Tags:
         AllowCloudFrontCacheInvalidation: "true"
 
-  # -- LambdaFunction Execution Role --
-  LambdaExecutionRole:
+  # -- Ingestor Lambda Execution Role --
+  IngestorExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${Prefix}-${ProjectId}-${StageId}-LambdaExecRole"
-      Description: "IAM Role that allows the Lambda permission to execute and access resources"
+      RoleName: !Sub "${Prefix}-${ProjectId}-${StageId}-IngestorExecRole"
+      Description: "IAM Role for Ingestor Lambda - SQS SendMessage, DynamoDB PutItem/Query, EventBridge Scheduler CreateSchedule"
       Path: !Ref RolePath
       PermissionsBoundary: !If [HasPermissionsBoundaryArn, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue' ]
       AssumeRolePolicyDocument:
@@ -311,88 +402,371 @@ Resources:
           Action: sts:AssumeRole
 
       Policies:
-        - PolicyName: !Sub "${Prefix}-${ProjectId}-${StageId}-ExecutionPolicy"
+        - PolicyName: !Sub "${Prefix}-${ProjectId}-${StageId}-IngestorPolicy"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              - Sid: LambdaAllowSearchForRelatedDistribution
+              - Sid: IngestorSQSSendMessage
                 Effect: Allow
                 Action:
-                  - 'cloudfront:Get*'
-                  - 'cloudfront:ListDistributions'
-                Resource: "*"
+                  - 'sqs:SendMessage'
+                Resource: !GetAtt EventQueue.Arn
 
-              - Sid: LambdaAllowCreateInvalidationOnlyOnTaggedDist
+              - Sid: IngestorDynamoDBWindowTracking
                 Effect: Allow
                 Action:
-                  - 'cloudfront:CreateInvalidation'
-                Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/*"
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:UpdateItem'
+                Resource: !GetAtt WindowTrackingTable.Arn
+
+              - Sid: IngestorEventBridgeScheduler
+                Effect: Allow
+                Action:
+                  - 'scheduler:CreateSchedule'
+                  - 'scheduler:DeleteSchedule'
+                Resource: !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/${Prefix}-${ProjectId}-${StageId}-*'
+
+              - Sid: IngestorPassRoleToScheduler
+                Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: !GetAtt SchedulerExecutionRole.Arn
                 Condition:
                   StringEquals:
-                    "aws:ResourceTag/AllowCloudFrontCacheInvalidation": "true"
-              - Sid: LambdaAccessToWriteLogs
-                Action:
-                - logs:CreateLogGroup
-                - logs:CreateLogStream
-                - logs:PutLogEvents
-                Effect: Allow
-                Resource: !GetAtt AppLogGroup.Arn
+                    'iam:PassedToService': 'scheduler.amazonaws.com'
 
-  # -- Lambda permissions allowing S3 Events to Execute it --
+              - Sid: IngestorWriteLogs
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !GetAtt IngestorLogGroup.Arn
+
+              - Sid: IngestorXRayTracing
+                Effect: Allow
+                Action:
+                  - 'xray:PutTraceSegments'
+                  - 'xray:PutTelemetryRecords'
+                Resource: '*'
+
+  # -- Lambda permissions allowing S3 Events to Execute Ingestor --
   #    For gradual deployments to work properly, triggering resources need permission to invoke both:
   #    1. $LATEST version (new code during deployment)
   #    2. :live alias (stable version during traffic shifting)
   #    Without both permissions, gradual deployments (in production) will fail with permission errors
 
-  # Permission to invoke the $LATEST version of the Lambda function
+  # Permission to invoke the $LATEST version of the Ingestor Lambda function
   # This is used in all environments and during gradual deployments for new code
-  ConfigLambdaPermission:
+  # SourceArn pattern matches both standard naming (Prefix-*) and optional S3BucketNameOrgPrefix
+  IngestorLambdaPermission:
     Type: "AWS::Lambda::Permission"
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Sub "${AppFunction}"  # References $LATEST by default
+      FunctionName: !Ref IngestorFunction  # References $LATEST by default
       Principal: s3.amazonaws.com
-      SourceArn: !If [UseS3BucketNameOrgPrefix, !Sub "arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*", !Sub "arn:aws:s3:::${Prefix}-*" ]
-      # TODO: Can we add a check for AllowCloudFrontCacheInvalidation=true
+      SourceArn: !Sub "arn:aws:s3:::${Prefix}-*"
 
-  # Permission to invoke the :live alias of the Lambda function
+  # Additional permission for buckets using S3BucketNameOrgPrefix naming convention
+  # Only created when S3BucketNameOrgPrefix is provided
+  IngestorLambdaPermissionWithOrgPrefix:
+    Type: "AWS::Lambda::Permission"
+    Condition: UseS3BucketNameOrgPrefix
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref IngestorFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*"
+
+  # Permission to invoke the :live alias of the Ingestor Lambda function
   # Only created in production where gradual deployments are enabled
   # During gradual deployment, traffic shifts from :live alias to $LATEST version
-  ConfigLambdaPermissionLive:
+  IngestorLambdaPermissionLive:
     Type: "AWS::Lambda::Permission"
     Condition: IsProduction  # Only needed in production for gradual deployments
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref AppFunction.Alias # live
+      FunctionName: !Sub "${IngestorFunction.Alias}"  # References the :live alias
       Principal: s3.amazonaws.com
-      SourceArn: !If [UseS3BucketNameOrgPrefix, !Sub "arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*", !Sub "arn:aws:s3:::${Prefix}-*" ]
-      # TODO: Can we add a check for AllowCloudFrontCacheInvalidation=true
+      SourceArn: !Sub "arn:aws:s3:::${Prefix}-*"
 
-  # -- Lambda Function Error Alarm --
-
-  AppFunctionErrorsAlarm:
-    Type: "AWS::CloudWatch::Alarm"
-    Condition: CreateAlarms # Either PROD or ALWAYS - Check Conditions
+  # Additional permission for :live alias with S3BucketNameOrgPrefix
+  # Only created in production when S3BucketNameOrgPrefix is provided
+  IngestorLambdaPermissionLiveWithOrgPrefix:
+    Type: "AWS::Lambda::Permission"
+    Condition: IsProductionWithOrgPrefix
     Properties:
-      AlarmDescription: Lambda Function Error > 1
+      Action: lambda:InvokeFunction
+      FunctionName: !Sub "${IngestorFunction.Alias}"
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub "arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*"
+
+  # -- Ingestor Lambda Log Group --
+  IngestorLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+        LogGroupName: !Sub '/aws/lambda/${Prefix}-${ProjectId}-${StageId}-Ingestor'
+        RetentionInDays: !If [ IsProduction, !Ref LogRetentionInDaysForPROD,  !Ref LogRetentionInDaysForDEVTEST]
+
+  # -- Ingestor Lambda Function Error Alarm --
+  IngestorFunctionErrorsAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Condition: CreateAlarms
+    Properties:
+      AlarmDescription: Ingestor Lambda Function Error > 1
       MetricName: Errors
       Statistic: Sum
       ComparisonOperator: GreaterThanThreshold
       Threshold: 1
-      Period: 900
+      Period: 900  # 15 minutes
       EvaluationPeriods: 1
       TreatMissingData: notBreaching
       Namespace: AWS/Lambda
       Dimensions:
         - Name: FunctionName
-          Value: !Ref AppFunction
+          Value: !Ref IngestorFunction
       AlarmActions:
-        - Ref: AppFunctionErrorAlarmNotification
+        - Ref: AlarmNotificationTopic
 
-  # -- Lambda Function Notification for Error Alarm --
+  # ===========================================================================
+  # LAMBDA FUNCTION RESOURCES - PROCESSOR
+  # ===========================================================================
 
-  AppFunctionErrorAlarmNotification:
+  # -- Processor Lambda Function --
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${Prefix}-${ProjectId}-${StageId}-Processor'
+      Description: "Event Processor - Processes queued events and submits CloudFront invalidations"
+      Role: !GetAtt ProcessorExecutionRole.Arn
+      PropagateTags: True
+
+      VersionDescription: "Processor Code"
+      AutoPublishCodeSha256: "20251209T0001"
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Enabled: !If [ IsProduction, True,  False]
+        Type: !If [ IsProduction, !Ref FunctionGradualDeploymentType, "AllAtOnce"]
+        Role: !Ref DeployRole
+        Alarms:
+          Fn::If:
+            - CreateAlarms
+            - - !Ref ProcessorFunctionErrorsAlarm
+              - !Ref ProcessorFunctionDurationAlarm
+            - - !Ref 'AWS::NoValue'
+
+      CodeUri: src/
+      Handler: processor.handler.handler
+      Runtime: python3.14
+      Architectures:
+        - !Ref FunctionArchitecture
+      Timeout: !Ref ProcessorTimeoutInSeconds
+      MemorySize: !Ref ProcessorMemoryInMB
+      ReservedConcurrentExecutions: 1  # Prevent duplicate processing
+
+      Environment:
+        Variables:
+          DEPLOY_ENVIRONMENT: !Ref DeployEnvironment
+          LOG_LEVEL: !If [ IsProduction, "INFO",  "DEBUG"]
+          LAMBDA_TIMEOUT_IN_SEC: !Ref ProcessorTimeoutInSeconds
+          AWS_LAMBDA_LOG_LEVEL: !If [ IsProduction, "INFO", "DEBUG"]
+          AWS_LAMBDA_LOG_FORMAT: 'json'
+          
+          # Processor-specific environment variables
+          QUEUE_URL: !Ref EventQueue
+          TRACKING_TABLE: !Ref WindowTrackingTable
+          MAX_BATCH_SIZE: 10
+          MAX_PATHS_PER_INVALIDATION: !Ref MaxPathsPerInvalidation
+          
+      Tags:
+        AllowCloudFrontCacheInvalidation: "true"
+
+  # -- Processor Lambda Execution Role --
+  ProcessorExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefix}-${ProjectId}-${StageId}-ProcessorExecRole"
+      Description: "IAM Role for Processor Lambda - SQS ReceiveMessage/DeleteMessage, S3 GetBucketTagging, CloudFront operations, DynamoDB UpdateItem"
+      Path: !Ref RolePath
+      PermissionsBoundary: !If [HasPermissionsBoundaryArn, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue' ]
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [lambda.amazonaws.com]
+          Action: sts:AssumeRole
+
+      Policies:
+        - PolicyName: !Sub "${Prefix}-${ProjectId}-${StageId}-ProcessorPolicy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ProcessorSQSReceiveDelete
+                Effect: Allow
+                Action:
+                  - 'sqs:ReceiveMessage'
+                  - 'sqs:DeleteMessage'
+                  - 'sqs:GetQueueAttributes'
+                Resource: !GetAtt EventQueue.Arn
+
+              - Sid: ProcessorS3GetBucketTagging
+                Effect: Allow
+                Action:
+                  - 's3:GetBucketTagging'
+                Resource: !Sub 'arn:aws:s3:::${Prefix}-*'
+                Condition:
+                  StringEquals:
+                    'aws:ResourceTag/AllowInvalidationEvents': 'true'
+
+              - Sid: ProcessorCloudFrontListGet
+                Effect: Allow
+                Action:
+                  - 'cloudfront:GetDistribution'
+                  - 'cloudfront:ListDistributions'
+                  - 'cloudfront:ListTagsForResource'
+                Resource: '*'
+
+              - Sid: ProcessorCloudFrontCreateInvalidation
+                Effect: Allow
+                Action:
+                  - 'cloudfront:CreateInvalidation'
+                Resource: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/*'
+                Condition:
+                  StringEquals:
+                    'aws:ResourceTag/AllowCloudFrontCacheInvalidation': 'true'
+
+              - Sid: ProcessorDynamoDBUpdateItem
+                Effect: Allow
+                Action:
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:Query'
+                Resource: !GetAtt WindowTrackingTable.Arn
+
+              - Sid: ProcessorWriteLogs
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !GetAtt ProcessorLogGroup.Arn
+
+              - Sid: ProcessorXRayTracing
+                Effect: Allow
+                Action:
+                  - 'xray:PutTraceSegments'
+                  - 'xray:PutTelemetryRecords'
+                Resource: '*'
+
+  # -- Processor Lambda Log Group --
+  ProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+        LogGroupName: !Sub '/aws/lambda/${Prefix}-${ProjectId}-${StageId}-Processor'
+        RetentionInDays: !If [ IsProduction, !Ref LogRetentionInDaysForPROD,  !Ref LogRetentionInDaysForDEVTEST]
+
+  # -- Processor Lambda Function Error Alarm --
+  ProcessorFunctionErrorsAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Condition: CreateAlarms
+    Properties:
+      AlarmDescription: Processor Lambda Function Error > 1
+      MetricName: Errors
+      Statistic: Sum
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 1
+      Period: 900  # 15 minutes
+      EvaluationPeriods: 1
+      TreatMissingData: notBreaching
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ProcessorFunction
+      AlarmActions:
+        - Ref: AlarmNotificationTopic
+
+  # -- Processor Lambda Function Duration Alarm --
+  ProcessorFunctionDurationAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Condition: CreateAlarms
+    Properties:
+      AlarmDescription: Processor Lambda Function Duration > 240 seconds
+      MetricName: Duration
+      Statistic: Maximum
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 240000  # 240 seconds in milliseconds
+      Period: 300
+      EvaluationPeriods: 1
+      TreatMissingData: notBreaching
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ProcessorFunction
+      AlarmActions:
+        - Ref: AlarmNotificationTopic
+
+  # ===========================================================================
+  # EVENTBRIDGE SCHEDULER RESOURCES
+  # ===========================================================================
+
+  # -- EventBridge Scheduler Execution Role --
+  SchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefix}-${ProjectId}-${StageId}-SchedulerExecRole"
+      Description: "IAM Role for EventBridge Scheduler to invoke Processor Lambda"
+      Path: !Ref RolePath
+      PermissionsBoundary: !If [HasPermissionsBoundaryArn, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue' ]
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [scheduler.amazonaws.com]
+          Action: sts:AssumeRole
+
+      Policies:
+        - PolicyName: !Sub "${Prefix}-${ProjectId}-${StageId}-SchedulerPolicy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SchedulerInvokeProcessor
+                Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: 
+                  - !GetAtt ProcessorFunction.Arn
+                  - !Sub '${ProcessorFunction.Arn}:*'
+
+  # ===========================================================================
+  # CLOUDWATCH ALARMS AND SNS NOTIFICATIONS
+  # ===========================================================================
+
+  # -- Dead Letter Queue Alarm --
+  DLQMessageAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Condition: CreateAlarms
+    Properties:
+      AlarmDescription: Messages in Dead Letter Queue > 0
+      MetricName: ApproximateNumberOfMessagesVisible
+      Statistic: Sum
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      Period: 300
+      EvaluationPeriods: 1
+      TreatMissingData: notBreaching
+      Namespace: AWS/SQS
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt EventQueueDLQ.QueueName
+      AlarmActions:
+        - Ref: AlarmNotificationTopic
+
+  # -- SNS Topic for Alarm Notifications --
+  AlarmNotificationTopic:
       Type: AWS::SNS::Topic
       Condition: CreateAlarms
       Properties: 
@@ -401,15 +775,6 @@ Resources:
         Subscription:
           - Endpoint: !Ref AlarmNotificationEmail
             Protocol: 'email'
-
-  # -- Lambda Log Group with a retention policy --
-  AppLogGroup:
-    Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
-    Properties: 
-        LogGroupName: !Sub '/aws/lambda/${Prefix}-${ProjectId}-${StageId}-AppFunction' # Avoid circular reference !Sub "/aws/lambda/${AppFunction}"
-        RetentionInDays: !If [ IsProduction, !Ref LogRetentionInDaysForPROD,  !Ref LogRetentionInDaysForDEVTEST]
 
 # =============================================================================
 # OUTPUTS
@@ -422,21 +787,62 @@ Resources:
 
 Outputs:
 
-  # -- CloudFrontCacheInvalidatorArn
-  CloudFrontCacheInvalidatorArn:
-    Description: "Use this ARN for Storage Stacks hosting content from S3"
-    Value: !GetAtt AppFunction.Arn 
+  # -- Ingestor Lambda ARN
+  IngestorFunctionArn:
+    Description: "Ingestor Lambda ARN - Use this ARN for S3 bucket event notifications"
+    Value: !GetAtt IngestorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-IngestorFunctionArn'
+
+  # -- Processor Lambda ARN
+  ProcessorFunctionArn:
+    Description: "Processor Lambda ARN"
+    Value: !GetAtt ProcessorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ProcessorFunctionArn'
+
+  # -- SQS Queue URL
+  EventQueueUrl:
+    Description: "SQS Event Queue URL"
+    Value: !Ref EventQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-EventQueueUrl'
+
+  # -- DynamoDB Table Name
+  WindowTrackingTableName:
+    Description: "DynamoDB Window Tracking Table Name"
+    Value: !Ref WindowTrackingTable
+    Export:
+      Name: !Sub '${AWS::StackName}-WindowTrackingTableName'
 
   # -- CloudWatch Log Groups
-  CloudWatchLambdaExecutionLogGroup:
-    Description: "Cloud Watch Log Group for Lambda Execution Logs"
-    Value: !Sub "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logStream:group=%2Faws%2Flambda%2F${AppFunction}"
+  IngestorLogGroup:
+    Description: "CloudWatch Log Group for Ingestor Lambda"
+    Value: !Sub "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logStream:group=%2Faws%2Flambda%2F${Prefix}-${ProjectId}-${StageId}-Ingestor"
 
-  # -- Resource quick links
-  LambdaWebConsole:
-    Description: "Lambda Web Console"
-    Value: !Sub "https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${AppFunction}?tab=code"
+  ProcessorLogGroup:
+    Description: "CloudWatch Log Group for Processor Lambda"
+    Value: !Sub "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logStream:group=%2Faws%2Flambda%2F${Prefix}-${ProjectId}-${StageId}-Processor"
 
-  ParameterStore:
-    Description: "SSM Parameter Store"
-    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/systems-manager/parameters/?region=${AWS::Region}&tab=Table#list_parameter_filters=Name:Contains:${ParameterStoreHierarchy}"
+  # -- Lambda Console Links
+  IngestorLambdaConsole:
+    Description: "Ingestor Lambda Web Console"
+    Value: !Sub "https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${IngestorFunction}?tab=code"
+
+  ProcessorLambdaConsole:
+    Description: "Processor Lambda Web Console"
+    Value: !Sub "https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${ProcessorFunction}?tab=code"
+
+  # -- SQS Console Links
+  EventQueueConsole:
+    Description: "SQS Event Queue Console"
+    Value: !Sub "https://console.aws.amazon.com/sqs/v2/home?region=${AWS::Region}#/queues/https%3A%2F%2Fsqs.${AWS::Region}.amazonaws.com%2F${AWS::AccountId}%2F${Prefix}-${ProjectId}-${StageId}-EventQueue"
+
+  DLQConsole:
+    Description: "SQS Dead Letter Queue Console"
+    Value: !Sub "https://console.aws.amazon.com/sqs/v2/home?region=${AWS::Region}#/queues/https%3A%2F%2Fsqs.${AWS::Region}.amazonaws.com%2F${AWS::AccountId}%2F${Prefix}-${ProjectId}-${StageId}-EventQueueDLQ"
+
+  # -- DynamoDB Console Link
+  WindowTrackingTableConsole:
+    Description: "DynamoDB Window Tracking Table Console"
+    Value: !Sub "https://console.aws.amazon.com/dynamodbv2/home?region=${AWS::Region}#table?name=${WindowTrackingTable}"
