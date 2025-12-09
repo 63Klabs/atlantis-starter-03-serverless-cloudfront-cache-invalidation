@@ -65,8 +65,8 @@ def handler(event, context):
     if len(path_parts) > origin_path_depth and path_parts[origin_path_depth-1] == 'public':
         stageId = path_parts[1]
 
-        # If stageId starts with prod, beta, or stage then proceed
-        if stageId.startswith('prod') or stageId.startswith('beta') or stageId.startswith('stage'):
+        # If stageId starts with prod, beta, or stage then proceed (Atlantis assumes based upon first letter for side branches ie b-mia)
+        if stageId.startswith('p') or stageId.startswith('b') or stageId.startswith('s'):
             
             # We took out the origin path, so that leaves the key as the last part of path_parts
             key = '/' + path_parts[origin_path_depth]

@@ -82,7 +82,7 @@ cd ../YOUR_DEVOPS_SAM_CONFIG_REPO
 ./cli/config.py storage PREFIX MY_STATIC_ASSETS
 # CHOOSE TEMPLATE: template-storage-s3-oac-for-cloudfront.yml
 # SET PARAMETER: CloudFrontCacheInvalidatorArn
-# ADD TAG: AllowCloudFrontCacheInvalidation=true
+# ADD TAG: AllowInvalidationEvents=true
 # FROM THE OUTPUTS AFTER DEPLOY YOU WILL NEED FOR LATER:
 # - BucketName
 # - OriginBucketDomainForCloudFront
@@ -96,7 +96,7 @@ cd ../YOUR_DEVOPS_SAM_CONFIG_REPO
 ./cli/config.py network PREFIX YOUR_PROJECT_NAME test
 # choose the template-network-route53-cloudfront-s3-apigw.yml template when asked (it does not require api gateway)
 # Follow the prompts (You will need the OriginBucketDomainForCloudFront from the storage stack)
-# ADD TAG: AllowCloudFrontCacheInvalidation=true
+# ADD TAG: AllowInvalidationEvents=true
 
 # Don't forget to deploy if you skipped deployment during config
 ./cli/deploy.py network PREFIX YOUR_PROJECT_NAME test

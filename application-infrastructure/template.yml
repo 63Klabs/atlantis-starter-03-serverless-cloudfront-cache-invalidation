@@ -289,6 +289,9 @@ Resources:
           PARAM_STORE_PATH: !Ref ParameterStoreHierarchy # Path to instance specific params /Finance/ops/PROD/acme-myapp-prod/
           LAMBDA_TIMEOUT_IN_SEC: !Ref FunctionTimeOutInSeconds # so we can calculate any external connection timeout in our code
 
+          AWS_LAMBDA_LOG_LEVEL: !If [ IsProduction, "INFO", "DEBUG"] # 'DEBUG', 'WARN', 'ERROR', 'INFO' - 'CRITICAL' and 'SILENT' are not currently recognized by Cache Data logging
+          AWS_LAMBDA_LOG_FORMAT: 'json'
+          
       Tags:
         AllowCloudFrontCacheInvalidation: "true"
 
