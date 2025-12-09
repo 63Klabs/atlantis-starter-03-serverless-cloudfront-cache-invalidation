@@ -1,0 +1,70 @@
+version: 0.2
+
+# Many BUILD ENVIRONMENT VARIABLES are specified in the template-pipeline.yml template.
+# Search for 'EnvironmentVariables' under AWS::CodeBuild::Project in the template.
+# 
+# You can also run the command `printenv`
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: latest
+    commands:
+      
+      - ls -l -a
+
+      # Build Environment information for debugging purposes
+      - python3 --version
+      - node --version
+      - aws --version
+
+      # Configure pip cache directory
+      - mkdir -p /root/.cache/pip
+      - pip config set global.cache-dir /root/.cache/pip
+
+      # Build Environment: Install Python dependencies for Build Scripts if build-scripts/requirements.txt exists
+      - |
+        if [ -f "build-scripts/requirements.txt" ]; then
+          echo "Installing Python dependencies for build scripts"
+          pip install -r build-scripts/requirements.txt
+        else
+          echo "No build-scripts/requirements.txt found, skipping pip install"
+        fi
+
+  pre_build:
+    commands:
+      
+      # Application Environment: Install Python dependencies needed for application environment if requirements.txt exists
+      - |
+        if [ -f "application-infrastructure/src/requirements.txt" ]; then
+          echo "Installing Python dependencies for build scripts"
+          pip install -r application-infrastructure/src/requirements.txt
+        else
+          echo "No application-infrastructure/src/requirements.txt found, skipping pip install"
+        fi
+            
+  build:
+    commands:
+
+      - cd application-infrastructure
+
+      # There is sometimes a bug that causes the alias to not be updated correctly (see comment in template.yml for AppFunction.Properties.AutoPublishCodeSha256)
+      - python3 ./build-scripts/update_template_timestamp.py template.yml
+
+      # Replace placeholders in the template-configuration.json file
+      - python3 ./build-scripts/update_template_configuration.py template-configuration.json
+
+      # Use CloudFormation to package the application infrastructure and code that was placed in the S3 Artifacts Bucket (usually something like `cf-artifacts-<region>-<account-id>` or `cf-templates-randomchars-<region>`).
+      - aws cloudformation package --template template.yml --s3-bucket $S3_ARTIFACTS_BUCKET --output-template template-export.yml
+
+      # list files in the artifacts
+      - ls -l -a
+
+artifacts:
+  files:
+    - 'application-infrastructure/**/*'
+
+# add cache
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
