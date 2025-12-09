@@ -1,6 +1,7 @@
 # Ignore the git and zip files we use
 .*
 *.zip
+venv
 
 # Ignore program and OS files
 .vscode
