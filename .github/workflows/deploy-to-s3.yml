@@ -1,5 +1,14 @@
 name: Deploy Release to S3
 
+# This GitHub workflow can be used internally within your organization to save 
+# a ZIP'd copy of the code to a central S3 bucket. The main reason to do this 
+# is to provide it as an option as starter code within your organization when 
+# developers are seeding a repository using the ./cli/create_repo.py command. 
+# (This code base will then show up as an option for seeding)
+
+# If this is not a use case for you/your organization then this file may
+# safely be deleted from your repository.
+
 on:
   release:
     types: [published]
