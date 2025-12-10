@@ -1,6 +1,7 @@
 {
   "Parameters": {
-    "FunctionMaxMemoryInMB": "512"
+    "IngestorMemoryInMB": "512",
+    "ProcessorMemoryInMB": "1024"
   },
   "Tags": {
     "Name": "CloudFront Cache Invalidator $PREFIX$-$PROJECT_ID$",
