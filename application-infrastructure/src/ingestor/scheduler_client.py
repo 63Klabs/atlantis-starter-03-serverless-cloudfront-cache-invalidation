@@ -77,8 +77,14 @@ def create_one_time_schedule() -> Optional[str]:
         # Format as ISO 8601 for at() expression: YYYY-MM-DDTHH:MM:SS
         schedule_expression = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
         
-        # Generate unique schedule name
-        schedule_name = f"invalidation-processor-{uuid.uuid4()}"
+        # Generate unique schedule name following organizational naming pattern
+        # Get naming components from environment variables
+        prefix = os.environ.get('PREFIX', 'unknown')
+        project_id = os.environ.get('PROJECT_ID', 'unknown')
+        stage_id = os.environ.get('STAGE_ID', 'unknown')
+        unique_id = str(uuid.uuid4())[:8]  # Use first 8 chars of UUID for brevity
+        
+        schedule_name = f"{prefix}-{project_id}-{stage_id}-invalidation-processor-{unique_id}"
         
         # Get required ARNs
         processor_arn = get_processor_function_arn()

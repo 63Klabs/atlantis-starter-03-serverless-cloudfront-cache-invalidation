@@ -377,6 +377,11 @@ Resources:
           AWS_LAMBDA_LOG_LEVEL: !If [ IsProduction, "INFO", "DEBUG"]
           AWS_LAMBDA_LOG_FORMAT: 'json'
           
+          # Organizational naming components
+          PREFIX: !Ref Prefix
+          PROJECT_ID: !Ref ProjectId
+          STAGE_ID: !Ref StageId
+          
           # Ingestor-specific environment variables
           QUEUE_URL: !Ref EventQueue
           TRACKING_TABLE: !Ref WindowTrackingTable
