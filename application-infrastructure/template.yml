@@ -291,7 +291,7 @@ Resources:
       QueueName: !Sub '${Prefix}-${ProjectId}-${StageId}-EventQueueDLQ'
       MessageRetentionPeriod: 1209600  # 14 days
       Tags:
-        - Key: AllowCloudFrontCacheInvalidation
+        - Key: AllowInvalidationEvents
           Value: "true"
 
   # -- SQS Event Queue --
@@ -306,7 +306,7 @@ Resources:
         deadLetterTargetArn: !GetAtt EventQueueDLQ.Arn
         maxReceiveCount: 3
       Tags:
-        - Key: AllowCloudFrontCacheInvalidation
+        - Key: AllowInvalidationEvents
           Value: "true"
 
   # ===========================================================================
@@ -329,7 +329,7 @@ Resources:
         AttributeName: windowEndTime
         Enabled: true
       Tags:
-        - Key: AllowCloudFrontCacheInvalidation
+        - Key: AllowInvalidationEvents
           Value: "true"
 
   # ===========================================================================
@@ -387,7 +387,7 @@ Resources:
           AGGREGATION_WINDOW_SECONDS: !Ref AggregationWindowSeconds
           
       Tags:
-        AllowCloudFrontCacheInvalidation: "true"
+        AllowInvalidationEvents: "true"
 
   # -- Ingestor Lambda Execution Role --
   IngestorExecutionRole:
@@ -574,7 +574,7 @@ Resources:
           MAX_PATHS_PER_INVALIDATION: !Ref MaxPathsPerInvalidation
           
       Tags:
-        AllowCloudFrontCacheInvalidation: "true"
+        AllowInvalidationEvents: "true"
 
   # -- Processor Lambda Execution Role --
   ProcessorExecutionRole:
@@ -611,10 +611,9 @@ Resources:
                 Resource: !Sub 
                   - 'arn:aws:s3:::${OrgPrefix}${Prefix}*'
                   - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
-                # Temporarily removed condition for debugging
-                # Condition:
-                #   StringEquals:
-                #     'aws:ResourceTag/AllowInvalidationEvents': 'true'
+                Condition:
+                  StringEquals:
+                    'aws:ResourceTag/AllowInvalidationEvents': 'true'
 
               - Sid: ProcessorCloudFrontListGet
                 Effect: Allow
@@ -631,7 +630,7 @@ Resources:
                 Resource: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/*'
                 Condition:
                   StringEquals:
-                    'aws:ResourceTag/AllowCloudFrontCacheInvalidation': 'true'
+                    'aws:ResourceTag/AllowInvalidationEvents': 'true'
 
               - Sid: ProcessorDynamoDBUpdateItem
                 Effect: Allow
