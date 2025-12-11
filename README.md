@@ -151,11 +151,11 @@ cd ../YOUR_DEVOPS_SAM_CONFIG_REPO
 ## Validate both test and prod behavior in 
 ## DynamoDb, SQS, Events, Lambda Logs and CloudFront Dist invalidation requests
 
-# Create a simple html file and copy to S3 test location
-aws s3 cp filename s3://BUCKET_NAME/test/public/
+# A test file is available in the root of this repo. Increment the target file name on each copy
+aws s3 cp test.html s3://BUCKET_NAME/test/public/test-1.html
 # - The Ingestor function should accept and then filter OUT the event (it is in test)
 # Copy to S3 prod location
-aws s3 cp filename s3://BUCKET_NAME/prod/public/
+aws s3 cp test.html s3://BUCKET_NAME/prod/public/test-2.html
 # The Ingestor function should accept and schedule an invalidation. It should be listed in SQS and DynamoDB
 # The Processor function should kick in after 5 minutes and submit an invalidation
 ```
