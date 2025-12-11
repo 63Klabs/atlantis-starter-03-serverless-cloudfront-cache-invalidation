@@ -89,13 +89,18 @@ def send_message(queue_url: str, message_body: Dict[str, str]) -> str:
         # Convert message body to JSON string
         message_json = json.dumps(message_body)
         
+        # DEBUG: Log detailed SQS send information
         logger.info(
-            "Sending message to SQS queue",
+            "Sending message to SQS queue DEBUG",
             extra={'extra_fields': {
                 'queue_url': queue_url,
                 'bucket_name': message_body.get('bucketName'),
                 'stage_id': message_body.get('stageId'),
-                'origin_path': message_body.get('originPath')
+                'origin_path': message_body.get('originPath'),
+                'fullMessageBody': message_body,
+                'messageJson': message_json,
+                'messageJsonLength': len(message_json),
+                'sqsClientRegion': sqs_client.meta.region_name if hasattr(sqs_client, 'meta') else 'unknown'
             }}
         )
         
@@ -103,6 +108,18 @@ def send_message(queue_url: str, message_body: Dict[str, str]) -> str:
         response = sqs_client.send_message(
             QueueUrl=queue_url,
             MessageBody=message_json
+        )
+        
+        # DEBUG: Log full SQS response
+        logger.info(
+            "SQS send_message response DEBUG",
+            extra={'extra_fields': {
+                'fullResponse': response,
+                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+                'responseMetadata': response.get('ResponseMetadata', {}),
+                'messageId': response.get('MessageId'),
+                'md5OfBody': response.get('MD5OfBody')
+            }}
         )
         
         message_id = response['MessageId']
@@ -165,6 +182,22 @@ def send_event_to_queue(queue_url: str, bucket_name: str, object_key: str,
     Raises:
         SQSClientError: If message send fails after all retries
     """
+    # DEBUG: Log function entry
+    logger.info(
+        "send_event_to_queue called DEBUG",
+        extra={'extra_fields': {
+            'inputParams': {
+                'queue_url': queue_url,
+                'bucket_name': bucket_name,
+                'object_key': object_key,
+                'origin_path': origin_path,
+                'stage_id': stage_id,
+                'event_time': event_time,
+                'event_type': event_type
+            }
+        }}
+    )
+    
     # Format the message
     message_body = format_sqs_message(
         bucket_name=bucket_name,
@@ -175,5 +208,24 @@ def send_event_to_queue(queue_url: str, bucket_name: str, object_key: str,
         event_type=event_type
     )
     
+    # DEBUG: Log formatted message
+    logger.info(
+        "Message formatted for SQS DEBUG",
+        extra={'extra_fields': {
+            'formattedMessage': message_body
+        }}
+    )
+    
     # Send to queue
-    return send_message(queue_url, message_body)
+    result = send_message(queue_url, message_body)
+    
+    # DEBUG: Log final result
+    logger.info(
+        "send_event_to_queue result DEBUG",
+        extra={'extra_fields': {
+            'messageId': result,
+            'sendSuccessful': True
+        }}
+    )
+    
+    return result

@@ -79,6 +79,17 @@ def receive_messages_batch(queue_url: str, max_messages: int = SQS_MAX_BATCH_SIZ
             }}
         )
         
+        # DEBUG: Log SQS receive request
+        logger.info(
+            "SQS receive_message request DEBUG",
+            extra={'extra_fields': {
+                'queueUrl': queue_url,
+                'maxMessages': max_messages,
+                'waitTimeSeconds': SQS_LONG_POLL_WAIT_TIME_SECONDS,
+                'sqsClientRegion': sqs_client.meta.region_name if hasattr(sqs_client, 'meta') else 'unknown'
+            }}
+        )
+        
         # Receive messages with long polling
         response = sqs_client.receive_message(
             QueueUrl=queue_url,
@@ -87,8 +98,30 @@ def receive_messages_batch(queue_url: str, max_messages: int = SQS_MAX_BATCH_SIZ
             AttributeNames=['All']
         )
         
+        # DEBUG: Log SQS response
+        logger.info(
+            "SQS receive_message response DEBUG",
+            extra={'extra_fields': {
+                'fullResponse': response,
+                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+                'responseMetadata': response.get('ResponseMetadata', {}),
+                'hasMessages': 'Messages' in response,
+                'messageCount': len(response.get('Messages', []))
+            }}
+        )
+        
         # Handle empty queue gracefully
         messages = response.get('Messages', [])
+        
+        # DEBUG: Log message analysis
+        logger.info(
+            "SQS messages analysis DEBUG",
+            extra={'extra_fields': {
+                'messageCount': len(messages),
+                'messageTypes': [type(msg).__name__ for msg in messages],
+                'messageKeys': [list(msg.keys()) if isinstance(msg, dict) else 'not_dict' for msg in messages[:3]]
+            }}
+        )
         
         if not messages:
             logger.info(
@@ -99,21 +132,67 @@ def receive_messages_batch(queue_url: str, max_messages: int = SQS_MAX_BATCH_SIZ
         
         # Parse message bodies
         parsed_messages = []
-        for message in messages:
+        
+        # DEBUG: Log parsing start
+        logger.info(
+            "Starting message body parsing DEBUG",
+            extra={'extra_fields': {
+                'messagesToParse': len(messages)
+            }}
+        )
+        
+        for i, message in enumerate(messages):
+            # DEBUG: Log each message parsing
+            logger.info(
+                f"Parsing message {i+1}/{len(messages)} DEBUG",
+                extra={'extra_fields': {
+                    'messageIndex': i,
+                    'messageId': message.get('MessageId', 'no_id'),
+                    'messageKeys': list(message.keys()) if isinstance(message, dict) else 'not_dict',
+                    'bodyLength': len(message.get('Body', '')) if message.get('Body') else 0,
+                    'bodyPreview': message.get('Body', '')[:200] + '...' if message.get('Body') else 'no_body'
+                }}
+            )
+            
             try:
                 parsed_body = json.loads(message['Body'])
                 message['parsed_body'] = parsed_body
+                
+                # DEBUG: Log successful parsing
+                logger.info(
+                    f"Message {i+1} parsing successful DEBUG",
+                    extra={'extra_fields': {
+                        'messageIndex': i,
+                        'messageId': message.get('MessageId', 'no_id'),
+                        'parsedBody': parsed_body,
+                        'parsedBodyKeys': list(parsed_body.keys()) if isinstance(parsed_body, dict) else 'not_dict'
+                    }}
+                )
+                
                 parsed_messages.append(message)
             except json.JSONDecodeError as e:
                 logger.error(
-                    f"Failed to parse message body as JSON: {str(e)}",
+                    f"Failed to parse message {i+1} body as JSON: {str(e)} DEBUG",
                     extra={'extra_fields': {
+                        'messageIndex': i,
                         'message_id': message.get('MessageId'),
-                        'error': str(e)
+                        'error': str(e),
+                        'messageBody': message.get('Body', 'no_body'),
+                        'jsonParsingFailed': True
                     }}
                 )
                 # Skip malformed messages
                 continue
+        
+        # DEBUG: Log parsing summary
+        logger.info(
+            "Message parsing complete DEBUG",
+            extra={'extra_fields': {
+                'totalMessages': len(messages),
+                'successfullyParsed': len(parsed_messages),
+                'parsingFailures': len(messages) - len(parsed_messages)
+            }}
+        )
         
         logger.info(
             f"Successfully received {len(parsed_messages)} messages from SQS",

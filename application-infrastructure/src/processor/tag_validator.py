@@ -47,10 +47,43 @@ def get_bucket_tags(bucket_name: str) -> Optional[Dict[str, str]]:
             }}
         )
         
+        # DEBUG: Log S3 API call
+        logger.info(
+            f"Calling S3 get_bucket_tagging DEBUG",
+            extra={'extra_fields': {
+                'bucketName': bucket_name,
+                's3ClientRegion': s3_client.meta.region_name if hasattr(s3_client, 'meta') else 'unknown'
+            }}
+        )
+        
         response = s3_client.get_bucket_tagging(Bucket=bucket_name)
+        
+        # DEBUG: Log S3 response
+        logger.info(
+            f"S3 get_bucket_tagging response DEBUG",
+            extra={'extra_fields': {
+                'bucketName': bucket_name,
+                'fullResponse': response,
+                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+                'responseMetadata': response.get('ResponseMetadata', {}),
+                'hasTagSet': 'TagSet' in response
+            }}
+        )
         
         # Convert tag list to dictionary
         tag_set = response.get('TagSet', [])
+        
+        # DEBUG: Log tag conversion
+        logger.info(
+            f"S3 tag conversion DEBUG",
+            extra={'extra_fields': {
+                'bucketName': bucket_name,
+                'tagSet': tag_set,
+                'tagSetLength': len(tag_set),
+                'tagSetType': type(tag_set).__name__
+            }}
+        )
+        
         tags = {tag['Key']: tag['Value'] for tag in tag_set}
         
         logger.debug(
@@ -116,8 +149,30 @@ def validate_bucket_tags(bucket_name: str) -> bool:
     **Feature: multi-bucket-cloudfront-invalidation, Property 14 & 15: Bucket tag validation**
     **Validates: Requirements 6.1, 6.2, 6.3, 6.4**
     """
+    # DEBUG: Log validation start
+    logger.info(
+        f"Starting bucket tag validation DEBUG",
+        extra={'extra_fields': {
+            'bucketName': bucket_name,
+            'aboutToCallGetBucketTags': True
+        }}
+    )
+    
     # Retrieve bucket tags
     tags = get_bucket_tags(bucket_name)
+    
+    # DEBUG: Log tag retrieval result
+    logger.info(
+        f"Bucket tag retrieval result DEBUG",
+        extra={'extra_fields': {
+            'bucketName': bucket_name,
+            'tags': tags,
+            'tagsType': type(tags).__name__,
+            'tagsRetrieved': tags is not None,
+            'tagCount': len(tags) if isinstance(tags, dict) else 0,
+            'hasAllowInvalidationEvents': 'AllowInvalidationEvents' in tags if isinstance(tags, dict) else False
+        }}
+    )
     
     # If tags could not be retrieved, fail validation
     if tags is None:
@@ -133,6 +188,18 @@ def validate_bucket_tags(bucket_name: str) -> bool:
     
     # Check for AllowInvalidationEvents tag
     allow_invalidation = tags.get('AllowInvalidationEvents', '')
+    
+    # DEBUG: Log tag validation logic
+    logger.info(
+        f"Bucket tag validation logic DEBUG",
+        extra={'extra_fields': {
+            'bucketName': bucket_name,
+            'allowInvalidationValue': allow_invalidation,
+            'allowInvalidationType': type(allow_invalidation).__name__,
+            'expectedValue': 'true',
+            'exactMatch': allow_invalidation == 'true'
+        }}
+    )
     
     # Validate tag value (must be exactly "true")
     is_valid = allow_invalidation == 'true'

@@ -84,23 +84,46 @@ def create_one_time_schedule() -> Optional[str]:
         processor_arn = get_processor_function_arn()
         scheduler_role_arn = get_scheduler_role_arn()
         
-        # Create the one-time schedule
-        response = scheduler.create_schedule(
-            Name=schedule_name,
-            ScheduleExpression=schedule_expression,
-            ScheduleExpressionTimezone='UTC',
-            Target={
+        # DEBUG: Log schedule creation request
+        schedule_request = {
+            'Name': schedule_name,
+            'ScheduleExpression': schedule_expression,
+            'ScheduleExpressionTimezone': 'UTC',
+            'Target': {
                 'Arn': processor_arn,
                 'RoleArn': scheduler_role_arn,
                 'RetryPolicy': {
                     'MaximumRetryAttempts': 0  # Lambda handles retries internally
                 }
             },
-            FlexibleTimeWindow={
+            'FlexibleTimeWindow': {
                 'Mode': 'OFF'  # Exact time execution
             },
-            State='ENABLED',
-            ActionAfterCompletion='DELETE'  # Auto-delete after execution
+            'State': 'ENABLED',
+            'ActionAfterCompletion': 'DELETE'  # Auto-delete after execution
+        }
+        
+        logger.info(
+            "Creating EventBridge schedule DEBUG",
+            extra={'extra_fields': {
+                'scheduleRequest': schedule_request,
+                'currentTime': current_time.isoformat(),
+                'targetTime': target_time.isoformat(),
+                'aggregationWindowSeconds': AGGREGATION_WINDOW_SECONDS
+            }}
+        )
+        
+        # Create the one-time schedule
+        response = scheduler.create_schedule(**schedule_request)
+        
+        # DEBUG: Log full AWS response
+        logger.info(
+            "EventBridge schedule creation response DEBUG",
+            extra={'extra_fields': {
+                'fullResponse': response,
+                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+                'responseMetadata': response.get('ResponseMetadata', {})
+            }}
         )
         
         schedule_arn = response.get('ScheduleArn')

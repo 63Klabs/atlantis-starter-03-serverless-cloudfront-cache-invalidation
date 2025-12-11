@@ -53,36 +53,120 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
         
     **Feature: multi-bucket-cloudfront-invalidation, Property 12: Event grouping by bucket and origin**
     """
-    grouped: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    # DEBUG: Log grouping function entry
+    logger.info(
+        "Starting message grouping DEBUG",
+        extra={'extra_fields': {
+            'totalMessages': len(messages),
+            'messageTypes': [type(msg).__name__ for msg in messages[:5]],  # First 5 types
+            'messageKeys': [list(msg.keys()) if isinstance(msg, dict) else 'not_dict' for msg in messages[:3]]  # First 3 key sets
+        }}
+    )
     
-    for message in messages:
+    grouped: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    skipped_messages = []
+    
+    for i, message in enumerate(messages):
+        # DEBUG: Log each message processing
+        logger.info(
+            f"Processing message {i+1}/{len(messages)} for grouping DEBUG",
+            extra={'extra_fields': {
+                'messageIndex': i,
+                'messageId': message.get('MessageId', 'no_id'),
+                'messageKeys': list(message.keys()) if isinstance(message, dict) else 'not_dict',
+                'hasParsedBody': 'parsed_body' in message if isinstance(message, dict) else False
+            }}
+        )
+        
         # Extract parsed body
         parsed_body = message.get('parsed_body', {})
+        
+        # DEBUG: Log parsed body analysis
+        logger.info(
+            f"Message {i+1} parsed body analysis DEBUG",
+            extra={'extra_fields': {
+                'messageIndex': i,
+                'parsedBody': parsed_body,
+                'parsedBodyType': type(parsed_body).__name__,
+                'parsedBodyKeys': list(parsed_body.keys()) if isinstance(parsed_body, dict) else 'not_dict'
+            }}
+        )
         
         # Get grouping keys
         bucket_name = parsed_body.get('bucketName')
         origin_path = parsed_body.get('originPath')
         
+        # DEBUG: Log grouping key extraction
+        logger.info(
+            f"Message {i+1} grouping keys DEBUG",
+            extra={'extra_fields': {
+                'messageIndex': i,
+                'bucketName': bucket_name,
+                'originPath': origin_path,
+                'bucketNameType': type(bucket_name).__name__,
+                'originPathType': type(origin_path).__name__,
+                'hasBucket': bool(bucket_name),
+                'hasOrigin': bool(origin_path)
+            }}
+        )
+        
         # Skip messages with missing required fields
         if not bucket_name or not origin_path:
+            skip_info = {
+                'message_id': message.get('MessageId'),
+                'has_bucket': bool(bucket_name),
+                'has_origin': bool(origin_path),
+                'bucket_value': bucket_name,
+                'origin_value': origin_path
+            }
+            skipped_messages.append(skip_info)
+            
             logger.warning(
-                "Skipping message with missing bucketName or originPath",
-                extra={'extra_fields': {
-                    'message_id': message.get('MessageId'),
-                    'has_bucket': bool(bucket_name),
-                    'has_origin': bool(origin_path)
-                }}
+                f"Skipping message {i+1} with missing bucketName or originPath DEBUG",
+                extra={'extra_fields': skip_info}
             )
             continue
         
         # Create group key
         group_key = (bucket_name, origin_path)
         
+        # DEBUG: Log group assignment
+        logger.info(
+            f"Message {i+1} group assignment DEBUG",
+            extra={'extra_fields': {
+                'messageIndex': i,
+                'groupKey': group_key,
+                'groupExists': group_key in grouped,
+                'currentGroupSize': len(grouped.get(group_key, []))
+            }}
+        )
+        
         # Add message to group
         if group_key not in grouped:
             grouped[group_key] = []
         
         grouped[group_key].append(message)
+    
+    # DEBUG: Log final grouping results
+    logger.info(
+        f"Message grouping complete DEBUG",
+        extra={'extra_fields': {
+            'total_messages': len(messages),
+            'messages_grouped': len(messages) - len(skipped_messages),
+            'messages_skipped': len(skipped_messages),
+            'skipped_details': skipped_messages,
+            'group_count': len(grouped),
+            'groups_detailed': [
+                {
+                    'bucket': bucket,
+                    'origin': origin,
+                    'message_count': len(msgs),
+                    'message_ids': [msg.get('MessageId', 'no_id') for msg in msgs]
+                }
+                for (bucket, origin), msgs in grouped.items()
+            ]
+        }}
+    )
     
     logger.info(
         f"Grouped {len(messages)} messages into {len(grouped)} bucket/origin combinations",
@@ -119,10 +203,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             - statusCode: HTTP status code (200 for success, 500 for failure)
             - body: Summary of processing results
     """
+    # DEBUG: Log the complete incoming event and context
     logger.info(
-        "Processor Lambda invoked",
+        "Processor Lambda invoked - FULL EVENT DEBUG",
         extra={'extra_fields': {
-            'requestId': context.aws_request_id if context else 'unknown'
+            'requestId': context.aws_request_id if context else 'unknown',
+            'fullEvent': event,
+            'eventKeys': list(event.keys()) if isinstance(event, dict) else 'not_dict',
+            'contextInfo': {
+                'functionName': context.function_name if context else 'unknown',
+                'functionVersion': context.function_version if context else 'unknown',
+                'memoryLimitInMB': context.memory_limit_in_mb if context else 'unknown',
+                'remainingTimeInMillis': context.get_remaining_time_in_millis() if context else 'unknown'
+            },
+            'environmentVars': dict(os.environ)
         }}
     )
     
@@ -144,18 +238,71 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # Get queue URL from environment
         queue_url = os.environ.get('QUEUE_URL')
+        
+        # DEBUG: Log configuration
+        logger.info(
+            "Processor configuration DEBUG",
+            extra={'extra_fields': {
+                'queueUrl': queue_url,
+                'hasQueueUrl': bool(queue_url),
+                'allEnvVars': dict(os.environ)
+            }}
+        )
+        
         if not queue_url:
             raise ValueError("QUEUE_URL environment variable not set")
         
         # Step 1: Receive messages from SQS in batches
         all_messages = []
+        batch_count = 0
+        
+        # DEBUG: Log batch retrieval start
+        logger.info(
+            "Step 1: Starting SQS batch message retrieval DEBUG",
+            extra={'extra_fields': {
+                'queueUrl': queue_url,
+                'startingBatchRetrieval': True
+            }}
+        )
         
         # Continue receiving until queue is empty
         while True:
+            batch_count += 1
+            
+            # DEBUG: Log each batch attempt
+            logger.info(
+                f"Step 1: Batch {batch_count} retrieval attempt DEBUG",
+                extra={'extra_fields': {
+                    'batchNumber': batch_count,
+                    'currentMessageCount': len(all_messages),
+                    'aboutToCallReceiveMessagesBatch': True
+                }}
+            )
+            
             messages = receive_messages_batch(queue_url)
+            
+            # DEBUG: Log batch result
+            logger.info(
+                f"Step 1: Batch {batch_count} result DEBUG",
+                extra={'extra_fields': {
+                    'batchNumber': batch_count,
+                    'messagesReceived': len(messages) if messages else 0,
+                    'messagesType': type(messages).__name__,
+                    'messageIds': [msg.get('MessageId', 'no_id') for msg in messages] if messages else [],
+                    'totalMessagesNow': len(all_messages) + (len(messages) if messages else 0)
+                }}
+            )
             
             if not messages:
                 # Queue is empty
+                logger.info(
+                    f"Step 1: Queue empty after {batch_count} batches DEBUG",
+                    extra={'extra_fields': {
+                        'totalBatches': batch_count,
+                        'finalMessageCount': len(all_messages),
+                        'queueEmpty': True
+                    }}
+                )
                 break
             
             all_messages.extend(messages)
@@ -163,25 +310,55 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Safety limit to prevent infinite loops
             if len(all_messages) >= 1000:
                 logger.warning(
-                    "Reached message limit, stopping batch retrieval",
+                    "Reached message limit, stopping batch retrieval DEBUG",
                     extra={'extra_fields': {
-                        'message_count': len(all_messages)
+                        'message_count': len(all_messages),
+                        'batchCount': batch_count,
+                        'hitSafetyLimit': True
                     }}
                 )
                 break
         
         summary['total_messages'] = len(all_messages)
         
+        # DEBUG: Log message retrieval summary
+        logger.info(
+            "Step 1: Message retrieval complete DEBUG",
+            extra={'extra_fields': {
+                'totalMessages': len(all_messages),
+                'totalBatches': batch_count,
+                'messageDetails': [
+                    {
+                        'messageId': msg.get('MessageId', 'no_id'),
+                        'receiptHandle': msg.get('ReceiptHandle', 'no_handle')[:50] + '...' if msg.get('ReceiptHandle') else 'no_handle',
+                        'body': msg.get('Body', 'no_body')[:200] + '...' if msg.get('Body') else 'no_body',
+                        'parsedBody': msg.get('parsed_body', 'no_parsed_body')
+                    }
+                    for msg in all_messages[:5]  # First 5 messages for debugging
+                ]
+            }}
+        )
+        
         if not all_messages:
-            logger.info("No messages to process")
+            logger.info(
+                "No messages to process - closing window DEBUG",
+                extra={'extra_fields': {
+                    'noMessagesToProcess': True,
+                    'aboutToCloseWindow': True
+                }}
+            )
             
             # Close aggregation window even if no messages
             try:
                 close_window()
+                logger.info("Window closed successfully with no messages DEBUG")
             except Exception as e:
                 logger.error(
-                    f"Failed to close aggregation window: {str(e)}",
-                    extra={'extra_fields': {'error': str(e)}}
+                    f"Failed to close aggregation window: {str(e)} DEBUG",
+                    extra={'extra_fields': {
+                        'error': str(e),
+                        'windowCloseFailed': True
+                    }}
                 )
             
             return {
@@ -190,37 +367,95 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         logger.info(
-            f"Retrieved {len(all_messages)} messages from queue",
+            f"Retrieved {len(all_messages)} messages from queue - proceeding to grouping DEBUG",
             extra={'extra_fields': {
-                'message_count': len(all_messages)
+                'message_count': len(all_messages),
+                'proceedingToGrouping': True
             }}
         )
         
         # Step 2: Group messages by bucket and origin path
+        # DEBUG: Log grouping start
+        logger.info(
+            "Step 2: Starting message grouping DEBUG",
+            extra={'extra_fields': {
+                'totalMessagesToGroup': len(all_messages),
+                'aboutToCallGroupMessages': True
+            }}
+        )
+        
         grouped_messages = group_messages_by_bucket_and_origin(all_messages)
         summary['groups_processed'] = len(grouped_messages)
+        
+        # DEBUG: Log grouping results
+        logger.info(
+            "Step 2: Message grouping complete DEBUG",
+            extra={'extra_fields': {
+                'totalGroups': len(grouped_messages),
+                'groupDetails': [
+                    {
+                        'bucketName': bucket,
+                        'originPath': origin,
+                        'messageCount': len(msgs),
+                        'messageIds': [msg.get('MessageId', 'no_id') for msg in msgs[:3]]  # First 3 IDs
+                    }
+                    for (bucket, origin), msgs in grouped_messages.items()
+                ]
+            }}
+        )
         
         # Track messages to delete (successfully processed)
         messages_to_delete = []
         
         # Step 3-7: Process each group
+        group_index = 0
         for (bucket_name, origin_path), messages in grouped_messages.items():
+            group_index += 1
+            
+            # DEBUG: Log group processing start
             logger.info(
-                f"Processing group: bucket={bucket_name}, origin={origin_path}",
+                f"Step 3-7: Processing group {group_index}/{len(grouped_messages)} DEBUG",
                 extra={'extra_fields': {
+                    'groupIndex': group_index,
+                    'totalGroups': len(grouped_messages),
                     'bucket_name': bucket_name,
                     'origin_path': origin_path,
-                    'message_count': len(messages)
+                    'message_count': len(messages),
+                    'messageIds': [msg.get('MessageId', 'no_id') for msg in messages],
+                    'firstMessageBody': messages[0].get('parsed_body', {}) if messages else {}
                 }}
             )
             
             # Step 3: Validate bucket tags
-            if not validate_bucket_tags(bucket_name):
+            # DEBUG: Log bucket validation start
+            logger.info(
+                f"Step 3: Validating bucket tags for {bucket_name} DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'aboutToCallValidateBucketTags': True
+                }}
+            )
+            
+            bucket_validation_result = validate_bucket_tags(bucket_name)
+            
+            # DEBUG: Log bucket validation result
+            logger.info(
+                f"Step 3: Bucket validation result DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'validationResult': bucket_validation_result,
+                    'validationPassed': bool(bucket_validation_result)
+                }}
+            )
+            
+            if not bucket_validation_result:
                 logger.warning(
-                    f"Bucket {bucket_name} failed tag validation, skipping",
+                    f"Bucket {bucket_name} failed tag validation, skipping DEBUG",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path
+                        'origin_path': origin_path,
+                        'bucketValidationFailed': True,
+                        'messagesBeingDeleted': len(messages)
                     }}
                 )
                 summary['buckets_rejected'] += 1
@@ -230,53 +465,139 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             summary['buckets_validated'] += 1
             
+            # DEBUG: Log bucket validation success
+            logger.info(
+                f"Step 3: Bucket {bucket_name} validation passed DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'bucketValidationPassed': True
+                }}
+            )
+            
             # Get bucket's Application tag for distribution validation
+            # DEBUG: Log bucket tags retrieval
+            logger.info(
+                f"Step 3: Getting bucket tags for {bucket_name} DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'aboutToCallGetBucketTags': True
+                }}
+            )
+            
             bucket_tags = get_bucket_tags(bucket_name)
+            
+            # DEBUG: Log bucket tags result
+            logger.info(
+                f"Step 3: Bucket tags retrieval result DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'bucketTags': bucket_tags,
+                    'bucketTagsType': type(bucket_tags).__name__,
+                    'bucketTagsKeys': list(bucket_tags.keys()) if isinstance(bucket_tags, dict) else 'not_dict',
+                    'hasApplicationTag': 'atlantis:Application' in bucket_tags if isinstance(bucket_tags, dict) else False
+                }}
+            )
+            
             if not bucket_tags:
                 logger.error(
-                    f"Failed to retrieve bucket tags for {bucket_name}, skipping",
+                    f"Failed to retrieve bucket tags for {bucket_name}, skipping DEBUG",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path
+                        'origin_path': origin_path,
+                        'bucketTagsRetrievalFailed': True
                     }}
                 )
                 messages_to_delete.extend(messages)
                 continue
             
             bucket_app_tag = bucket_tags.get('atlantis:Application', '')
+            
+            # DEBUG: Log application tag extraction
+            logger.info(
+                f"Step 3: Application tag extraction DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'bucketAppTag': bucket_app_tag,
+                    'hasAppTag': bool(bucket_app_tag)
+                }}
+            )
+            
             if not bucket_app_tag:
                 logger.warning(
-                    f"Bucket {bucket_name} missing atlantis:Application tag, skipping",
+                    f"Bucket {bucket_name} missing atlantis:Application tag, skipping DEBUG",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path
+                        'origin_path': origin_path,
+                        'missingApplicationTag': True,
+                        'availableTags': list(bucket_tags.keys())
                     }}
                 )
                 messages_to_delete.extend(messages)
                 continue
             
             # Extract stageId from first message (all messages in group have same stageId)
-            stage_id = messages[0].get('parsed_body', {}).get('stageId', '')
+            # DEBUG: Log stageId extraction
+            first_message = messages[0] if messages else {}
+            parsed_body = first_message.get('parsed_body', {})
+            stage_id = parsed_body.get('stageId', '')
+            
+            logger.info(
+                f"Step 3: StageId extraction DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'firstMessage': first_message,
+                    'parsedBody': parsed_body,
+                    'extractedStageId': stage_id,
+                    'hasStageId': bool(stage_id)
+                }}
+            )
+            
             if not stage_id:
                 logger.error(
-                    f"Missing stageId in messages for bucket {bucket_name}, skipping",
+                    f"Missing stageId in messages for bucket {bucket_name}, skipping DEBUG",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path
+                        'origin_path': origin_path,
+                        'missingStageId': True,
+                        'firstMessageParsedBody': parsed_body
                     }}
                 )
                 messages_to_delete.extend(messages)
                 continue
             
             # Step 4: Find matching CloudFront distributions
+            # DEBUG: Log distribution search
+            logger.info(
+                f"Step 4: Finding CloudFront distributions DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'originPath': origin_path,
+                    'aboutToCallFindMatchingDistributions': True
+                }}
+            )
+            
             distribution_ids = find_matching_distributions(bucket_name, origin_path)
+            
+            # DEBUG: Log distribution search results
+            logger.info(
+                f"Step 4: Distribution search results DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'originPath': origin_path,
+                    'distributionIds': distribution_ids,
+                    'distributionCount': len(distribution_ids) if distribution_ids else 0,
+                    'distributionsFound': bool(distribution_ids)
+                }}
+            )
             
             if not distribution_ids:
                 logger.info(
-                    f"No distributions found for bucket {bucket_name} with origin {origin_path}",
+                    f"No distributions found for bucket {bucket_name} with origin {origin_path} DEBUG",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path
+                        'origin_path': origin_path,
+                        'noDistributionsFound': True,
+                        'messagesBeingDeleted': len(messages)
                     }}
                 )
                 # Delete messages even if no distributions found
@@ -284,6 +605,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 continue
             
             summary['distributions_found'] += len(distribution_ids)
+            
+            # DEBUG: Log distributions found
+            logger.info(
+                f"Step 4: Found {len(distribution_ids)} distributions DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'originPath': origin_path,
+                    'distributionIds': distribution_ids,
+                    'distributionCount': len(distribution_ids)
+                }}
+            )
             
             # Step 5: Validate distribution tags and filter
             valid_distributions = []

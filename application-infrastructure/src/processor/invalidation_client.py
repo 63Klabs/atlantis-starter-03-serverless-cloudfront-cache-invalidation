@@ -82,13 +82,16 @@ def create_invalidation(distribution_id: str, paths: List[str]) -> Optional[dict
         'CallerReference': caller_reference
     }
     
+    # DEBUG: Log invalidation request details
     logger.info(
-        f"Submitting invalidation request for distribution {distribution_id}",
+        f"Submitting invalidation request for distribution {distribution_id} DEBUG",
         extra={'extra_fields': {
             'distribution_id': distribution_id,
             'path_count': len(paths),
             'caller_reference': caller_reference,
-            'paths': paths[:10] if len(paths) > 10 else paths  # Log first 10 paths
+            'paths': paths[:10] if len(paths) > 10 else paths,  # Log first 10 paths
+            'invalidationBatch': invalidation_batch,
+            'cloudfrontClientRegion': cloudfront_client.meta.region_name if hasattr(cloudfront_client, 'meta') else 'unknown'
         }}
     )
     
@@ -99,11 +102,47 @@ def create_invalidation(distribution_id: str, paths: List[str]) -> Optional[dict
             InvalidationBatch=invalidation_batch
         )
         
+        # DEBUG: Log CloudFront response
+        logger.info(
+            f"CloudFront create_invalidation response DEBUG",
+            extra={'extra_fields': {
+                'distributionId': distribution_id,
+                'fullResponse': response,
+                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+                'responseMetadata': response.get('ResponseMetadata', {}),
+                'hasInvalidation': 'Invalidation' in response if isinstance(response, dict) else False
+            }}
+        )
+        
         # Extract invalidation details
         invalidation = response.get('Invalidation', {})
+        
+        # DEBUG: Log invalidation extraction
+        logger.info(
+            f"Invalidation details extraction DEBUG",
+            extra={'extra_fields': {
+                'distributionId': distribution_id,
+                'invalidation': invalidation,
+                'invalidationKeys': list(invalidation.keys()) if isinstance(invalidation, dict) else 'not_dict'
+            }}
+        )
+        
         invalidation_id = invalidation.get('Id')
         status = invalidation.get('Status')
         create_time = invalidation.get('CreateTime')
+        
+        # DEBUG: Log extracted values
+        logger.info(
+            f"Extracted invalidation values DEBUG",
+            extra={'extra_fields': {
+                'distributionId': distribution_id,
+                'invalidationId': invalidation_id,
+                'status': status,
+                'createTime': str(create_time) if create_time else None,
+                'invalidationIdType': type(invalidation_id).__name__,
+                'statusType': type(status).__name__
+            }}
+        )
         
         # Log success
         logger.info(

@@ -55,11 +55,44 @@ def check_active_window() -> Optional[Dict[str, Any]]:
     table = get_tracking_table()
     
     try:
+        # DEBUG: Log DynamoDB query request
+        logger.info(
+            "Checking active window in DynamoDB DEBUG",
+            extra={'extra_fields': {
+                'tableName': table.name,
+                'queryKey': {'windowId': WINDOW_ID_FIXED_VALUE},
+                'windowIdConstant': WINDOW_ID_FIXED_VALUE
+            }}
+        )
+        
         response = table.get_item(
             Key={'windowId': WINDOW_ID_FIXED_VALUE}
         )
         
+        # DEBUG: Log DynamoDB response
+        logger.info(
+            "DynamoDB get_item response DEBUG",
+            extra={'extra_fields': {
+                'fullResponse': response,
+                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+                'responseMetadata': response.get('ResponseMetadata', {}),
+                'itemExists': 'Item' in response
+            }}
+        )
+        
         item = response.get('Item')
+        
+        # DEBUG: Log item analysis
+        logger.info(
+            "DynamoDB item analysis DEBUG",
+            extra={'extra_fields': {
+                'item': item,
+                'itemType': type(item).__name__,
+                'itemKeys': list(item.keys()) if isinstance(item, dict) else 'not_dict',
+                'itemStatus': item.get('status') if isinstance(item, dict) else 'no_status',
+                'expectedActiveStatus': WINDOW_STATUS_ACTIVE
+            }}
+        )
         
         if item and item.get('status') == WINDOW_STATUS_ACTIVE:
             logger.info(
@@ -123,7 +156,22 @@ def create_window(schedule_arn: str) -> bool:
     }
     
     try:
-        table.put_item(
+        # DEBUG: Log DynamoDB put_item request
+        logger.info(
+            "Creating window in DynamoDB DEBUG",
+            extra={'extra_fields': {
+                'tableName': table.name,
+                'itemToCreate': item,
+                'conditionExpression': 'attribute_not_exists(windowId) OR #status = :closed',
+                'expressionAttributeNames': {'#status': 'status'},
+                'expressionAttributeValues': {':closed': WINDOW_STATUS_CLOSED},
+                'currentTimestamp': current_time,
+                'windowEndTimestamp': window_end_time,
+                'ttlTimestamp': ttl_time
+            }}
+        )
+        
+        response = table.put_item(
             Item=item,
             ConditionExpression='attribute_not_exists(windowId) OR #status = :closed',
             ExpressionAttributeNames={
@@ -132,6 +180,17 @@ def create_window(schedule_arn: str) -> bool:
             ExpressionAttributeValues={
                 ':closed': WINDOW_STATUS_CLOSED
             }
+        )
+        
+        # DEBUG: Log DynamoDB put_item response
+        logger.info(
+            "DynamoDB put_item response DEBUG",
+            extra={'extra_fields': {
+                'fullResponse': response,
+                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+                'responseMetadata': response.get('ResponseMetadata', {}),
+                'putItemSuccessful': True
+            }}
         )
         
         logger.info(

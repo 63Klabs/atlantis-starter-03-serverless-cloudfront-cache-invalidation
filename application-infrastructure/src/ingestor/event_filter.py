@@ -79,12 +79,77 @@ def should_process_event(stage_id: str, object_key: str) -> Tuple[bool, str]:
         - should_process: True if event passes all filters
         - reason: Explanation of the decision (for logging)
     """
+    # Import logger here to avoid circular imports
+    from common.logger import setup_logger
+    logger = setup_logger(__name__)
+    
+    # DEBUG: Log filtering inputs
+    logger.info(
+        "Event filtering analysis DEBUG",
+        extra={'extra_fields': {
+            'inputStageId': stage_id,
+            'inputObjectKey': object_key,
+            'stageIdType': type(stage_id).__name__,
+            'objectKeyType': type(object_key).__name__,
+            'productionPrefixes': PRODUCTION_STAGE_PREFIXES,
+            'publicPathSegment': PUBLIC_PATH_SEGMENT
+        }}
+    )
+    
     # Check production stage filter
-    if not is_production_stage(stage_id):
-        return False, f"StageId '{stage_id}' is not a production environment (must start with p, s, or b)"
+    is_prod = is_production_stage(stage_id)
+    logger.info(
+        "Production stage check DEBUG",
+        extra={'extra_fields': {
+            'stageId': stage_id,
+            'isProductionStage': is_prod,
+            'firstChar': stage_id[0].lower() if stage_id else None,
+            'matchesProductionPrefix': stage_id[0].lower() in PRODUCTION_STAGE_PREFIXES if stage_id else False
+        }}
+    )
+    
+    if not is_prod:
+        reason = f"StageId '{stage_id}' is not a production environment (must start with p, s, or b)"
+        logger.info(
+            "Event filtered: non-production stage DEBUG",
+            extra={'extra_fields': {
+                'filterReason': reason,
+                'stageId': stage_id
+            }}
+        )
+        return False, reason
     
     # Check public path pattern
-    if not matches_public_path_pattern(object_key):
-        return False, f"Object key '{object_key}' does not match public path pattern (/<StageId>/public/*)"
+    matches_public = matches_public_path_pattern(object_key)
+    logger.info(
+        "Public path pattern check DEBUG",
+        extra={'extra_fields': {
+            'objectKey': object_key,
+            'matchesPublicPattern': matches_public,
+            'pathParts': object_key.lstrip('/').split('/') if object_key else [],
+            'hasPublicSegment': 'public' in object_key.split('/') if object_key else False
+        }}
+    )
     
-    return True, "Event passes all filters"
+    if not matches_public:
+        reason = f"Object key '{object_key}' does not match public path pattern (/<StageId>/public/*)"
+        logger.info(
+            "Event filtered: non-public path DEBUG",
+            extra={'extra_fields': {
+                'filterReason': reason,
+                'objectKey': object_key
+            }}
+        )
+        return False, reason
+    
+    reason = "Event passes all filters"
+    logger.info(
+        "Event accepted: passes all filters DEBUG",
+        extra={'extra_fields': {
+            'stageId': stage_id,
+            'objectKey': object_key,
+            'filterResult': reason
+        }}
+    )
+    
+    return True, reason
