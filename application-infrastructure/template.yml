@@ -249,7 +249,7 @@ Conditions:
   IsNotDevelopment: !Not [!Equals [!Ref DeployEnvironment, "DEV"]]
   # IsTest: !Equals [!Ref DeployEnvironment, "TEST"]
   # IsDevelopment: !Equals [!Ref DeployEnvironment, "DEV"]
-  # CreateProdResources: !Equals [!Ref DeployEnvironment, "PROD"]
+  CreateProdResources: !Equals [!Ref DeployEnvironment, "PROD"]
   # CreateTestResources: !Equals [!Ref DeployEnvironment, "TEST"]
   # CreateDevResources: !Equals [!Ref DeployEnvironment, "DEV"]
   UseS3BucketNameOrgPrefix: !Not [!Equals [!Ref S3BucketNameOrgPrefix, ""]]
@@ -471,7 +471,7 @@ Resources:
       FunctionName: !Ref IngestorFunction  # References $LATEST by default
       Principal: s3.amazonaws.com
       SourceArn: !Sub 
-        - 'arn:aws:s3:::${OrgPrefix}${Prefix}-*'
+        - 'arn:aws:s3:::${OrgPrefix}${Prefix}*'
         - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
 
   # Permission to invoke the :live alias of the Ingestor Lambda function
@@ -486,7 +486,7 @@ Resources:
       FunctionName: !Sub "${IngestorFunction.Alias}"  # References the :live alias
       Principal: s3.amazonaws.com
       SourceArn: !Sub 
-        - 'arn:aws:s3:::${OrgPrefix}${Prefix}-*'
+        - 'arn:aws:s3:::${OrgPrefix}${Prefix}*'
         - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
 
   # -- Ingestor Lambda Log Group --
@@ -609,7 +609,7 @@ Resources:
                 Action:
                   - 's3:GetBucketTagging'
                 Resource: !Sub 
-                  - 'arn:aws:s3:::${OrgPrefix}${Prefix}-*'
+                  - 'arn:aws:s3:::${OrgPrefix}${Prefix}*'
                   - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
                 Condition:
                   StringEquals:
@@ -770,6 +770,15 @@ Resources:
           - Endpoint: !Ref AlarmNotificationEmail
             Protocol: 'email'
 
+  # ===========================================================================
+  # CLOUDWATCH DASHBOARD (For PROD)
+  # ===========================================================================
+
+  Fn::Transform:
+    Name: AWS::Include
+    Parameters:
+      Location: ./template-dashboard.yml
+
 # =============================================================================
 # OUTPUTS
 # -----------------------------------------------------------------------------
@@ -780,6 +789,12 @@ Resources:
 #
 
 Outputs:
+
+  # -- CloudWatch Dashboard (cf-lint will show error for value because Dashboard comes in through an include but it is okay)
+  CloudWatchDashboard:
+    Condition: CreateProdResources
+    Description: "Cloud Watch Dashboard (for production environments only)"
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${Dashboard}'
 
   # -- Ingestor Lambda ARN
   IngestorFunctionArn:
