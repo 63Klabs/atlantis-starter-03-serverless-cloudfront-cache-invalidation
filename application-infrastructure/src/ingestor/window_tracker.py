@@ -2,6 +2,7 @@
 
 import os
 import time
+from decimal import Decimal
 from typing import Optional, Dict, Any
 
 import boto3
@@ -22,6 +23,32 @@ logger = setup_logger(__name__)
 
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb')
+
+
+def _convert_decimals_for_logging(obj):
+    """Convert DynamoDB Decimal objects to regular numbers for JSON serialization.
+    
+    DynamoDB returns numeric values as Decimal objects which are not JSON serializable.
+    This function recursively converts Decimals to int or float for logging purposes.
+    
+    Args:
+        obj: Object that may contain Decimal values
+        
+    Returns:
+        Object with Decimals converted to regular numbers
+    """
+    if isinstance(obj, dict):
+        return {key: _convert_decimals_for_logging(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_decimals_for_logging(item) for item in obj]
+    elif isinstance(obj, Decimal):
+        # Convert Decimal to int if it's a whole number, otherwise float
+        if obj % 1 == 0:
+            return int(obj)
+        else:
+            return float(obj)
+    else:
+        return obj
 
 
 def get_tracking_table():
@@ -73,7 +100,7 @@ def check_active_window() -> Optional[Dict[str, Any]]:
         logger.info(
             "DynamoDB get_item response DEBUG",
             extra={'extra_fields': {
-                'fullResponse': response,
+                'fullResponse': _convert_decimals_for_logging(response),
                 'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
                 'responseMetadata': response.get('ResponseMetadata', {}),
                 'itemExists': 'Item' in response
@@ -86,7 +113,7 @@ def check_active_window() -> Optional[Dict[str, Any]]:
         logger.info(
             "DynamoDB item analysis DEBUG",
             extra={'extra_fields': {
-                'item': item,
+                'item': _convert_decimals_for_logging(item),
                 'itemType': type(item).__name__,
                 'itemKeys': list(item.keys()) if isinstance(item, dict) else 'not_dict',
                 'itemStatus': item.get('status') if isinstance(item, dict) else 'no_status',
@@ -161,7 +188,7 @@ def create_window(schedule_arn: str) -> bool:
             "Creating window in DynamoDB DEBUG",
             extra={'extra_fields': {
                 'tableName': table.name,
-                'itemToCreate': item,
+                'itemToCreate': _convert_decimals_for_logging(item),
                 'conditionExpression': 'attribute_not_exists(windowId) OR #status = :closed',
                 'expressionAttributeNames': {'#status': 'status'},
                 'expressionAttributeValues': {':closed': WINDOW_STATUS_CLOSED},
@@ -186,7 +213,7 @@ def create_window(schedule_arn: str) -> bool:
         logger.info(
             "DynamoDB put_item response DEBUG",
             extra={'extra_fields': {
-                'fullResponse': response,
+                'fullResponse': _convert_decimals_for_logging(response),
                 'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
                 'responseMetadata': response.get('ResponseMetadata', {}),
                 'putItemSuccessful': True
@@ -261,7 +288,7 @@ def close_window() -> bool:
             "Closed aggregation window",
             extra={'extra_fields': {
                 'windowId': WINDOW_ID_FIXED_VALUE,
-                'updatedAttributes': response.get('Attributes')
+                'updatedAttributes': _convert_decimals_for_logging(response.get('Attributes'))
             }}
         )
         return True
