@@ -71,16 +71,23 @@ def get_parent_directory(path: str) -> str:
     if not path or path == '/':
         return '/'
     
-    # Remove trailing slash
-    path = path.rstrip('/')
+    # Clean up the path first - remove double slashes and trailing slashes
+    # Replace multiple slashes with single slash
+    while '//' in path:
+        path = path.replace('//', '/')
+    
+    # Remove trailing slash (but keep root slash)
+    if len(path) > 1:
+        path = path.rstrip('/')
     
     # Split and get parent
     parts = path.split('/')
     if len(parts) <= 2:  # ['', 'something'] or less
         return '/'
     
-    # Return parent directory
-    return '/'.join(parts[:-1]) or '/'
+    # Return parent directory (ensure no trailing slash except for root)
+    parent = '/'.join(parts[:-1])
+    return parent if parent != '' else '/'
 
 
 def consolidate_index_and_default_files(paths: Set[str]) -> Set[str]:
@@ -265,11 +272,12 @@ def consolidate_paths(paths: List[str]) -> List[List[str]]:
     This is the main entry point for path consolidation. It applies all
     consolidation rules in sequence:
     
-    1. Consolidate index.* and default.* files to parent directories
-    2. Consolidate directories with more than 3 files
-    3. Consolidate sibling directories (more than 10)
-    4. Recursively consolidate up to root if needed
-    5. Split into multiple requests if exceeding 1000 paths
+    1. Filter and clean input paths
+    2. Consolidate index.* and default.* files to parent directories
+    3. Consolidate directories with more than 3 files
+    4. Consolidate sibling directories (more than 10)
+    5. Recursively consolidate up to root if needed
+    6. Split into multiple requests if exceeding 1000 paths
     
     Args:
         paths: List of object paths to invalidate (e.g., ['/prod/public/file.js'])
@@ -293,8 +301,41 @@ def consolidate_paths(paths: List[str]) -> List[List[str]]:
         }}
     )
     
+    # Step 0: Clean and filter input paths
+    cleaned_paths = []
+    for path in paths:
+        if not path or not isinstance(path, str):
+            logger.warning(
+                f"Skipping invalid path during consolidation: {repr(path)}",
+                extra={'extra_fields': {'invalid_path': repr(path)}}
+            )
+            continue
+        
+        # Clean up double slashes and ensure proper format
+        cleaned_path = path
+        while '//' in cleaned_path:
+            cleaned_path = cleaned_path.replace('//', '/')
+        
+        # Ensure path starts with /
+        if not cleaned_path.startswith('/'):
+            cleaned_path = '/' + cleaned_path
+        
+        cleaned_paths.append(cleaned_path)
+    
+    if not cleaned_paths:
+        logger.warning("No valid paths remaining after cleaning")
+        return [[]]
+    
+    logger.debug(
+        f"After path cleaning: {len(cleaned_paths)} valid paths",
+        extra={'extra_fields': {
+            'original_count': len(paths),
+            'cleaned_count': len(cleaned_paths)
+        }}
+    )
+    
     # Convert to set for efficient operations
-    path_set = set(paths)
+    path_set = set(cleaned_paths)
     
     # Step 1: Consolidate index and default files
     path_set = consolidate_index_and_default_files(path_set)

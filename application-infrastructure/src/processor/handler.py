@@ -659,10 +659,38 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         # Ensure path starts with /
                         if not relative_path.startswith('/'):
                             relative_path = '/' + relative_path
+                        
+                        # DEBUG: Log path construction
+                        logger.debug(
+                            f"Constructed invalidation path DEBUG",
+                            extra={'extra_fields': {
+                                'bucket_name': bucket_name,
+                                'object_key': object_key,
+                                'origin_path': origin_path,
+                                'relative_path': relative_path,
+                                'object_key_starts_with_origin': object_key.startswith(origin_path),
+                                'relative_path_starts_with_slash': relative_path.startswith('/')
+                            }}
+                        )
+                        
                         object_paths.append(relative_path)
                     else:
-                        # Fallback: use full object key
-                        object_paths.append(object_key)
+                        # Fallback: use full object key with leading slash
+                        fallback_path = object_key if object_key.startswith('/') else '/' + object_key
+                        
+                        # DEBUG: Log fallback path construction
+                        logger.debug(
+                            f"Using fallback path construction DEBUG",
+                            extra={'extra_fields': {
+                                'bucket_name': bucket_name,
+                                'object_key': object_key,
+                                'origin_path': origin_path,
+                                'fallback_path': fallback_path,
+                                'object_key_starts_with_origin': object_key.startswith(origin_path)
+                            }}
+                        )
+                        
+                        object_paths.append(fallback_path)
             
             if not object_paths:
                 logger.warning(
@@ -675,8 +703,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 messages_to_delete.extend(messages)
                 continue
             
+            # DEBUG: Log paths before consolidation
+            logger.info(
+                f"Paths before consolidation DEBUG",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'origin_path': origin_path,
+                    'path_count': len(object_paths),
+                    'paths': object_paths[:20] if len(object_paths) > 20 else object_paths  # Log first 20 paths
+                }}
+            )
+            
             # Consolidate paths
             consolidated_path_chunks = consolidate_paths(object_paths)
+            
+            # DEBUG: Log paths after consolidation
+            logger.info(
+                f"Paths after consolidation DEBUG",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'origin_path': origin_path,
+                    'chunk_count': len(consolidated_path_chunks),
+                    'consolidated_chunks': [chunk[:10] for chunk in consolidated_path_chunks]  # Log first 10 paths per chunk
+                }}
+            )
             
             # Step 7: Submit invalidations for each valid distribution
             for dist_id in valid_distributions:

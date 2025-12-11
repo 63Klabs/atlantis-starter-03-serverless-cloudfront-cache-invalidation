@@ -609,11 +609,8 @@ Resources:
                 Action:
                   - 's3:GetBucketTagging'
                 Resource: !Sub 
-                  - 'arn:aws:s3:::${OrgPrefix}${Prefix}*'
+                  - 'arn:aws:s3:::${OrgPrefix}${Prefix}-*'
                   - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
-                Condition:
-                  StringEquals:
-                    'aws:ResourceTag/AllowInvalidationEvents': 'true'
 
               - Sid: ProcessorCloudFrontListGet
                 Effect: Allow

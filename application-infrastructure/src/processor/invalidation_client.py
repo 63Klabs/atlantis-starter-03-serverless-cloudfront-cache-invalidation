@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from common.logger import setup_logger
 from common.retry import retry_with_backoff
 from common.constants import MAX_RETRY_ATTEMPTS_CLOUDFRONT_INVALIDATION
+from processor.path_validator import validate_and_sanitize_paths
 
 logger = setup_logger(__name__)
 
@@ -69,6 +70,34 @@ def create_invalidation(distribution_id: str, paths: List[str]) -> Optional[dict
             }}
         )
         return None
+    
+    # Validate and sanitize paths before sending to CloudFront
+    valid_paths, validation_errors = validate_and_sanitize_paths(paths)
+    
+    if validation_errors:
+        logger.warning(
+            f"Path validation issues found for distribution {distribution_id}",
+            extra={'extra_fields': {
+                'distribution_id': distribution_id,
+                'original_path_count': len(paths),
+                'valid_path_count': len(valid_paths),
+                'validation_errors': validation_errors[:10]  # Log first 10 errors
+            }}
+        )
+    
+    if not valid_paths:
+        logger.error(
+            f"No valid paths remaining after validation for distribution {distribution_id}",
+            extra={'extra_fields': {
+                'distribution_id': distribution_id,
+                'original_paths': paths[:10],  # Log first 10 original paths
+                'validation_errors': validation_errors[:10]
+            }}
+        )
+        return None
+    
+    # Use validated paths for invalidation
+    paths = valid_paths
     
     # Generate unique caller reference
     caller_reference = generate_caller_reference()
