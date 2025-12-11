@@ -255,9 +255,6 @@ Conditions:
   UseS3BucketNameOrgPrefix: !Not [!Equals [!Ref S3BucketNameOrgPrefix, ""]]
   HasPermissionsBoundaryArn: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   CreateAlarms: !Equals [!Ref DeployEnvironment, "PROD"]
-  IsProductionWithOrgPrefix: !And
-    - !Equals [!Ref DeployEnvironment, "PROD"]
-    - !Not [!Equals [!Ref S3BucketNameOrgPrefix, ""]]
   # IsArmArch: !Equals [!Ref FunctionArchitecture, "arm64"]
 
 # =============================================================================
@@ -466,29 +463,21 @@ Resources:
 
   # Permission to invoke the $LATEST version of the Ingestor Lambda function
   # This is used in all environments and during gradual deployments for new code
-  # SourceArn pattern matches both standard naming (Prefix-*) and optional S3BucketNameOrgPrefix
+  # SourceArn pattern handles both standard naming and optional S3BucketNameOrgPrefix
   IngestorLambdaPermission:
     Type: "AWS::Lambda::Permission"
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref IngestorFunction  # References $LATEST by default
       Principal: s3.amazonaws.com
-      SourceArn: !Sub "arn:aws:s3:::${Prefix}-*"
-
-  # Additional permission for buckets using S3BucketNameOrgPrefix naming convention
-  # Only created when S3BucketNameOrgPrefix is provided
-  IngestorLambdaPermissionWithOrgPrefix:
-    Type: "AWS::Lambda::Permission"
-    Condition: UseS3BucketNameOrgPrefix
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref IngestorFunction
-      Principal: s3.amazonaws.com
-      SourceArn: !Sub "arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*"
+      SourceArn: !Sub 
+        - 'arn:aws:s3:::${OrgPrefix}${Prefix}-*'
+        - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
 
   # Permission to invoke the :live alias of the Ingestor Lambda function
   # Only created in production where gradual deployments are enabled
   # During gradual deployment, traffic shifts from :live alias to $LATEST version
+  # SourceArn pattern handles both standard naming and optional S3BucketNameOrgPrefix
   IngestorLambdaPermissionLive:
     Type: "AWS::Lambda::Permission"
     Condition: IsProduction  # Only needed in production for gradual deployments
@@ -496,18 +485,9 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Sub "${IngestorFunction.Alias}"  # References the :live alias
       Principal: s3.amazonaws.com
-      SourceArn: !Sub "arn:aws:s3:::${Prefix}-*"
-
-  # Additional permission for :live alias with S3BucketNameOrgPrefix
-  # Only created in production when S3BucketNameOrgPrefix is provided
-  IngestorLambdaPermissionLiveWithOrgPrefix:
-    Type: "AWS::Lambda::Permission"
-    Condition: IsProductionWithOrgPrefix
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Sub "${IngestorFunction.Alias}"
-      Principal: s3.amazonaws.com
-      SourceArn: !Sub "arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*"
+      SourceArn: !Sub 
+        - 'arn:aws:s3:::${OrgPrefix}${Prefix}-*'
+        - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
 
   # -- Ingestor Lambda Log Group --
   IngestorLogGroup:
@@ -628,12 +608,9 @@ Resources:
                 Effect: Allow
                 Action:
                   - 's3:GetBucketTagging'
-                Resource: 
-                  - !Sub 'arn:aws:s3:::${Prefix}-*'
-                  - !If 
-                    - UseS3BucketNameOrgPrefix
-                    - !Sub 'arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*'
-                    - !Ref 'AWS::NoValue'
+                Resource: !Sub 
+                  - 'arn:aws:s3:::${OrgPrefix}${Prefix}-*'
+                  - OrgPrefix: !If [UseS3BucketNameOrgPrefix, !Sub "${S3BucketNameOrgPrefix}-", ""]
                 Condition:
                   StringEquals:
                     'aws:ResourceTag/AllowInvalidationEvents': 'true'
