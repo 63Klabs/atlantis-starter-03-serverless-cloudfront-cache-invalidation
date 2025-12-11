@@ -790,11 +790,11 @@ Resources:
 
 Outputs:
 
-  # -- CloudWatch Dashboard (cf-lint will show error for value because Dashboard comes in through an include but it is okay)
+  # -- CloudWatch Dashboard (cf-lint will show error if we reference Dashboard resource directly)
   CloudWatchDashboard:
     Condition: CreateProdResources
     Description: "Cloud Watch Dashboard (for production environments only)"
-    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${Dashboard}'
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${Prefix}-${ProjectId}-${StageId}-Dashboard'
 
   # -- Ingestor Lambda ARN
   IngestorFunctionArn:
