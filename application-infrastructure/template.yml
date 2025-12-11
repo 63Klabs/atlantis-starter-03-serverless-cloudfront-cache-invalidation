@@ -415,6 +415,7 @@ Resources:
               - Sid: IngestorDynamoDBWindowTracking
                 Effect: Allow
                 Action:
+                  - 'dynamodb:GetItem'
                   - 'dynamodb:PutItem'
                   - 'dynamodb:Query'
                   - 'dynamodb:UpdateItem'
