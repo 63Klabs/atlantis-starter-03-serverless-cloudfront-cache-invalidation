@@ -381,6 +381,7 @@ Resources:
           QUEUE_URL: !Ref EventQueue
           TRACKING_TABLE: !Ref WindowTrackingTable
           PROCESSOR_FUNCTION_ARN: !GetAtt ProcessorFunction.Arn
+          SCHEDULER_ROLE_ARN: !GetAtt SchedulerExecutionRole.Arn
           AGGREGATION_WINDOW_SECONDS: !Ref AggregationWindowSeconds
           
       Tags:
