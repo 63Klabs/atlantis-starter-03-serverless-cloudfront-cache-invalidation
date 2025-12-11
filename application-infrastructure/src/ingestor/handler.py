@@ -282,7 +282,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(
         "Ingestor Lambda invoked",
         extra={'extra_fields': {
-            'requestId': context.request_id if context else 'unknown',
+            'requestId': context.aws_request_id if context else 'unknown',
             'recordCount': len(event.get('Records', []))
         }}
     )
