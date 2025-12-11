@@ -628,7 +628,12 @@ Resources:
                 Effect: Allow
                 Action:
                   - 's3:GetBucketTagging'
-                Resource: !Sub 'arn:aws:s3:::${Prefix}-*'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${Prefix}-*'
+                  - !If 
+                    - UseS3BucketNameOrgPrefix
+                    - !Sub 'arn:aws:s3:::${S3BucketNameOrgPrefix}-${Prefix}-*'
+                    - !Ref 'AWS::NoValue'
                 Condition:
                   StringEquals:
                     'aws:ResourceTag/AllowInvalidationEvents': 'true'
