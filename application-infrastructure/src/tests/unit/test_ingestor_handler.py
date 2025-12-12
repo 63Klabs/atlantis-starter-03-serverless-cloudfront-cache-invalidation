@@ -261,7 +261,7 @@ class TestHandler:
             }]
         }
         context = Mock()
-        context.request_id = 'test-request-123'
+        context.aws_request_id = 'test-request-123'
         
         with patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}), \
              patch('ingestor.handler.send_event_to_queue') as mock_send, \
@@ -286,7 +286,7 @@ class TestHandler:
         # Arrange
         event = {'Records': []}
         context = Mock()
-        context.request_id = 'test-request-123'
+        context.aws_request_id = 'test-request-123'
         
         with patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}):
             # Act
@@ -320,7 +320,7 @@ class TestHandler:
             ]
         }
         context = Mock()
-        context.request_id = 'test-request-123'
+        context.aws_request_id = 'test-request-123'
         
         with patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}), \
              patch('ingestor.handler.send_event_to_queue') as mock_send, \
@@ -354,7 +354,7 @@ class TestHandler:
             }]
         }
         context = Mock()
-        context.request_id = 'test-request-123'
+        context.aws_request_id = 'test-request-123'
         
         with patch.dict(os.environ, {}, clear=True):
             # Act

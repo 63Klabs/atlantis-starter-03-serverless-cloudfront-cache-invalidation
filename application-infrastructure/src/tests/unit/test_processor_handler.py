@@ -108,7 +108,7 @@ class TestProcessorHandler:
         # Arrange
         mock_receive.return_value = []
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
@@ -158,7 +158,7 @@ class TestProcessorHandler:
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
@@ -206,7 +206,7 @@ class TestProcessorHandler:
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
@@ -251,7 +251,7 @@ class TestProcessorHandler:
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
@@ -298,7 +298,7 @@ class TestProcessorHandler:
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
@@ -358,7 +358,7 @@ class TestProcessorHandler:
         mock_delete.return_value = {'successful': ['handle1', 'handle2'], 'failed': []}
         
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
@@ -411,7 +411,7 @@ class TestProcessorHandler:
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
@@ -435,7 +435,7 @@ class TestProcessorHandler:
         """Test that handler fails gracefully when QUEUE_URL is not set."""
         # Arrange
         context = Mock()
-        context.request_id = 'test-request-id'
+        context.aws_request_id = 'test-request-id'
         
         # Act
         result = handler({}, context)
