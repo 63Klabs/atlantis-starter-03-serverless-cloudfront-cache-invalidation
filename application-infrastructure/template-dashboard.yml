@@ -15,7 +15,7 @@ Dashboard:
               "width": 24,
               "height": 2,
               "properties": {
-                "markdown": "# ${Prefix}-${ProjectId}-${StageId}-Dashboard"
+                "markdown": "# ${Prefix}-${ProjectId}-${StageId}-Dashboard\n\nEvent-driven cache invalidation for S3-backed CloudFront distributions."
               }
             },
             {
@@ -23,7 +23,7 @@ Dashboard:
               "x": 0,
               "y": 2,
               "width": 24,
-              "height": 4,
+              "height": 3,
               "properties": {
                 "title": "Alarms",
                 "alarms": [
@@ -37,7 +37,7 @@ Dashboard:
             {
               "type": "text",
               "x": 0,
-              "y": 6,
+              "y": 5,
               "width": 24,
               "height": 2,
               "properties": {
@@ -47,7 +47,7 @@ Dashboard:
             {
               "type": "metric",
               "x": 0,
-              "y": 8,
+              "y": 7,
               "width": 6,
               "height": 6,
               "properties": {
@@ -86,7 +86,7 @@ Dashboard:
             {
               "type": "metric",
               "x": 6,
-              "y": 8,
+              "y": 7,
               "width": 6,
               "height": 6,
               "properties": {
@@ -132,7 +132,7 @@ Dashboard:
             {
               "type": "metric",
               "x": 12,
-              "y": 8,
+              "y": 7,
               "width": 6,
               "height": 6,
               "properties": {
@@ -158,7 +158,7 @@ Dashboard:
             {
               "type": "metric",
               "x": 18,
-              "y": 8,
+              "y": 7,
               "width": 6,
               "height": 6,
               "properties": {
@@ -200,7 +200,7 @@ Dashboard:
             {
               "type": "log",
               "x": 0,
-              "y": 14,
+              "y": 13,
               "width": 24,
               "height": 3,
               "properties": {
@@ -213,7 +213,7 @@ Dashboard:
             {
               "type": "log",
               "x": 0,
-              "y": 17,
+              "y": 16,
               "width": 24,
               "height": 3,
               "properties": {
@@ -226,9 +226,9 @@ Dashboard:
             {
               "type": "log",
               "x": 0,
-              "y": 20,
+              "y": 19,
               "width": 24,
-              "height": 3,
+              "height": 4,
               "properties": {
                 "query": "SOURCE '/aws/lambda/${IngestorFunction}' | fields @timestamp as ts, @requestId, @message, @logStream as logStream\n| sort ts desc\n| limit 500\n| PARSE @message \"[*] *\" as loggingType, loggingMessage\n| FILTER (loggingType = \"ERROR\" or loggingType = \"WARN\" or @message like \"Task timed out\")\n| DISPLAY ts, logStream, loggingType, loggingMessage",
                 "region": "${AWS::Region}",
@@ -601,20 +601,6 @@ Dashboard:
               "x": 0,
               "y": 45,
               "width": 24,
-              "height": 3,
-              "properties": {
-                "query": "SOURCE '/aws/lambda/${ProcessorFunction}' | fields @timestamp as ts, @message\n| sort ts desc\n| limit 500\n| PARSE @message \"[*] * | * | * | * | * | * | * | * | * | * | * | * | *\" as loggingType, statusCode, bytes, contentType, execTime, clientIP, userAgent, origin, referrer, resource, queryKeys, pathLog, queryLog, key\n| FILTER loggingType = \"RESPONSE\"\n| DISPLAY ts, statusCode, bytes, execTime, clientIP, userAgent, origin, referrer, resource, queryKeys, pathLog, queryLog, key",
-                "region": "${AWS::Region}",
-                "stacked": false,
-                "view": "table",
-                "title": "Response Log"
-              }
-            },
-            {
-              "type": "log",
-              "x": 0,
-              "y": 48,
-              "width": 24,
               "height": 6,
               "properties": {
                 "query": "SOURCE '/aws/lambda/${ProcessorFunction}' | fields @timestamp as ts, @requestId, @message, @logStream as logStream\n| sort ts desc\n| limit 500\n| PARSE @message \"[*] *\" as loggingType, loggingMessage\n| FILTER (loggingType = \"ERROR\" or loggingType = \"WARN\" or @message like \"Task timed out\")\n| DISPLAY ts, logStream, loggingType, loggingMessage",
@@ -627,7 +613,7 @@ Dashboard:
             {
               "height": 2,
               "width": 24,
-              "y": 54,
+              "y": 51,
               "x": 0,
               "type": "text",
               "properties": {
@@ -637,7 +623,7 @@ Dashboard:
             {
               "height": 6,
               "width": 24,
-              "y": 56,
+              "y": 53,
               "x": 0,
               "type": "log",
               "properties": {
