@@ -41,7 +41,7 @@ class SQSMetricsManager:
                         "AWS/SQS",
                         "ApproximateNumberOfMessages",
                         "QueueName",
-                        "${EventQueue}",
+                        "${EventQueue.QueueName}",
                         {
                             "id": "m1",
                             "color": "#1f77b4",
@@ -52,7 +52,7 @@ class SQSMetricsManager:
                         "AWS/SQS",
                         "ApproximateNumberOfMessagesVisible",
                         "QueueName",
-                        "${EventQueue}",
+                        "${EventQueue.QueueName}",
                         {
                             "id": "m2",
                             "color": "#ff7f0e",
@@ -90,7 +90,7 @@ class SQSMetricsManager:
                         "AWS/SQS",
                         "ApproximateAgeOfOldestMessage",
                         "QueueName",
-                        "${EventQueue}",
+                        "${EventQueue.QueueName}",
                         {
                             "id": "m1",
                             "color": "#d62728",
@@ -133,7 +133,7 @@ class SQSMetricsManager:
                         "AWS/SQS",
                         "ApproximateNumberOfMessages",
                         "QueueName",
-                        "${EventQueueDLQ}",
+                        "${EventQueueDLQ.QueueName}",
                         {
                             "id": "m1",
                             "color": "#d62728",
@@ -144,7 +144,7 @@ class SQSMetricsManager:
                         "AWS/SQS",
                         "ApproximateNumberOfMessagesVisible",
                         "QueueName",
-                        "${EventQueueDLQ}",
+                        "${EventQueueDLQ.QueueName}",
                         {
                             "id": "m2",
                             "color": "#ff7f0e",
@@ -191,7 +191,7 @@ class SQSMetricsManager:
                         "AWS/SQS",
                         "NumberOfMessagesSent",
                         "QueueName",
-                        "${EventQueue}",
+                        "${EventQueue.QueueName}",
                         {
                             "id": "m1",
                             "color": "#2ca02c",
@@ -202,7 +202,7 @@ class SQSMetricsManager:
                         "AWS/SQS",
                         "NumberOfMessagesReceived",
                         "QueueName",
-                        "${EventQueue}",
+                        "${EventQueue.QueueName}",
                         {
                             "id": "m2",
                             "color": "#1f77b4",

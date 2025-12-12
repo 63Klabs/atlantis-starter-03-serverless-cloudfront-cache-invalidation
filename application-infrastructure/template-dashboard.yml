@@ -259,7 +259,7 @@ Dashboard:
                     "AWS/SQS",
                     "ApproximateNumberOfMessages",
                     "QueueName",
-                    "${EventQueue}",
+                    "${EventQueue.QueueName}",
                     {
                       "id": "m1",
                       "color": "#1f77b4",
@@ -270,7 +270,7 @@ Dashboard:
                     "AWS/SQS",
                     "ApproximateNumberOfMessagesVisible",
                     "QueueName",
-                    "${EventQueue}",
+                    "${EventQueue.QueueName}",
                     {
                       "id": "m2",
                       "color": "#ff7f0e",
@@ -298,7 +298,7 @@ Dashboard:
                     "AWS/SQS",
                     "ApproximateAgeOfOldestMessage",
                     "QueueName",
-                    "${EventQueue}",
+                    "${EventQueue.QueueName}",
                     {
                       "id": "m1",
                       "color": "#d62728",
@@ -331,7 +331,7 @@ Dashboard:
                     "AWS/SQS",
                     "ApproximateNumberOfMessages",
                     "QueueName",
-                    "${EventQueueDLQ}",
+                    "${EventQueueDLQ.QueueName}",
                     {
                       "id": "m1",
                       "color": "#d62728",
@@ -342,7 +342,7 @@ Dashboard:
                     "AWS/SQS",
                     "ApproximateNumberOfMessagesVisible",
                     "QueueName",
-                    "${EventQueueDLQ}",
+                    "${EventQueueDLQ.QueueName}",
                     {
                       "id": "m2",
                       "color": "#ff7f0e",
@@ -378,7 +378,7 @@ Dashboard:
                     "AWS/SQS",
                     "NumberOfMessagesSent",
                     "QueueName",
-                    "${EventQueue}",
+                    "${EventQueue.QueueName}",
                     {
                       "id": "m1",
                       "color": "#2ca02c",
@@ -389,7 +389,7 @@ Dashboard:
                     "AWS/SQS",
                     "NumberOfMessagesReceived",
                     "QueueName",
-                    "${EventQueue}",
+                    "${EventQueue.QueueName}",
                     {
                       "id": "m2",
                       "color": "#1f77b4",

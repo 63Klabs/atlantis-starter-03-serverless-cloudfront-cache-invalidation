@@ -299,9 +299,9 @@ class DashboardStructureAnalyzer:
                         metric_name = metric[1]
                         queue_ref = metric[3]
                         
-                        if '${EventQueue}' in queue_ref and '${EventQueueDLQ}' not in queue_ref:
+                        if '${EventQueue' in queue_ref and '${EventQueueDLQ' not in queue_ref:
                             sqs_metrics['EventQueue'].add(metric_name)
-                        elif '${EventQueueDLQ}' in queue_ref:
+                        elif '${EventQueueDLQ' in queue_ref:
                             sqs_metrics['EventQueueDLQ'].add(metric_name)
         
         return sqs_metrics
@@ -339,7 +339,7 @@ class DashboardStructureAnalyzer:
                 'metrics': self._extract_sqs_metrics(),
                 'widget_count': len([w for w in self.widgets 
                                    if w.type == 'metric' and 
-                                   any('${EventQueue}' in str(m) 
+                                   any('${EventQueue' in str(m) 
                                        for m in w.properties.get('metrics', []))])
             },
             'processor_section': {
