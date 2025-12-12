@@ -29,7 +29,7 @@ class IngestorMetricsManager:
         Returns:
             Dict containing the widget configuration for invocations and errors
         """
-        position = self.coordinate_mapping["new_widgets"]["ingestor_invocations"]["position"]
+        position = self.coordinate_mapping["new_widgets"]["ingestor_invocations"]
         
         widget = {
             "type": "metric",
@@ -80,7 +80,7 @@ class IngestorMetricsManager:
         Returns:
             Dict containing the widget configuration for duration metrics
         """
-        position = self.coordinate_mapping["new_widgets"]["ingestor_duration"]["position"]
+        position = self.coordinate_mapping["new_widgets"]["ingestor_duration"]
         
         widget = {
             "type": "metric",
@@ -138,7 +138,7 @@ class IngestorMetricsManager:
         Returns:
             Dict containing the widget configuration for concurrent executions
         """
-        position = self.coordinate_mapping["new_widgets"]["ingestor_concurrent"]["position"]
+        position = self.coordinate_mapping["new_widgets"]["ingestor_concurrent"]
         
         widget = {
             "type": "metric",
@@ -176,7 +176,7 @@ class IngestorMetricsManager:
         Returns:
             Dict containing the widget configuration for invocation summary
         """
-        position = self.coordinate_mapping["new_widgets"]["ingestor_summary"]["position"]
+        position = self.coordinate_mapping["new_widgets"]["ingestor_summary"]
         
         widget = {
             "type": "metric",
@@ -230,7 +230,7 @@ class IngestorMetricsManager:
         Returns:
             Dict containing the widget configuration for errors
         """
-        position = self.coordinate_mapping["new_widgets"]["ingestor_errors"]["position"]
+        position = self.coordinate_mapping["new_widgets"]["ingestor_errors"]
         
         widget = {
             "type": "metric",
