@@ -3,14 +3,16 @@
 # and limitations under the License.
 #
 # Atlantis for AWS SAM Deployments
-# Starter 01 - Basic API Gateway and Lambda using Python
+# Starter 03 - CloudFront Cache Invalidator
 # Author: Chad Kluck - 63klabs.net
-# Version: v2.0.3/2025-11-25
+# Version: v0.0.1/2025-12-13
 
 # Documentation, Issues/Feature Requests, Latest Updates, and Security Reports on GitHub:
-# https://github.com/63Klabs/atlantis-starter-00-basic-apigw-lambda-nodejs
+# https://github.com/63Klabs/atlantis-starter-03-serverless-cloudfront-cache-invalidation
 
-# Creates a basic web service using API Gateway and Lambda using Python
+# Creates a serverless invalidation service using Lambda (Python), SQS, DynamoDB, and 
+# Event Scheduler to process incoming S3 events from multiple buckets serving as a static
+# host and route invalidations to the appropriate CloudFront distribution.
 
 # USE WITH:
 # - atlantis/v2/pipeline/template.yml
@@ -794,11 +796,11 @@ Outputs:
     Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${Prefix}-${ProjectId}-${StageId}-Dashboard'
 
   # -- Ingestor Lambda ARN
-  IngestorFunctionArn:
-    Description: "Ingestor Lambda ARN - Use this ARN for S3 bucket event notifications"
+  CloudFrontCacheInvalidatorArn: # We give it a generic name in case the architecture ever changes
+    Description: "CloudFront Cache Invalidator ARN - Use this ARN for S3 bucket event notifications"
     Value: !GetAtt IngestorFunction.Arn
     Export:
-      Name: !Sub '${AWS::StackName}-IngestorFunctionArn'
+      Name: !Sub '${AWS::StackName}-CloudFrontCacheInvalidatorArn'
 
   # -- Processor Lambda ARN
   ProcessorFunctionArn:
