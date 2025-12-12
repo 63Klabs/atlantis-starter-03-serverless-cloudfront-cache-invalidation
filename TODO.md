@@ -4,3 +4,4 @@
 - [ ] Ensure schedule clean up
 - [ ] Empty queue items processed only after success
 - [ ] Clean up debug output
+- [ ] Separate out Lambdas
