@@ -107,8 +107,7 @@ cd ../YOUR_DEVOPS_SAM_CONFIG_REPO
 ./cli/config.py storage PREFIX MY_STATIC_ASSETS
 # > CHOOSE TEMPLATE: template-storage-s3-oac-for-cloudfront.yml
 # > SET PARAMETER: CloudFrontCacheInvalidatorArn
-# > ADD NEW TAG: AllowInvalidationEvents=true
-# > Copy from OUTPUTS
+# > Copy the following from OUTPUTS
 # - BucketName
 # - OriginBucketDomainForCloudFront
 
@@ -187,11 +186,11 @@ flowchart TD
     I --> CP[CloudFront C.prod]
 ```
 
-The above commands only deployed a TEST instance of the invalidator. When ready to use it in production you should deploy a production instance. You should then reconfigure your S3 buckets to use the invalidator's production ARN. 
+The above commands using the Atlantis CLI scripts only deployed a TEST instance of the invalidator. When ready to use it in production you should deploy a production instance and reconfigure your S3 buckets to use the invalidator's production ARN. 
 
-> If you used the TEST ARN for testing, go back and reconfigure each storage stack to use the production ARN.
+It is useful to keep a test instance of the invalidator for testing any custom changes. To have the S3 bucket submit events to a different invalidator instance just re-run the `config.py` script for that storage stack and set the `CloudFrontCacheInvalidatorArn` parameter to point to the alternate instance.
 
-If you make any changes to how the invalidator works, you can set up a temporary bucket that uses the test instance of the invalidator. If you will be making frequent changes you may want both a test and beta instance along with some buckets for testing.
+To remove invalidation from your storage stack just re-run the `config.py` script fo that storage stack and leave the `CloudFrontCacheInvalidatorArn` blank by entering a dash `-` (otherwise it will remain the set value).
 
 ## Tutorials
 
