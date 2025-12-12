@@ -5,3 +5,4 @@
 - [ ] Empty queue items processed only after success
 - [ ] Clean up debug output
 - [ ] Separate out Lambdas
+- [ ] Test clean up, and separate out into simple and comprehensive
