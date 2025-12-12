@@ -94,10 +94,11 @@ cd ../YOUR_DEVOPS_SAM_CONFIG_REPO
 # Don't forget to deploy if you skipped deployment during config
 ./cli/deploy.py pipeline PREFIX cdn-invalidator test
 
-# After deploying, the CloudFrontCacheInvalidatorArn will be listed in Outputs
+# After the pipleline stack has deployed, it will deploy the Application stack
+# Once the Invalidator Application stack has deployed, 
+# Go to the Invalidator Application stack Output section in the web console
 # > Copy CloudFrontCacheInvalidatorArn
 # You will need this for your S3 bucket configuration
-# It may be obtained in the future from the invalidator stack output in CloudFormation
 
 ## -------------------------
 ## CREATE THE S3 BUCKET THAT WILL SERVE AS THE STATIC WEB HOST
