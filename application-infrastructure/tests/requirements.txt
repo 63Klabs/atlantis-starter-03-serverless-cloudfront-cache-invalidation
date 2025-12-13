@@ -1,6 +1,11 @@
-pytest>=8.3.3
-pytest-mock>=3.14.0
-hypothesis>=6.112.1
-moto[all]>=5.0.18
-boto3>=1.35.36
-botocore>=1.35.36
+# AWS SDK - already available in Lambda runtime, but included for local testing
+boto3==1.35.36
+botocore==1.35.36
+
+# Testing frameworks
+pytest==8.3.3
+pytest-mock==3.14.0
+hypothesis==6.112.1
+
+# AWS service mocking for local testing (optional)
+moto[all]==5.0.18
