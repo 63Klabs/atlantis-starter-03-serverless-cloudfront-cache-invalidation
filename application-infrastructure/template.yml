@@ -335,6 +335,22 @@ Resources:
           Value: "true"
 
   # ===========================================================================
+  # LAMBDA LAYER RESOURCES
+  # ===========================================================================
+
+  # -- Common Lambda Layer --
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${Prefix}-${ProjectId}-${StageId}-CommonLayer'
+      Description: "Common utilities and constants for Lambda functions"
+      ContentUri: layers/common/
+      CompatibleRuntimes:
+        - python3.14
+      CompatibleArchitectures:
+        - !Ref FunctionArchitecture
+
+  # ===========================================================================
   # LAMBDA FUNCTION RESOURCES - INGESTOR
   # ===========================================================================
 
@@ -360,8 +376,10 @@ Resources:
             - - !Ref IngestorFunctionErrorsAlarm
             - - !Ref 'AWS::NoValue'
 
-      CodeUri: src/
-      Handler: ingestor.handler.handler
+      CodeUri: functions/ingestor/
+      Handler: handler.handler
+      Layers:
+        - !Ref CommonLayer
       Runtime: python3.14 # https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
       Architectures:
         - !Ref FunctionArchitecture # arm64 has better processing than default x86_64 - but layers and binaries must support
@@ -547,8 +565,10 @@ Resources:
               - !Ref ProcessorFunctionDurationAlarm
             - - !Ref 'AWS::NoValue'
 
-      CodeUri: src/
-      Handler: processor.handler.handler
+      CodeUri: functions/processor/
+      Handler: handler.handler
+      Layers:
+        - !Ref CommonLayer
       Runtime: python3.14
       Architectures:
         - !Ref FunctionArchitecture

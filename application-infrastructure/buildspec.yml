@@ -34,13 +34,31 @@ phases:
   pre_build:
     commands:
       
-      # Application Environment: Install Python dependencies needed for application environment if requirements.txt exists
+      # Layer Dependencies: Install dependencies for Lambda layer
       - |
-        if [ -f "application-infrastructure/requirements.txt" ]; then
-          echo "Installing Python dependencies for application"
-          pip install -r application-infrastructure/requirements.txt
+        if [ -f "application-infrastructure/layers/common/requirements.txt" ]; then
+          echo "Installing Python dependencies for common layer"
+          pip install -r application-infrastructure/layers/common/requirements.txt -t application-infrastructure/layers/common/python/
         else
-          echo "No application-infrastructure/requirements.txt found, skipping pip install"
+          echo "No layers/common/requirements.txt found, skipping layer dependencies"
+        fi
+      
+      # Function Dependencies: Install dependencies for ingestor function
+      - |
+        if [ -f "application-infrastructure/functions/ingestor/requirements.txt" ]; then
+          echo "Installing Python dependencies for ingestor function"
+          pip install -r application-infrastructure/functions/ingestor/requirements.txt -t application-infrastructure/functions/ingestor/
+        else
+          echo "No functions/ingestor/requirements.txt found, skipping ingestor dependencies"
+        fi
+      
+      # Function Dependencies: Install dependencies for processor function
+      - |
+        if [ -f "application-infrastructure/functions/processor/requirements.txt" ]; then
+          echo "Installing Python dependencies for processor function"
+          pip install -r application-infrastructure/functions/processor/requirements.txt -t application-infrastructure/functions/processor/
+        else
+          echo "No functions/processor/requirements.txt found, skipping processor dependencies"
         fi
       
       # Test Environment: Install test dependencies if tests/requirements.txt exists
@@ -57,15 +75,29 @@ phases:
 
       - cd application-infrastructure
 
-      # Run tests before building
+      # Run tests before building with updated paths
       - |
         if [ -d "tests" ]; then
           echo "Running unit tests"
           python3 -m pytest tests/unit/ -v --tb=short || echo "Unit tests failed but continuing build"
           echo "Running property-based tests"
           python3 -m pytest tests/property/ -v --tb=short || echo "Property tests failed but continuing build"
+          echo "Running integration tests"
+          python3 -m pytest tests/integration/ -v --tb=short || echo "Integration tests failed but continuing build"
         else
           echo "No tests directory found, skipping tests"
+        fi
+
+      # Package Lambda layer
+      - |
+        echo "Creating Lambda layer package"
+        if [ -d "layers/common" ]; then
+          cd layers/common
+          zip -r ../../common-layer.zip python/
+          cd ../..
+          echo "Layer package created: common-layer.zip"
+        else
+          echo "No layers/common directory found, skipping layer packaging"
         fi
 
       # There is sometimes a bug that causes the alias to not be updated correctly (see comment in template.yml for AppFunction.Properties.AutoPublishCodeSha256)

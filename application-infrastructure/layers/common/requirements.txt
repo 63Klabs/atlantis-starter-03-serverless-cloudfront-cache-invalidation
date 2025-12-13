@@ -1,0 +1,3 @@
+# Layer dependencies for common utilities
+# All dependencies are from Python standard library
+# No external packages required for common layer
