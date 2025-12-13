@@ -36,17 +36,37 @@ phases:
       
       # Application Environment: Install Python dependencies needed for application environment if requirements.txt exists
       - |
-        if [ -f "application-infrastructure/src/requirements.txt" ]; then
-          echo "Installing Python dependencies for build scripts"
-          pip install -r application-infrastructure/src/requirements.txt
+        if [ -f "application-infrastructure/requirements.txt" ]; then
+          echo "Installing Python dependencies for application"
+          pip install -r application-infrastructure/requirements.txt
         else
-          echo "No application-infrastructure/src/requirements.txt found, skipping pip install"
+          echo "No application-infrastructure/requirements.txt found, skipping pip install"
+        fi
+      
+      # Test Environment: Install test dependencies if tests/requirements.txt exists
+      - |
+        if [ -f "application-infrastructure/tests/requirements.txt" ]; then
+          echo "Installing Python test dependencies"
+          pip install -r application-infrastructure/tests/requirements.txt
+        else
+          echo "No application-infrastructure/tests/requirements.txt found, skipping test dependencies"
         fi
             
   build:
     commands:
 
       - cd application-infrastructure
+
+      # Run tests before building
+      - |
+        if [ -d "tests" ]; then
+          echo "Running unit tests"
+          python3 -m pytest tests/unit/ -v --tb=short || echo "Unit tests failed but continuing build"
+          echo "Running property-based tests"
+          python3 -m pytest tests/property/ -v --tb=short || echo "Property tests failed but continuing build"
+        else
+          echo "No tests directory found, skipping tests"
+        fi
 
       # There is sometimes a bug that causes the alias to not be updated correctly (see comment in template.yml for AppFunction.Properties.AutoPublishCodeSha256)
       - python3 ./build-scripts/update_template_timestamp.py template.yml

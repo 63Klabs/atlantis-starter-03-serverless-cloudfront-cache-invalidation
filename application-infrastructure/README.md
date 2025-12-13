@@ -572,7 +572,7 @@ Run unit tests for individual components:
 
 ```bash
 cd application-infrastructure
-pytest src/tests/unit/ -v
+pytest tests/unit/ -v
 ```
 
 ### Property-Based Tests
@@ -580,7 +580,7 @@ pytest src/tests/unit/ -v
 Run property-based tests using Hypothesis:
 
 ```bash
-pytest src/tests/property/ -v
+pytest tests/property/ -v
 ```
 
 ### Integration Tests
@@ -592,7 +592,7 @@ Run integration tests against real AWS services:
 export AWS_PROFILE=test
 
 # Run integration tests
-pytest src/tests/integration/ -v
+pytest tests/integration/ -v
 ```
 
 ### Manual Testing

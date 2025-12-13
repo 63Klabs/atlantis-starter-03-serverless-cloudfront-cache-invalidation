@@ -1,8 +1,4 @@
-- [ ] Fix S3 access issue
-- [ ] Verify dist invalidation
-- [ ] Dashboard update
 - [ ] Ensure schedule clean up
 - [ ] Empty queue items processed only after success
-- [ ] Clean up debug output
 - [ ] Separate out Lambdas
-- [ ] Test clean up, and separate out into simple and comprehensive
+- [ ] Clean up debug output
