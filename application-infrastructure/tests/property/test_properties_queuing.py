@@ -3,11 +3,8 @@
 import sys
 import os
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
-from ingestor.queue_client import format_sqs_message
+from functions.ingestor.queue_client import format_sqs_message
 
 
 # Custom strategies for generating test data

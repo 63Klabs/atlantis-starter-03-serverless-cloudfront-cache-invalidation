@@ -1,13 +1,7 @@
 """Unit tests for path consolidation algorithm edge cases."""
 
-import sys
-import os
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 import pytest
-from processor.path_consolidator import (
+from functions.processor.path_consolidator import (
     consolidate_paths,
     is_index_or_default_file,
     get_parent_directory,

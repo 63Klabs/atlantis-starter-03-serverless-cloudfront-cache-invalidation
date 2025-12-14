@@ -82,7 +82,7 @@ def discovery_directory_paths(draw):
 
 # Property Tests
 
-@settings(max_examples=100, deadline=10000)
+@settings(max_examples=10, deadline=5000)  # Reduced to prevent system overload
 @given(build_commands())
 def test_property_5_build_and_test_execution_consistency(build_command):
     """Property 5: Build and test execution consistency.

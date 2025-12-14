@@ -14,16 +14,16 @@ import sys
 from typing import Dict, Any, List
 
 from common.logger import setup_logger
-from ingestor.event_parser import (
+from .event_parser import (
     extract_event_metadata,
     extract_stage_id,
     extract_origin_path,
     S3EventParseError
 )
-from ingestor.event_filter import should_process_event
-from ingestor.queue_client import send_event_to_queue, SQSClientError
-from ingestor.window_tracker import check_active_window, create_window
-from ingestor.scheduler_client import create_one_time_schedule
+from .event_filter import should_process_event
+from .queue_client import send_event_to_queue, SQSClientError
+from .window_tracker import check_active_window, create_window
+from .scheduler_client import create_one_time_schedule
 
 logger = setup_logger(__name__)
 

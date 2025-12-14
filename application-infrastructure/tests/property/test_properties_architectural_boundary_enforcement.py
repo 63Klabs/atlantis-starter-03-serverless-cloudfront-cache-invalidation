@@ -82,7 +82,9 @@ def extract_imports_from_file(file_path: Path) -> Set[str]:
                 for alias in node.names:
                     imports.add(alias.name)
             elif isinstance(node, ast.ImportFrom):
-                if node.module:
+                # Skip relative imports (node.level > 0) as they are intra-function imports
+                # and are allowed by design
+                if node.module and node.level == 0:
                     imports.add(node.module)
         
         return imports

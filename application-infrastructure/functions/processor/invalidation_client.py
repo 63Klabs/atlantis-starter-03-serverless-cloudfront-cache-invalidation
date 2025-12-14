@@ -13,7 +13,7 @@ from botocore.exceptions import ClientError
 from common.logger import setup_logger
 from common.retry import retry_with_backoff
 from common.constants import MAX_RETRY_ATTEMPTS_CLOUDFRONT_INVALIDATION
-from processor.path_validator import validate_and_sanitize_paths
+from .path_validator import validate_and_sanitize_paths
 
 logger = setup_logger(__name__)
 

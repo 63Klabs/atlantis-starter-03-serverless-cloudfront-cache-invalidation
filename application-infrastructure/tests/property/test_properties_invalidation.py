@@ -5,12 +5,9 @@ import os
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
 from botocore.exceptions import ClientError
-from processor.invalidation_client import create_invalidation, generate_caller_reference
+from functions.processor.invalidation_client import create_invalidation, generate_caller_reference
 
 
 # Custom strategies for generating test data

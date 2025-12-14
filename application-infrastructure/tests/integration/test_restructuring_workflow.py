@@ -17,8 +17,7 @@ import shutil
 import pytest
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
+# No need to add src to path - using new function structure
 
 class TestRestructuringWorkflow:
     """Integration tests for the complete restructuring workflow."""
@@ -77,12 +76,12 @@ class TestRestructuringWorkflow:
         
         **Validates: Requirements 2.1, 2.2, 2.4**
         """
-        # Test that we can import from src directory
+        # Test that we can import from new function structure
         try:
             from common.logger import setup_logger
             from common.constants import SQS_VISIBILITY_TIMEOUT_SECONDS
-            from ingestor.handler import handler as ingestor_handler
-            from processor.handler import handler as processor_handler
+            from functions.ingestor.handler import handler as ingestor_handler
+            from functions.processor.handler import handler as processor_handler
         except ImportError as e:
             pytest.fail(f"Import failed: {e}")
         

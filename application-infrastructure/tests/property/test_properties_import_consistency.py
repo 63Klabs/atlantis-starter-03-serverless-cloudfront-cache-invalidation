@@ -6,9 +6,6 @@ import ast
 import importlib.util
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
 
 
@@ -41,13 +38,13 @@ def import_statements(draw):
     """Generate various import statement patterns that should work."""
     # Common import patterns used in the test files
     patterns = [
-        "from ingestor.handler import process_s3_record",
-        "from processor.path_validator import validate_path",
+        "from functions.ingestor.handler import process_s3_record",
+        "from functions.processor.path_validator import validate_path",
         "from common.logger import get_logger",
-        "from processor.handler import handler",
-        "from ingestor.window_tracker import track_window",
-        "import ingestor.event_parser",
-        "import processor.distribution_finder",
+        "from functions.processor.handler import handler",
+        "from functions.ingestor.window_tracker import track_window",
+        "import functions.ingestor.event_parser",
+        "import functions.processor.distribution_finder",
         "import common.constants"
     ]
     

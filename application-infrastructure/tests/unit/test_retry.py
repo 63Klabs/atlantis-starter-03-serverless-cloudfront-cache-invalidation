@@ -1,14 +1,9 @@
 """Unit tests for retry decorator."""
 
-import sys
-import os
 import time
 from unittest.mock import Mock, patch
 
 import pytest
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 from common.retry import (
     calculate_delay_with_jitter,

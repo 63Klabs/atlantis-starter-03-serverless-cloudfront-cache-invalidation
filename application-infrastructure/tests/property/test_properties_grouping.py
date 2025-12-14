@@ -3,11 +3,8 @@
 import sys
 import os
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
-from processor.handler import group_messages_by_bucket_and_origin
+from functions.processor.handler import group_messages_by_bucket_and_origin
 
 
 # Custom strategies for generating test data

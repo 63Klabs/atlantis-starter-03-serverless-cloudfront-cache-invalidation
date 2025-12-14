@@ -1,14 +1,8 @@
 """Property-based tests for S3 event parsing and filtering."""
 
-import sys
-import os
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
-from ingestor.event_parser import extract_event_metadata, extract_stage_id, S3EventParseError
-from ingestor.event_filter import is_production_stage, matches_public_path_pattern
+from functions.ingestor.event_parser import extract_event_metadata, extract_stage_id, S3EventParseError
+from functions.ingestor.event_filter import is_production_stage, matches_public_path_pattern
 
 
 # Custom strategies for generating test data

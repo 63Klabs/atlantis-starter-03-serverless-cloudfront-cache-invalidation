@@ -1,18 +1,14 @@
 """Property-based tests for DynamoDB window tracking."""
 
-import sys
 import os
 import time
 from unittest.mock import Mock, patch, MagicMock
 from decimal import Decimal
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
 from botocore.exceptions import ClientError
 
-from ingestor.window_tracker import check_active_window, create_window, close_window
+from functions.ingestor.window_tracker import check_active_window, create_window, close_window
 from common.constants import (
     WINDOW_ID_FIXED_VALUE,
     WINDOW_STATUS_ACTIVE,

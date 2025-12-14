@@ -4,12 +4,9 @@ import sys
 import os
 from unittest.mock import patch, MagicMock
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
 from botocore.exceptions import ClientError
-from processor.distribution_finder import (
+from functions.processor.distribution_finder import (
     find_matching_distributions,
     list_distributions,
     _matches_bucket_origin

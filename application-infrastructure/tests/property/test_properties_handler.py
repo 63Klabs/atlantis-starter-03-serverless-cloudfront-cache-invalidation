@@ -1,16 +1,11 @@
 """Property-based tests for Ingestor Lambda handler."""
 
-import sys
-import os
 import json
 import io
 from unittest.mock import Mock, patch, MagicMock
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
-from ingestor.handler import process_s3_record
+from functions.ingestor.handler import process_s3_record
 
 
 # Custom strategies for generating test data
@@ -74,11 +69,11 @@ def test_property_3_event_logging_contains_required_fields(record):
     queue_url = "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue"
     
     # Mock all external dependencies
-    with patch('ingestor.handler.send_event_to_queue') as mock_send, \
-         patch('ingestor.handler.check_active_window') as mock_check_window, \
-         patch('ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
-         patch('ingestor.handler.create_window') as mock_create_window, \
-         patch('ingestor.handler.logger') as mock_logger:
+    with patch('functions.ingestor.handler.send_event_to_queue') as mock_send, \
+         patch('functions.ingestor.handler.check_active_window') as mock_check_window, \
+         patch('functions.ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
+         patch('functions.ingestor.handler.create_window') as mock_create_window, \
+         patch('functions.ingestor.handler.logger') as mock_logger:
         
         # Configure mocks
         mock_send.return_value = 'mock-message-id-123'

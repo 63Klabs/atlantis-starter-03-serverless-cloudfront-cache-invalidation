@@ -18,11 +18,11 @@ from typing import Dict, Any, List, Tuple
 
 # Import from Lambda layer
 from common.logger import setup_logger
-from processor.queue_client import receive_messages_batch, delete_messages_batch
-from processor.tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
-from processor.distribution_finder import find_matching_distributions
-from processor.path_consolidator import consolidate_paths
-from processor.invalidation_client import create_invalidation
+from .queue_client import receive_messages_batch, delete_messages_batch
+from .tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
+from .distribution_finder import find_matching_distributions
+from .path_consolidator import consolidate_paths
+from .invalidation_client import create_invalidation
 from common.window_tracker import close_window
 
 logger = setup_logger(__name__)

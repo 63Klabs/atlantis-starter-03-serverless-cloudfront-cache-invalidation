@@ -1,15 +1,11 @@
 """Unit tests for Processor Lambda handler."""
 
-import sys
 import os
 from unittest.mock import Mock, patch, MagicMock, call
 
 import pytest
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
-from processor.handler import handler, group_messages_by_bucket_and_origin
+from functions.processor.handler import handler, group_messages_by_bucket_and_origin
 
 
 class TestGroupMessagesByBucketAndOrigin:
@@ -101,8 +97,8 @@ class TestProcessorHandler:
     """Tests for the main handler function."""
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
-    @patch('processor.handler.receive_messages_batch')
-    @patch('processor.handler.close_window')
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.close_window')
     def test_no_messages_to_process(self, mock_close_window, mock_receive):
         """Test handler behavior when queue is empty."""
         # Arrange
@@ -119,15 +115,15 @@ class TestProcessorHandler:
         mock_close_window.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
-    @patch('processor.handler.receive_messages_batch')
-    @patch('processor.handler.validate_bucket_tags')
-    @patch('processor.handler.get_bucket_tags')
-    @patch('processor.handler.find_matching_distributions')
-    @patch('processor.handler.validate_distribution_tags')
-    @patch('processor.handler.consolidate_paths')
-    @patch('processor.handler.create_invalidation')
-    @patch('processor.handler.delete_messages_batch')
-    @patch('processor.handler.close_window')
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
     def test_successful_processing_flow(
         self, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,
@@ -179,10 +175,10 @@ class TestProcessorHandler:
         mock_close_window.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
-    @patch('processor.handler.receive_messages_batch')
-    @patch('processor.handler.validate_bucket_tags')
-    @patch('processor.handler.delete_messages_batch')
-    @patch('processor.handler.close_window')
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
     def test_bucket_tag_validation_failure(
         self, mock_close_window, mock_delete, mock_validate_bucket, mock_receive
     ):
@@ -219,12 +215,12 @@ class TestProcessorHandler:
         mock_close_window.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
-    @patch('processor.handler.receive_messages_batch')
-    @patch('processor.handler.validate_bucket_tags')
-    @patch('processor.handler.get_bucket_tags')
-    @patch('processor.handler.find_matching_distributions')
-    @patch('processor.handler.delete_messages_batch')
-    @patch('processor.handler.close_window')
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
     def test_distribution_discovery_no_matches(
         self, mock_close_window, mock_delete, mock_find_dist,
         mock_get_tags, mock_validate_bucket, mock_receive
@@ -264,13 +260,13 @@ class TestProcessorHandler:
         mock_close_window.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
-    @patch('processor.handler.receive_messages_batch')
-    @patch('processor.handler.validate_bucket_tags')
-    @patch('processor.handler.get_bucket_tags')
-    @patch('processor.handler.find_matching_distributions')
-    @patch('processor.handler.validate_distribution_tags')
-    @patch('processor.handler.delete_messages_batch')
-    @patch('processor.handler.close_window')
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
     def test_distribution_tag_validation_failure(
         self, mock_close_window, mock_delete, mock_validate_dist,
         mock_find_dist, mock_get_tags, mock_validate_bucket, mock_receive
@@ -311,14 +307,14 @@ class TestProcessorHandler:
         mock_close_window.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
-    @patch('processor.handler.receive_messages_batch')
-    @patch('processor.handler.validate_bucket_tags')
-    @patch('processor.handler.get_bucket_tags')
-    @patch('processor.handler.find_matching_distributions')
-    @patch('processor.handler.validate_distribution_tags')
-    @patch('processor.handler.consolidate_paths')
-    @patch('processor.handler.delete_messages_batch')
-    @patch('processor.handler.close_window')
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
     def test_path_consolidation_integration(
         self, mock_close_window, mock_delete, mock_consolidate,
         mock_validate_dist, mock_find_dist, mock_get_tags,
@@ -372,15 +368,15 @@ class TestProcessorHandler:
         assert '/dir/file2.js' in call_args
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
-    @patch('processor.handler.receive_messages_batch')
-    @patch('processor.handler.validate_bucket_tags')
-    @patch('processor.handler.get_bucket_tags')
-    @patch('processor.handler.find_matching_distributions')
-    @patch('processor.handler.validate_distribution_tags')
-    @patch('processor.handler.consolidate_paths')
-    @patch('processor.handler.create_invalidation')
-    @patch('processor.handler.delete_messages_batch')
-    @patch('processor.handler.close_window')
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
     def test_invalidation_submission(
         self, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,

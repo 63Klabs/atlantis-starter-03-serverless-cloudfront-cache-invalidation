@@ -6,8 +6,7 @@ import json
 import logging
 from io import StringIO
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
+# No need to add src to path - using new function structure
 
 from hypothesis import given, settings, strategies as st
 from common.logger import setup_logger

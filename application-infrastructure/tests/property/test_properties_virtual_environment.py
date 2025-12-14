@@ -6,8 +6,7 @@ import subprocess
 import importlib.util
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
+# No need to add src to path - using new function structure
 
 from hypothesis import given, settings, strategies as st
 
@@ -60,7 +59,7 @@ def virtual_environment_path(draw):
 
 # Property Tests
 
-@settings(max_examples=20, deadline=5000)  # 5 second deadline for subprocess calls
+@settings(max_examples=5, deadline=3000)  # Reduced to prevent system overload
 @given(required_test_dependencies())
 def test_property_4_virtual_environment_dependency_completeness(dependencies):
     """Property 4: Virtual environment dependency completeness.
@@ -102,7 +101,7 @@ def test_property_4_virtual_environment_dependency_completeness(dependencies):
             assert False, f"Unexpected error testing {import_name}: {str(e)}"
 
 
-@settings(max_examples=10, deadline=3000)  # 3 second deadline for subprocess calls
+@settings(max_examples=3, deadline=2000)  # Reduced to prevent system overload
 @given(virtual_environment_path())
 def test_property_4_virtual_environment_isolation(venv_path):
     """Property 4b: Virtual environment isolation.

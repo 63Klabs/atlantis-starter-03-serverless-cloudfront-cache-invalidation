@@ -1,17 +1,13 @@
 """Unit tests for Ingestor Lambda handler."""
 
-import sys
 import os
 from unittest.mock import Mock, patch, MagicMock
 
 import pytest
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
-from ingestor.handler import process_s3_record, handler, get_queue_url
-from ingestor.event_parser import S3EventParseError
-from ingestor.queue_client import SQSClientError
+from functions.ingestor.handler import process_s3_record, handler, get_queue_url
+from functions.ingestor.event_parser import S3EventParseError
+from functions.ingestor.queue_client import SQSClientError
 
 
 class TestProcessS3Record:
@@ -30,10 +26,10 @@ class TestProcessS3Record:
         }
         queue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'
         
-        with patch('ingestor.handler.send_event_to_queue') as mock_send, \
-             patch('ingestor.handler.check_active_window') as mock_check_window, \
-             patch('ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
-             patch('ingestor.handler.create_window') as mock_create_window:
+        with patch('functions.ingestor.handler.send_event_to_queue') as mock_send, \
+             patch('functions.ingestor.handler.check_active_window') as mock_check_window, \
+             patch('functions.ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
+             patch('functions.ingestor.handler.create_window') as mock_create_window:
             
             mock_send.return_value = 'message-id-123'
             mock_check_window.return_value = None
@@ -70,7 +66,7 @@ class TestProcessS3Record:
         }
         queue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'
         
-        with patch('ingestor.handler.send_event_to_queue') as mock_send:
+        with patch('functions.ingestor.handler.send_event_to_queue') as mock_send:
             # Act
             result = process_s3_record(record, queue_url)
             
@@ -94,7 +90,7 @@ class TestProcessS3Record:
         }
         queue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'
         
-        with patch('ingestor.handler.send_event_to_queue') as mock_send:
+        with patch('functions.ingestor.handler.send_event_to_queue') as mock_send:
             # Act
             result = process_s3_record(record, queue_url)
             
@@ -118,7 +114,7 @@ class TestProcessS3Record:
         }
         queue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'
         
-        with patch('ingestor.handler.send_event_to_queue') as mock_send:
+        with patch('functions.ingestor.handler.send_event_to_queue') as mock_send:
             mock_send.side_effect = SQSClientError("Failed to send message")
             
             # Act
@@ -147,10 +143,10 @@ class TestProcessS3Record:
             'status': 'active'
         }
         
-        with patch('ingestor.handler.send_event_to_queue') as mock_send, \
-             patch('ingestor.handler.check_active_window') as mock_check_window, \
-             patch('ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
-             patch('ingestor.handler.create_window') as mock_create_window:
+        with patch('functions.ingestor.handler.send_event_to_queue') as mock_send, \
+             patch('functions.ingestor.handler.check_active_window') as mock_check_window, \
+             patch('functions.ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
+             patch('functions.ingestor.handler.create_window') as mock_create_window:
             
             mock_send.return_value = 'message-id-123'
             mock_check_window.return_value = active_window
@@ -178,10 +174,10 @@ class TestProcessS3Record:
         }
         queue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'
         
-        with patch('ingestor.handler.send_event_to_queue') as mock_send, \
-             patch('ingestor.handler.check_active_window') as mock_check_window, \
-             patch('ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
-             patch('ingestor.handler.create_window') as mock_create_window:
+        with patch('functions.ingestor.handler.send_event_to_queue') as mock_send, \
+             patch('functions.ingestor.handler.check_active_window') as mock_check_window, \
+             patch('functions.ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
+             patch('functions.ingestor.handler.create_window') as mock_create_window:
             
             mock_send.return_value = 'message-id-123'
             mock_check_window.return_value = None
@@ -211,8 +207,8 @@ class TestProcessS3Record:
         }
         queue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'
         
-        with patch('ingestor.handler.send_event_to_queue') as mock_send, \
-             patch('ingestor.handler.check_active_window') as mock_check_window:
+        with patch('functions.ingestor.handler.send_event_to_queue') as mock_send, \
+             patch('functions.ingestor.handler.check_active_window') as mock_check_window:
             
             mock_send.return_value = 'message-id-123'
             mock_check_window.side_effect = Exception("DynamoDB error")
@@ -264,10 +260,10 @@ class TestHandler:
         context.aws_request_id = 'test-request-123'
         
         with patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}), \
-             patch('ingestor.handler.send_event_to_queue') as mock_send, \
-             patch('ingestor.handler.check_active_window') as mock_check_window, \
-             patch('ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
-             patch('ingestor.handler.create_window') as mock_create_window:
+             patch('functions.ingestor.handler.send_event_to_queue') as mock_send, \
+             patch('functions.ingestor.handler.check_active_window') as mock_check_window, \
+             patch('functions.ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
+             patch('functions.ingestor.handler.create_window') as mock_create_window:
             
             mock_send.return_value = 'message-id-123'
             mock_check_window.return_value = None
@@ -323,10 +319,10 @@ class TestHandler:
         context.aws_request_id = 'test-request-123'
         
         with patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}), \
-             patch('ingestor.handler.send_event_to_queue') as mock_send, \
-             patch('ingestor.handler.check_active_window') as mock_check_window, \
-             patch('ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
-             patch('ingestor.handler.create_window') as mock_create_window:
+             patch('functions.ingestor.handler.send_event_to_queue') as mock_send, \
+             patch('functions.ingestor.handler.check_active_window') as mock_check_window, \
+             patch('functions.ingestor.handler.create_one_time_schedule') as mock_create_schedule, \
+             patch('functions.ingestor.handler.create_window') as mock_create_window:
             
             mock_send.return_value = 'message-id-123'
             mock_check_window.return_value = None

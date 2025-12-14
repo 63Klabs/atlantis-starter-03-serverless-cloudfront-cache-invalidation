@@ -14,8 +14,7 @@ import tempfile
 from hypothesis import given, strategies as st, assume
 import pytest
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
+# No need to add src to path - using new function structure
 
 
 @given(

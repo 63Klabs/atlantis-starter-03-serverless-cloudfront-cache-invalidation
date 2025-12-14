@@ -1,6 +1,5 @@
 """Unit tests for JSON logger utility."""
 
-import sys
 import json
 import logging
 import os
@@ -8,9 +7,6 @@ from io import StringIO
 from unittest.mock import patch
 
 import pytest
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 from common.logger import (
     JSONFormatter,

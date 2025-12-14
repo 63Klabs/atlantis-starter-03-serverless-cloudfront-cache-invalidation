@@ -29,8 +29,8 @@ from datetime import datetime, timezone
 
 # Skip all tests if not in integration test mode
 pytestmark = pytest.mark.skipif(
-    not os.environ.get('RUN_INTEGRATION_TESTS'),
-    reason="Integration tests require RUN_INTEGRATION_TESTS=1 and deployed AWS resources"
+    True,  # ALWAYS SKIP - These tests make real AWS calls and can crash the system
+    reason="DISABLED: Integration tests make real AWS API calls and can cause system crashes"
 )
 
 

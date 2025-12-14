@@ -5,11 +5,8 @@ import os
 import json
 from unittest.mock import Mock, patch, MagicMock
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
 from hypothesis import given, settings, strategies as st
-from processor.queue_client import (
+from functions.processor.queue_client import (
     receive_messages_batch,
     delete_message,
     delete_messages_batch

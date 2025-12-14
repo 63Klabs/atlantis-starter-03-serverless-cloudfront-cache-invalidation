@@ -1,13 +1,8 @@
 """Unit tests for CloudFront path validation."""
 
-import sys
-import os
 import pytest
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
-
-from processor.path_validator import (
+from functions.processor.path_validator import (
     validate_cloudfront_path,
     sanitize_path,
     validate_and_sanitize_paths
