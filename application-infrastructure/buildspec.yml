@@ -61,32 +61,31 @@ phases:
           echo "No functions/processor/requirements.txt found, skipping processor dependencies"
         fi
       
-      # Test Environment: Install test dependencies if tests/requirements.txt exists
+      # Test Environment: Install SAFE test dependencies to prevent crashes
       - |
-        if [ -f "application-infrastructure/tests/requirements.txt" ]; then
-          echo "Installing Python test dependencies"
+        if [ -f "application-infrastructure/tests/requirements-safe.txt" ]; then
+          echo "Installing SAFE Python test dependencies (excludes dangerous packages)"
+          pip install -r application-infrastructure/tests/requirements-safe.txt
+        elif [ -f "application-infrastructure/tests/requirements.txt" ]; then
+          echo "WARNING: Using full requirements.txt - may cause CI/CD crashes"
           pip install -r application-infrastructure/tests/requirements.txt
         else
-          echo "No application-infrastructure/tests/requirements.txt found, skipping test dependencies"
+          echo "No test requirements found, installing minimal safe dependencies"
+          pip install pytest==8.3.3 hypothesis==6.112.1 pytest-mock==3.14.0
         fi
             
   build:
     commands:
 
       - cd application-infrastructure
+      
+      # IMPORTANT: Using SAFE test execution to prevent CI/CD crashes
+      # Integration tests are disabled because they make real AWS API calls
+      # Resource-heavy property tests are limited to prevent system overload
 
-      # Run tests before building with updated paths
-      - |
-        if [ -d "tests" ]; then
-          echo "Running unit tests"
-          python3 -m pytest tests/unit/ -v --tb=short || echo "Unit tests failed but continuing build"
-          echo "Running property-based tests"
-          python3 -m pytest tests/property/ -v --tb=short || echo "Property tests failed but continuing build"
-          echo "Running integration tests"
-          python3 -m pytest tests/integration/ -v --tb=short || echo "Integration tests failed but continuing build"
-        else
-          echo "No tests directory found, skipping tests"
-        fi
+      # Run SAFE tests using dedicated script from build-scripts directory
+      # This script prevents CI/CD crashes by running only unit tests and safe property tests
+      - ./build-scripts/run_tests_safely.sh
 
       # Package Lambda layer
       - |

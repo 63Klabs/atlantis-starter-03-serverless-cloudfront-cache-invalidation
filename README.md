@@ -81,7 +81,7 @@ git push
 #       For now we will just deploy a test instance of the stack and have
 #       Our buckets and distributions use that.
 
-# > These commands MUST be done from the SAM CONFIG repo 
+# > These next commands MUST be done from the SAM CONFIG repo 
 # Go back to your SAM CONFIG repo (or SAM CONFIG terminal if you kept it open)
 cd ../YOUR_DEVOPS_SAM_CONFIG_REPO
 
@@ -94,6 +94,7 @@ cd ../YOUR_DEVOPS_SAM_CONFIG_REPO
 # Don't forget to deploy if you skipped deployment during config
 ./cli/deploy.py pipeline PREFIX cdn-invalidator test
 
+# You can follow the deployment in the web console
 # After the pipleline stack has deployed, it will deploy the Application stack
 # Once the Invalidator Application stack has deployed, 
 # Go to the Invalidator Application stack Output section in the web console
