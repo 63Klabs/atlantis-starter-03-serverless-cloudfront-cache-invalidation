@@ -1,7 +1,6 @@
 """CloudFront invalidation client for submitting cache invalidation requests."""
 
 import os
-import sys
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -9,16 +8,11 @@ from typing import List, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-# Add layer paths to Python path
-for path in ['/opt/python', '/opt/python/lib/python3.14/site-packages']:
-    if path not in sys.path and os.path.exists(path):
-        sys.path.insert(0, path)
-
 # Import from Lambda layer
 from common.logger import setup_logger
 from common.retry import retry_with_backoff
 from common.constants import MAX_RETRY_ATTEMPTS_CLOUDFRONT_INVALIDATION
-from .path_validator import validate_and_sanitize_paths
+from functions.processor.path_validator import validate_and_sanitize_paths
 
 logger = setup_logger(__name__)
 

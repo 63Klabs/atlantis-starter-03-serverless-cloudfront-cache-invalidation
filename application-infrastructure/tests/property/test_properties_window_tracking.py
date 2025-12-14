@@ -8,7 +8,7 @@ from decimal import Decimal
 from hypothesis import given, settings, strategies as st
 from botocore.exceptions import ClientError
 
-from functions.ingestor.window_tracker import check_active_window, create_window, close_window
+from common.window_tracker import check_active_window, create_window, close_window
 from common.constants import (
     WINDOW_ID_FIXED_VALUE,
     WINDOW_STATUS_ACTIVE,

@@ -1,0 +1,7 @@
+# Processor Lambda function dependencies
+# AWS SDK is provided by Lambda runtime, but we can specify versions if needed
+boto3>=1.26.0
+botocore>=1.29.0
+
+# Additional dependencies specific to processor function
+# (none currently needed beyond AWS SDK)

@@ -2,16 +2,10 @@
 
 import json
 import os
-import sys
 from typing import Dict
 
 import boto3
 from botocore.exceptions import ClientError
-
-# Add layer paths to Python path
-for path in ['/opt/python', '/opt/python/lib/python3.14/site-packages']:
-    if path not in sys.path and os.path.exists(path):
-        sys.path.insert(0, path)
 
 from common.constants import MAX_RETRY_ATTEMPTS_SQS
 from common.retry import retry_with_backoff

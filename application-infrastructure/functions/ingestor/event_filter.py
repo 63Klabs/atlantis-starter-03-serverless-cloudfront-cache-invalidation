@@ -1,13 +1,7 @@
 """S3 event filtering module for validating events based on StageId and path patterns."""
 
 from typing import Tuple
-import sys
 import os
-
-# Add layer paths to Python path
-for path in ['/opt/python', '/opt/python/lib/python3.14/site-packages']:
-    if path not in sys.path and os.path.exists(path):
-        sys.path.insert(0, path)
 
 from common.constants import PRODUCTION_STAGE_PREFIXES, PUBLIC_PATH_SEGMENT
 from common.logger import setup_logger

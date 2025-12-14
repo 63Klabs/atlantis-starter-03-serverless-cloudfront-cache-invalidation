@@ -61,13 +61,10 @@ phases:
           echo "No functions/processor/requirements.txt found, skipping processor dependencies"
         fi
       
-      # Test Environment: Install SAFE test dependencies to prevent crashes
+      # Test Environment: Install CI/CD test dependencies to prevent crashes
       - |
-        if [ -f "application-infrastructure/tests/requirements-safe.txt" ]; then
-          echo "Installing SAFE Python test dependencies (excludes dangerous packages)"
-          pip install -r application-infrastructure/tests/requirements-safe.txt
-        elif [ -f "application-infrastructure/tests/requirements.txt" ]; then
-          echo "WARNING: Using full requirements.txt - may cause CI/CD crashes"
+        if [ -f "application-infrastructure/tests/requirements.txt" ]; then
+          echo "Installing CI/CD Python test dependencies (excludes larger packages)"
           pip install -r application-infrastructure/tests/requirements.txt
         else
           echo "No test requirements found, installing minimal safe dependencies"
@@ -79,25 +76,13 @@ phases:
 
       - cd application-infrastructure
       
-      # IMPORTANT: Using SAFE test execution to prevent CI/CD crashes
+      # IMPORTANT: Using Non-Local Dev test execution to prevent CI/CD crashes
       # Integration tests are disabled because they make real AWS API calls
       # Resource-heavy property tests are limited to prevent system overload
 
       # Run SAFE tests using dedicated script from build-scripts directory
       # This script prevents CI/CD crashes by running only unit tests and safe property tests
       - ./build-scripts/run_tests_safely.sh
-
-      # Package Lambda layer
-      - |
-        echo "Creating Lambda layer package"
-        if [ -d "layers/common" ]; then
-          cd layers/common
-          zip -r ../../common-layer.zip python/
-          cd ../..
-          echo "Layer package created: common-layer.zip"
-        else
-          echo "No layers/common directory found, skipping layer packaging"
-        fi
 
       # There is sometimes a bug that causes the alias to not be updated correctly (see comment in template.yml for AppFunction.Properties.AutoPublishCodeSha256)
       - python3 ./build-scripts/update_template_timestamp.py template.yml

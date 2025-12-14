@@ -6,10 +6,7 @@ import ast
 import importlib.util
 from pathlib import Path
 
-# Add layer path to Python path for testing
-layer_path = os.path.join(os.path.dirname(__file__), '../../layers/common/python')
-if layer_path not in sys.path:
-    sys.path.insert(0, layer_path)
+# Layer path is now configured in conftest.py - no manual setup needed
 
 from hypothesis import given, settings, strategies as st
 

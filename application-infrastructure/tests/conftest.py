@@ -1,16 +1,19 @@
 """
-Test configuration for Lambda function separation tests.
-Adds the common layer to Python path for testing.
+Test configuration for simplified import structure.
+Adds the layer path once for all tests to mirror Lambda runtime behavior.
 """
 import sys
-import os
+from pathlib import Path
 
-# Add the layer's python directory to the path for testing
-layer_python_path = os.path.join(os.path.dirname(__file__), '..', 'layers', 'common', 'python')
-if layer_python_path not in sys.path:
-    sys.path.insert(0, layer_python_path)
+# Add layer path once for all tests - mirrors Lambda's /opt/python
+layer_path = Path(__file__).parent.parent / "layers" / "common" / "python"
+if str(layer_path) not in sys.path:
+    sys.path.insert(0, str(layer_path))
 
-# Add the functions directory to the path for testing
-functions_path = os.path.join(os.path.dirname(__file__), '..', 'functions')
-if functions_path not in sys.path:
-    sys.path.insert(0, functions_path)
+# Add functions directory to path for function-specific imports
+functions_path = Path(__file__).parent.parent / "functions"
+if str(functions_path) not in sys.path:
+    sys.path.insert(0, str(functions_path))
+
+# Note: Individual function directories are not added to avoid module name conflicts.
+# Each function's internal imports should work when the function is imported via its full path.

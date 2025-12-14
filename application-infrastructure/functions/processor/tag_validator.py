@@ -4,17 +4,13 @@ This module provides functions to validate AWS resource tags to ensure
 only authorized resources can trigger CloudFront invalidations.
 """
 
-import sys
 import os
 from typing import Dict, Optional, List
 
 import boto3
 from botocore.exceptions import ClientError
 
-# Add layer paths to Python path
-for path in ['/opt/python', '/opt/python/lib/python3.14/site-packages']:
-    if path not in sys.path and os.path.exists(path):
-        sys.path.insert(0, path)
+
 
 # Import from Lambda layer
 from common.logger import setup_logger

@@ -1,16 +1,12 @@
-# SAFE Testing Dependencies - Reduced crash risk
-# Use this file instead of requirements.txt to prevent system crashes
+# AWS SDK - already available in Lambda runtime, but included for local testing
+boto3==1.35.36
+botocore==1.35.36
 
-# Core testing frameworks (safe)
+# Testing frameworks
 pytest==8.3.3
 pytest-mock==3.14.0
 hypothesis==6.112.1
 
-# AWS SDK (safe - already available in Lambda runtime)
-boto3==1.35.36
-botocore==1.35.36
-
-# AWS service mocking (DANGEROUS - commented out)
 # moto[all]==5.0.18  # This package is 500MB+ and can crash the system
 # Only install if absolutely necessary and monitor system resources
 

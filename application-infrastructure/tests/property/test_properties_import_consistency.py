@@ -1,241 +1,250 @@
-"""Property-based tests for import path consistency after directory restructuring."""
+"""Property-based tests for import consistency across environments."""
 
 import sys
-import os
-import ast
+import importlib
 import importlib.util
 from pathlib import Path
-
 from hypothesis import given, settings, strategies as st
-
-
-# Custom strategies for generating test data
-
-@st.composite
-def file_paths_strategy(draw):
-    """Generate test file paths from the actual test directory structure."""
-    test_base = Path(__file__).parent.parent  # tests directory
-    
-    # Get all Python test files
-    test_files = []
-    for subdir in ['integration', 'property', 'unit']:
-        subdir_path = test_base / subdir
-        if subdir_path.exists():
-            test_files.extend(list(subdir_path.glob('*.py')))
-    
-    # Filter out __init__.py and this file itself
-    test_files = [f for f in test_files if f.name != '__init__.py' and f != Path(__file__)]
-    
-    if not test_files:
-        # Fallback to a known test file if none found
-        return test_base / 'unit' / 'test_path_validator.py'
-    
-    return draw(st.sampled_from(test_files))
+import tempfile
+import os
 
 
 @st.composite
-def import_statements(draw):
-    """Generate various import statement patterns that should work."""
-    # Common import patterns used in the test files
-    patterns = [
-        "from functions.ingestor.handler import process_s3_record",
-        "from functions.processor.path_validator import validate_path",
-        "from common.logger import get_logger",
-        "from functions.processor.handler import handler",
-        "from functions.ingestor.window_tracker import track_window",
-        "import functions.ingestor.event_parser",
-        "import functions.processor.distribution_finder",
-        "import common.constants"
+def shared_module_names(draw):
+    """Generate names of shared modules that should work consistently."""
+    modules = [
+        'common.logger',
+        'common.constants', 
+        'common.retry',
+        'common.window_tracker'
     ]
+    return draw(st.sampled_from(modules))
+
+
+@st.composite
+def import_statement_patterns(draw):
+    """Generate different import statement patterns for shared modules."""
+    module = draw(shared_module_names())
+    
+    patterns = [
+        f"import {module}",
+        f"from {module} import *",
+    ]
+    
+    # Add specific function imports for known modules
+    if module == 'common.logger':
+        patterns.extend([
+            "from common.logger import setup_logger",
+            "from common.logger import get_logger"
+        ])
+    elif module == 'common.constants':
+        patterns.extend([
+            "from common.constants import LOG_LEVEL_PROD",
+            "from common.constants import DEFAULT_TIMEOUT"
+        ])
+    elif module == 'common.retry':
+        patterns.extend([
+            "from common.retry import retry_with_backoff",
+            "from common.retry import RetryConfig"
+        ])
+    elif module == 'common.window_tracker':
+        patterns.extend([
+            "from common.window_tracker import WindowTracker",
+            "from common.window_tracker import track_window"
+        ])
     
     return draw(st.sampled_from(patterns))
 
 
-# Property Tests
+def simulate_lambda_environment():
+    """Simulate Lambda's import environment structure."""
+    # Create a temporary directory structure that mirrors Lambda
+    temp_dir = tempfile.mkdtemp()
+    
+    # Create /var/task equivalent (function code)
+    var_task = Path(temp_dir) / "var" / "task"
+    var_task.mkdir(parents=True)
+    
+    # Create /opt/python equivalent (layer code)
+    opt_python = Path(temp_dir) / "opt" / "python"
+    opt_python.mkdir(parents=True)
+    
+    # Copy common modules to opt/python
+    common_src = Path(__file__).parent.parent.parent / "layers" / "common" / "python" / "common"
+    common_dst = opt_python / "common"
+    
+    if common_src.exists():
+        import shutil
+        shutil.copytree(common_src, common_dst)
+    
+    return temp_dir, str(var_task), str(opt_python)
 
-@settings(max_examples=50, deadline=3000)
-@given(file_paths_strategy())
-def test_property_2_import_path_consistency(test_file_path):
-    """Property 2: Import path consistency.
-    
-    For any Python test file after restructuring, all import statements should 
-    resolve correctly from the new location without module not found errors.
-    
-    **Feature: test-directory-restructure, Property 2: Import path consistency**
-    **Validates: Requirements 2.1, 2.2, 2.4**
+
+@settings(max_examples=100)
+@given(import_statement=import_statement_patterns())
+def test_import_consistency_across_environments(import_statement):
     """
-    # Verify the test file exists
-    assert test_file_path.exists(), f"Test file not found: {test_file_path}"
+    Property 1: Import consistency across environments
     
-    # Read and parse the test file
+    For any shared module import statement, the import should work identically 
+    in local development and simulated Lambda environment structures.
+    
+    **Feature: import-simplification, Property 1: Import consistency across environments**
+    **Validates: Requirements 1.1**
+    """
+    # Test 1: Import works in current local development environment
+    local_success = False
+    local_error = None
+    
     try:
-        with open(test_file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # Execute the import statement in local environment
+        exec(import_statement)
+        local_success = True
     except Exception as e:
-        assert False, f"Failed to read test file {test_file_path}: {str(e)}"
+        local_error = str(e)
     
-    # Parse the AST to find sys.path.insert statements
+    # Test 2: Import works in simulated Lambda environment
+    lambda_success = False
+    lambda_error = None
+    
+    temp_dir = None
     try:
-        tree = ast.parse(content)
-    except SyntaxError as e:
-        assert False, f"Syntax error in test file {test_file_path}: {str(e)}"
+        temp_dir, var_task_path, opt_python_path = simulate_lambda_environment()
+        
+        # Save original sys.path
+        original_path = sys.path.copy()
+        
+        # Set up Lambda-like sys.path
+        sys.path = [var_task_path, opt_python_path] + [p for p in sys.path if not p.startswith(str(Path(__file__).parent.parent.parent))]
+        
+        # Clear import cache for modules we're testing
+        modules_to_clear = [name for name in sys.modules.keys() if name.startswith('common')]
+        for module_name in modules_to_clear:
+            if module_name in sys.modules:
+                del sys.modules[module_name]
+        
+        # Execute the import statement in Lambda-like environment
+        exec(import_statement)
+        lambda_success = True
+        
+    except Exception as e:
+        lambda_error = str(e)
+    finally:
+        # Restore original sys.path
+        if 'original_path' in locals():
+            sys.path[:] = original_path
+        
+        # Clean up temporary directory
+        if temp_dir and os.path.exists(temp_dir):
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        
+        # Restore import cache
+        importlib.invalidate_caches()
     
-    # Find sys.path.insert statements
-    sys_path_inserts = []
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Expr) and 
-            isinstance(node.value, ast.Call) and
-            isinstance(node.value.func, ast.Attribute) and
-            isinstance(node.value.func.value, ast.Attribute) and
-            isinstance(node.value.func.value.value, ast.Name) and
-            node.value.func.value.value.id == 'sys' and
-            node.value.func.value.attr == 'path' and
-            node.value.func.attr == 'insert'):
-            
-            # Extract the path argument (should be second argument)
-            if len(node.value.args) >= 2:
-                path_arg = node.value.args[1]
-                sys_path_inserts.append(path_arg)
+    # Both environments should have the same result
+    assert local_success == lambda_success, (
+        f"Import consistency failed for '{import_statement}'. "
+        f"Local success: {local_success} (error: {local_error}), "
+        f"Lambda success: {lambda_success} (error: {lambda_error})"
+    )
     
-    # Verify that sys.path.insert uses correct relative path
-    for path_node in sys_path_inserts:
-        if isinstance(path_node, ast.Call):
-            # Check for os.path.join pattern
-            if (isinstance(path_node.func, ast.Attribute) and
-                isinstance(path_node.func.value, ast.Attribute) and
-                isinstance(path_node.func.value.value, ast.Name) and
-                path_node.func.value.value.id == 'os' and
-                path_node.func.value.attr == 'path' and
-                path_node.func.attr == 'join'):
-                
-                # Check the arguments to os.path.join
-                if len(path_node.args) >= 2:
-                    # Second argument should be the relative path
-                    if isinstance(path_node.args[1], ast.Constant):
-                        relative_path = path_node.args[1].value
-                        
-                        # Determine expected path based on test file location
-                        test_subdir = test_file_path.parent.name
-                        if test_subdir in ['integration', 'property', 'unit']:
-                            expected_path = '../../src'  # From subdirectory to src
-                        else:
-                            expected_path = '../src'  # For files in tests root
-                        
-                        # Verify the path is correct
-                        assert relative_path == expected_path, (
-                            f"Incorrect sys.path.insert in {test_file_path}: "
-                            f"found '{relative_path}', expected '{expected_path}'"
-                        )
+    # If both failed, that's also consistent (might be an invalid import)
+    # If both succeeded, that's the expected behavior
+    if not local_success and not lambda_success:
+        # Both failed consistently - this might be expected for invalid imports
+        pass
+    elif local_success and lambda_success:
+        # Both succeeded - this is the ideal case
+        pass
 
 
-@settings(max_examples=30, deadline=5000)
-@given(file_paths_strategy(), import_statements())
-def test_property_2_module_resolution(test_file_path, import_statement):
-    """Property 2b: Module resolution verification.
-    
-    For any test file and import statement, the modules should be resolvable
-    from the test file's location using the updated sys.path.
-    
-    **Feature: test-directory-restructure, Property 2: Import path consistency**
-    **Validates: Requirements 2.1, 2.2, 2.4**
+@settings(max_examples=50)
+@given(module_name=shared_module_names())
+def test_import_paths_are_environment_independent(module_name):
     """
-    # Skip if test file doesn't exist
-    if not test_file_path.exists():
-        return
+    Test that import statements don't depend on specific local paths.
     
-    # Determine the correct src path relative to the test file
-    test_subdir = test_file_path.parent.name
-    if test_subdir in ['integration', 'property', 'unit']:
-        src_path = test_file_path.parent.parent / 'src'
-    else:
-        src_path = test_file_path.parent / 'src'
+    **Feature: import-simplification, Property 1: Import consistency across environments**
+    **Validates: Requirements 1.1**
+    """
+    # Save original sys.path to restore later
+    original_path = sys.path.copy()
     
-    # Verify src directory exists
-    if not src_path.exists():
-        return  # Skip if src directory not found
-    
-    # Parse the import statement to extract module name
     try:
-        import_tree = ast.parse(import_statement)
-    except SyntaxError:
-        return  # Skip invalid import statements
-    
-    # Extract module names from the import statement
-    module_names = []
-    for node in ast.walk(import_tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.module:
-                module_names.append(node.module)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                module_names.append(alias.name)
-    
-    # Test that each module can be found
-    for module_name in module_names:
-        # Convert module name to file path
-        module_parts = module_name.split('.')
-        module_file = src_path
-        for part in module_parts:
-            module_file = module_file / part
+        # Import the module in normal environment (not simulated)
+        module = importlib.import_module(module_name)
         
-        # Check for either .py file or __init__.py in directory
-        py_file = module_file.with_suffix('.py')
-        init_file = module_file / '__init__.py'
-        
-        # At least one should exist
-        assert py_file.exists() or init_file.exists(), (
-            f"Module {module_name} not found at {py_file} or {init_file} "
-            f"when importing from {test_file_path}"
-        )
-
-
-@settings(max_examples=20, deadline=2000)
-@given(st.sampled_from(['integration', 'property', 'unit']))
-def test_property_2_subdirectory_import_consistency(test_subdir):
-    """Property 2c: Subdirectory import consistency.
-    
-    For any test subdirectory (integration, property, unit), all test files
-    should use consistent import paths relative to their location.
-    
-    **Feature: test-directory-restructure, Property 2: Import path consistency**
-    **Validates: Requirements 2.1, 2.2, 2.4**
-    """
-    test_base = Path(__file__).parent.parent  # tests directory
-    subdir_path = test_base / test_subdir
-    
-    # Skip if subdirectory doesn't exist
-    if not subdir_path.exists():
-        return
-    
-    # Get all Python test files in the subdirectory
-    test_files = list(subdir_path.glob('*.py'))
-    test_files = [f for f in test_files if f.name != '__init__.py']
-    
-    # Skip if no test files
-    if not test_files:
-        return
-    
-    # Check that all files use consistent sys.path.insert patterns
-    expected_path = '../src'  # All subdirectories should use ../src
-    
-    for test_file in test_files:
-        try:
-            with open(test_file, 'r', encoding='utf-8') as f:
-                content = f.read()
+        if hasattr(module, '__file__') and module.__file__:
+            module_path = Path(module.__file__)
             
-            # Look for sys.path.insert patterns in the content
-            if 'sys.path.insert' in content:
-                # Verify it uses the correct relative path
-                assert '../src' in content or '..\\src' in content, (
-                    f"Test file {test_file} should use '../src' in sys.path.insert, "
-                    f"but content suggests different path"
-                )
-                
-                # Verify it doesn't use the old incorrect path
-                assert '../..' not in content or 'sys.path.insert(0, os.path.join(os.path.dirname(__file__), \'../..\'))' not in content, (
-                    f"Test file {test_file} still uses old '../..' path pattern"
-                )
+            # The import should not depend on absolute paths specific to local development
+            # It should work through the layer structure
+            path_str = str(module_path)
+            
+            # Should not contain development-specific absolute paths
+            assert not path_str.startswith('/home/'), f"Module path should not be user-specific: {path_str}"
+            assert not path_str.startswith('/Users/'), f"Module path should not be user-specific: {path_str}"
+            
+            # Should be from the layers structure OR a temporary simulation directory
+            # (indicating proper layer setup in either real or simulated environment)
+            is_from_layers = 'layers/common/python' in path_str
+            is_from_simulation = '/opt/python' in path_str and '/tmp/' in path_str
+            
+            assert is_from_layers or is_from_simulation, (
+                f"Module {module_name} should be loaded from layers structure or simulation, "
+                f"but was loaded from {path_str}"
+            )
+            
+    except ImportError as e:
+        assert False, f"Module {module_name} should be importable: {e}"
+    finally:
+        # Restore original sys.path
+        sys.path[:] = original_path
+
+
+@settings(max_examples=30)
+@given(module_name=shared_module_names())
+def test_no_environment_specific_imports(module_name):
+    """
+    Test that modules don't contain environment-specific import logic.
+    
+    **Feature: import-simplification, Property 1: Import consistency across environments**
+    **Validates: Requirements 1.1**
+    """
+    # Save original sys.path to restore later
+    original_path = sys.path.copy()
+    
+    try:
+        # Import and inspect the module source (only in real environment, not simulation)
+        module = importlib.import_module(module_name)
         
-        except Exception as e:
-            # Don't fail the test for file reading issues, just skip
-            continue
+        if hasattr(module, '__file__') and module.__file__:
+            module_path = str(module.__file__)
+            
+            # Only inspect source if it's from the real layers directory (not simulation)
+            if 'layers/common/python' in module_path and os.path.exists(module.__file__):
+                with open(module.__file__, 'r') as f:
+                    source_code = f.read()
+                
+                # Should not contain environment-specific import patterns
+                forbidden_patterns = [
+                    'sys.path.append',
+                    'sys.path.insert',
+                    'os.path.join(os.path.dirname',
+                    'try:\n    import',
+                    'except ImportError:',
+                    '__file__' # Should not manipulate paths based on __file__
+                ]
+                
+                for pattern in forbidden_patterns:
+                    assert pattern not in source_code, (
+                        f"Module {module_name} contains environment-specific import pattern: {pattern}"
+                    )
+            # If it's from simulation, skip source inspection (file doesn't exist)
+                
+    except ImportError as e:
+        assert False, f"Module {module_name} should be importable for inspection: {e}"
+    finally:
+        # Restore original sys.path
+        sys.path[:] = original_path

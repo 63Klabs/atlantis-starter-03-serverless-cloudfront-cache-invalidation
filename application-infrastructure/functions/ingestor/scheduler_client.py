@@ -1,18 +1,12 @@
 """EventBridge Scheduler client for creating one-time schedules."""
 
 import os
-import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
-
-# Add layer paths to Python path
-for path in ['/opt/python', '/opt/python/lib/python3.14/site-packages']:
-    if path not in sys.path and os.path.exists(path):
-        sys.path.insert(0, path)
 
 from common.logger import setup_logger
 from common.retry import retry_with_backoff

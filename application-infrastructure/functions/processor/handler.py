@@ -13,22 +13,18 @@ This handler orchestrates the processing of queued S3 events:
 """
 
 import os
-import sys
 from typing import Dict, Any, List, Tuple
-
-# Add layer paths to Python path
-for path in ['/opt/python', '/opt/python/lib/python3.14/site-packages']:
-    if path not in sys.path and os.path.exists(path):
-        sys.path.insert(0, path)
 
 # Import from Lambda layer
 from common.logger import setup_logger
-from .queue_client import receive_messages_batch, delete_messages_batch
-from .tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
-from .distribution_finder import find_matching_distributions
-from .path_consolidator import consolidate_paths
-from .invalidation_client import create_invalidation
 from common.window_tracker import close_window
+
+# Import function-specific modules
+from functions.processor.queue_client import receive_messages_batch, delete_messages_batch
+from functions.processor.tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
+from functions.processor.distribution_finder import find_matching_distributions
+from functions.processor.path_consolidator import consolidate_paths
+from functions.processor.invalidation_client import create_invalidation
 
 logger = setup_logger(__name__)
 
