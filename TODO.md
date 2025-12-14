@@ -1,4 +1,6 @@
+- [ ] Separate out Lambdas
+- [ ] Update AI Context to use virtual env
 - [ ] Ensure schedule clean up
 - [ ] Empty queue items processed only after success
-- [ ] Separate out Lambdas
 - [ ] Clean up debug output
+- [ ] Remove Kiro directory
