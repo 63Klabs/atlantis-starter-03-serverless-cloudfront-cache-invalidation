@@ -1,4 +1,3 @@
-- [ ] Separate out Lambdas
 - [ ] Update AI Context to use virtual env
 - [ ] Ensure schedule clean up
 - [ ] Empty queue items processed only after success

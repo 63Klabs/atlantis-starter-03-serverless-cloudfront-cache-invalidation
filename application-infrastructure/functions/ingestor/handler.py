@@ -12,8 +12,40 @@ This handler orchestrates the ingestion of S3 events:
 import os
 import sys
 from typing import Dict, Any, List
+import logging
 
-from common.logger import setup_logger
+# Lambda layer import handling
+def setup_imports():
+    """Setup imports from Lambda layer with fallbacks."""
+    # Add common layer paths to Python path
+    layer_paths = ['/opt/python', '/opt/python/lib/python3.14/site-packages']
+    for path in layer_paths:
+        if path not in sys.path and os.path.exists(path):
+            sys.path.insert(0, path)
+    
+    # Try to import from common layer
+    try:
+        from common.logger import setup_logger
+        return setup_logger
+    except ImportError as e:
+        print(f"Failed to import from common layer: {e}")
+        print(f"Python path: {sys.path}")
+        print(f"Available paths: {[p for p in sys.path if os.path.exists(p)]}")
+        
+        # Fallback logger setup
+        def setup_logger(name):
+            logger = logging.getLogger(name)
+            logger.setLevel(logging.INFO)
+            if not logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                handler.setFormatter(formatter)
+                logger.addHandler(handler)
+            return logger
+        return setup_logger
+
+# Initialize logger setup function
+setup_logger = setup_imports()
 from .event_parser import (
     extract_event_metadata,
     extract_stage_id,

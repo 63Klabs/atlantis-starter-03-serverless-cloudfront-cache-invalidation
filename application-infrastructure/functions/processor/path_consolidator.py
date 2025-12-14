@@ -26,6 +26,11 @@ import sys
 from typing import List, Set, Dict
 from collections import defaultdict
 
+# Add layer paths to Python path
+for path in ['/opt/python', '/opt/python/lib/python3.14/site-packages']:
+    if path not in sys.path and os.path.exists(path):
+        sys.path.insert(0, path)
+
 # Import from Lambda layer
 from common.constants import (
     DIRECTORY_CONSOLIDATION_THRESHOLD,
