@@ -1,0 +1,13 @@
+# For buildspec.yml use only requirements.txt
+# For local development, install requirements.txt first, then requirements-local.txt
+
+# For local development, install using a Python virtual environment
+# python3 -m venv .venv
+# source .venv/bin/activate
+# pip install -r requirements.txt
+# pip install -r requirements-local.txt
+
+# Ingestor function dependencies
+# boto3 is available in Lambda runtime, but specified for local development
+boto3>=1.35.0
+botocore>=1.35.0

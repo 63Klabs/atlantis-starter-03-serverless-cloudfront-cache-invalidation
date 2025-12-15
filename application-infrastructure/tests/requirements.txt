@@ -1,5 +1,8 @@
+# For buildspec.yml use only requirements.txt
+# For local development, also install requirements-local.txt
+
 # SAFE Testing Dependencies - Reduced crash risk
-# Use this file instead of requirements.txt to prevent system crashes
+# Use this file in buildspec instead of requirements-local.txt to speed up deployments
 
 # Core testing frameworks (safe)
 pytest==8.3.3
@@ -9,10 +12,3 @@ hypothesis==6.112.1
 # AWS SDK (safe - already available in Lambda runtime)
 boto3==1.35.36
 botocore==1.35.36
-
-# AWS service mocking (DANGEROUS - commented out)
-# moto[all]==5.0.18  # This package is 500MB+ and can crash the system
-# Only install if absolutely necessary and monitor system resources
-
-# Alternative: Use moto without [all] extras for specific services only
-moto[sqs,dynamodb,lambda,cloudfront,s3,events,iam,logs,sns,sts]==5.0.18  # Smaller, service-specific installation

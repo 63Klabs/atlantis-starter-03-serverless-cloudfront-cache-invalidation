@@ -18,21 +18,37 @@ phases:
       - node --version
       - aws --version
 
+      # Install virtualenv and create virtual environment
+      - pip3 install --upgrade pip virtualenv
+      - virtualenv /tmp/build-venv
+      - source /tmp/build-venv/bin/activate
+      - python --version
+      - which python
+      - which pip
+
       # Configure pip cache directory
       - mkdir -p /root/.cache/pip
       - pip config set global.cache-dir /root/.cache/pip
 
+      # Set execution permissions for shell scripts
+      - |
+        echo "Set execution permissions for shell scripts"
+        chmod +x application-infrastructure/build-scripts/*.sh
+
       # Build Environment: Install Python dependencies for Build Scripts if build-scripts/requirements.txt exists
       - |
-        if [ -f "build-scripts/requirements.txt" ]; then
+        if [ -f "application-infrastructure/build-scripts/requirements.txt" ]; then
           echo "Installing Python dependencies for build scripts"
-          pip install -r build-scripts/requirements.txt
+          pip install -r application-infrastructure/build-scripts/requirements.txt
         else
           echo "No build-scripts/requirements.txt found, skipping pip install"
         fi
 
   pre_build:
     commands:
+      
+      # Activate virtual environment for pre_build phase
+      - source /tmp/build-venv/bin/activate
       
       # Layer Dependencies: Install dependencies for Lambda layer
       - |
@@ -76,6 +92,9 @@ phases:
 
       - cd application-infrastructure
       
+      # Activate virtual environment for build phase
+      - source /tmp/build-venv/bin/activate
+      
       # IMPORTANT: Using Non-Local Dev test execution to prevent CI/CD crashes
       # Integration tests are disabled because they make real AWS API calls
       # Resource-heavy property tests are limited to prevent system overload
@@ -85,10 +104,10 @@ phases:
       - ./build-scripts/run_tests_safely.sh
 
       # There is sometimes a bug that causes the alias to not be updated correctly (see comment in template.yml for AppFunction.Properties.AutoPublishCodeSha256)
-      - python3 ./build-scripts/update_template_timestamp.py template.yml
+      - python ./build-scripts/update_template_timestamp.py template.yml
 
       # Replace placeholders in the template-configuration.json file
-      - python3 ./build-scripts/update_template_configuration.py template-configuration.json
+      - python ./build-scripts/update_template_configuration.py template-configuration.json
 
       # Use CloudFormation to package the application infrastructure and code that was placed in the S3 Artifacts Bucket (usually something like `cf-artifacts-<region>-<account-id>` or `cf-templates-randomchars-<region>`).
       - aws cloudformation package --template template.yml --s3-bucket $S3_ARTIFACTS_BUCKET --output-template template-export.yml
@@ -104,3 +123,4 @@ artifacts:
 cache:
   paths:
     - '/root/.cache/pip/**/*'
+    - '/tmp/build-venv/**/*'

@@ -1,6 +1,5 @@
 - [ ] Update AI Context to use virtual env
-- [ ] Update requirements-safe.txt to cicd and update moto to not use all
 - [ ] Ensure schedule clean up
 - [ ] Empty queue items processed only after success
 - [ ] Clean up debug output
-- [ ] Remove Kiro directory
+- [ ] Remove Kiro directory from .gitignore

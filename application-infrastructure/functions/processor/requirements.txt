@@ -1,2 +1,5 @@
+# For buildspec.yml use only requirements.txt
+# For local development, also install requirements-local.txt
+
 # All dependencies are from Python Lambda standard library
 # No external packages required for deployment
