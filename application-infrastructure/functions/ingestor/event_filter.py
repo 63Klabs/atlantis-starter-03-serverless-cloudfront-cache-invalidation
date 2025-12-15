@@ -3,8 +3,8 @@
 from typing import Tuple
 import os
 
-from common.constants import PRODUCTION_STAGE_PREFIXES, PUBLIC_PATH_SEGMENT
-from common.logger import setup_logger
+from common.constants import PRODUCTION_STAGE_PREFIXES, PUBLIC_PATH_SEGMENT  # pyright: ignore[reportMissingImports]
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 
 
 def is_production_stage(stage_id: str) -> bool:

@@ -26,13 +26,13 @@ from typing import List, Set, Dict
 from collections import defaultdict
 
 # Import from Lambda layer
-from common.constants import (
+from common.constants import ( # pyright: ignore[reportMissingImports]
     DIRECTORY_CONSOLIDATION_THRESHOLD,
     SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
     MAX_PATHS_PER_INVALIDATION,
     INDEX_FILE_PATTERNS
 )
-from common.logger import setup_logger
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 
 logger = setup_logger(__name__)
 

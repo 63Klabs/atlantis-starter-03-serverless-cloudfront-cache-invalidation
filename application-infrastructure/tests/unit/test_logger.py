@@ -8,12 +8,55 @@ from unittest.mock import patch
 
 import pytest
 
-from common.logger import (
+from common.logger import ( # pyright: ignore[reportMissingImports]
+    DateTimeEncoder,
     JSONFormatter,
     get_log_level,
     setup_logger,
     log_with_context
 )
+
+
+class TestDateTimeEncoder:
+    """Tests for DateTimeEncoder class."""
+    
+    def test_encode_datetime(self):
+        """Test encoding datetime objects to ISO format."""
+        from datetime import datetime, timezone
+        
+        encoder = DateTimeEncoder()
+        test_datetime = datetime(2023, 12, 15, 10, 30, 45, tzinfo=timezone.utc)
+        
+        # Test direct encoding
+        result = encoder.default(test_datetime)
+        assert result == test_datetime.isoformat()
+    
+    def test_encode_non_datetime(self):
+        """Test that non-datetime objects raise TypeError."""
+        encoder = DateTimeEncoder()
+        
+        with pytest.raises(TypeError):
+            encoder.default("not a datetime")
+    
+    def test_json_dumps_with_datetime(self):
+        """Test json.dumps with DateTimeEncoder handles datetime objects."""
+        from datetime import datetime, timezone
+        
+        test_datetime = datetime(2023, 12, 15, 10, 30, 45, tzinfo=timezone.utc)
+        data = {
+            'message': 'test',
+            'timestamp': test_datetime,
+            'nested': {
+                'LastModifiedTime': test_datetime
+            }
+        }
+        
+        # This should not raise an error
+        result = json.dumps(data, cls=DateTimeEncoder)
+        parsed = json.loads(result)
+        
+        assert parsed['timestamp'] == test_datetime.isoformat()
+        assert parsed['nested']['LastModifiedTime'] == test_datetime.isoformat()
 
 
 class TestJSONFormatter:
@@ -91,6 +134,43 @@ class TestJSONFormatter:
         
         assert log_data['bucket'] == 'test-bucket'
         assert log_data['key'] == 'test-key'
+    
+    def test_format_with_datetime_objects(self):
+        """Test formatting a log message with datetime objects in extra fields."""
+        from datetime import datetime, timezone
+        
+        formatter = JSONFormatter()
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname='',
+            lineno=0,
+            msg='Test message with datetime',
+            args=(),
+            exc_info=None
+        )
+        
+        test_datetime = datetime(2023, 12, 15, 10, 30, 45, tzinfo=timezone.utc)
+        record.extra_fields = {
+            'bucket': 'test-bucket',
+            'LastModifiedTime': test_datetime,
+            'distributionList': {
+                'Items': [
+                    {
+                        'Id': 'E123456789',
+                        'LastModifiedTime': test_datetime
+                    }
+                ]
+            }
+        }
+        
+        # This should not raise a JSON serialization error
+        result = formatter.format(record)
+        log_data = json.loads(result)
+        
+        assert log_data['bucket'] == 'test-bucket'
+        assert log_data['LastModifiedTime'] == test_datetime.isoformat()
+        assert log_data['distributionList']['Items'][0]['LastModifiedTime'] == test_datetime.isoformat()
 
 
 class TestGetLogLevel:

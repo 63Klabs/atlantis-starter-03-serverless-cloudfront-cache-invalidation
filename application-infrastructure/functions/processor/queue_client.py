@@ -8,13 +8,13 @@ import boto3
 from botocore.exceptions import ClientError
 
 # Import from Lambda layer
-from common.constants import (
+from common.constants import ( # pyright: ignore[reportMissingImports]
     MAX_RETRY_ATTEMPTS_SQS,
     SQS_MAX_BATCH_SIZE,
     SQS_LONG_POLL_WAIT_TIME_SECONDS
 )
-from common.retry import retry_with_backoff
-from common.logger import setup_logger
+from common.retry import retry_with_backoff # pyright: ignore[reportMissingImports]
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 
 logger = setup_logger(__name__)
 

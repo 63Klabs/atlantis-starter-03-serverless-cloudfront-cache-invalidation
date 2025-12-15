@@ -13,19 +13,32 @@ import os
 from typing import Dict, Any, List
 
 # Clean imports from common layer
-from common.logger import setup_logger
-from common.window_tracker import check_active_window, create_window
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
+from common.window_tracker import check_active_window, create_window # pyright: ignore[reportMissingImports]
 
-# Function-specific imports (using relative imports)
-from .event_parser import (
-    extract_event_metadata,
-    extract_stage_id,
-    extract_origin_path,
-    S3EventParseError
-)
-from .event_filter import should_process_event
-from .queue_client import send_event_to_queue, SQSClientError
-from .scheduler_client import create_one_time_schedule
+# Function-specific imports (compatible with both Lambda and test environments)
+try:
+    # Lambda environment - files are at root level
+    from event_parser import (
+        extract_event_metadata,
+        extract_stage_id,
+        extract_origin_path,
+        S3EventParseError
+    )
+    from event_filter import should_process_event
+    from queue_client import send_event_to_queue, SQSClientError
+    from scheduler_client import create_one_time_schedule
+except ImportError:
+    # Development/test environment - use relative imports
+    from .event_parser import (
+        extract_event_metadata,
+        extract_stage_id,
+        extract_origin_path,
+        S3EventParseError
+    )
+    from .event_filter import should_process_event
+    from .queue_client import send_event_to_queue, SQSClientError
+    from .scheduler_client import create_one_time_schedule
 
 logger = setup_logger(__name__)
 

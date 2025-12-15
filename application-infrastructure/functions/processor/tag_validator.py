@@ -13,7 +13,7 @@ from botocore.exceptions import ClientError
 
 
 # Import from Lambda layer
-from common.logger import setup_logger
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 
 logger = setup_logger(__name__)
 

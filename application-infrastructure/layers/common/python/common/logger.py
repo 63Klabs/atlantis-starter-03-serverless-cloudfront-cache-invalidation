@@ -10,6 +10,15 @@ from typing import Any, Dict, Optional
 from .constants import LOG_LEVEL_PROD, LOG_LEVEL_TEST, LOG_LEVEL_DEV
 
 
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles datetime objects."""
+    
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
 class JSONFormatter(logging.Formatter):
     """Custom formatter that outputs logs in JSON format."""
     
@@ -37,7 +46,7 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, 'extra_fields'):
             log_data.update(record.extra_fields)
         
-        return json.dumps(log_data)
+        return json.dumps(log_data, cls=DateTimeEncoder)
 
 
 def get_log_level() -> str:

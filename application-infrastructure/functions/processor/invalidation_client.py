@@ -9,10 +9,17 @@ import boto3
 from botocore.exceptions import ClientError
 
 # Import from Lambda layer
-from common.logger import setup_logger
-from common.retry import retry_with_backoff
-from common.constants import MAX_RETRY_ATTEMPTS_CLOUDFRONT_INVALIDATION
-from functions.processor.path_validator import validate_and_sanitize_paths
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
+from common.retry import retry_with_backoff # pyright: ignore[reportMissingImports]
+from common.constants import MAX_RETRY_ATTEMPTS_CLOUDFRONT_INVALIDATION # pyright: ignore[reportMissingImports]
+
+# Import path validator (compatible with both Lambda and test environments)
+try:
+    # Lambda environment - files are at root level
+    from path_validator import validate_and_sanitize_paths
+except ImportError:
+    # Development/test environment - use relative import
+    from .path_validator import validate_and_sanitize_paths
 
 logger = setup_logger(__name__)
 

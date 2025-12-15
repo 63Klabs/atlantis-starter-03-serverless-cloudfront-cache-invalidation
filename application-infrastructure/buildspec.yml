@@ -86,6 +86,15 @@ phases:
           echo "No test requirements found, installing minimal safe dependencies"
           pip install pytest==8.3.3 hypothesis==6.112.1 pytest-mock==3.14.0
         fi
+      
+      # Also install common layer dependencies in virtual environment for tests
+      - |
+        if [ -f "application-infrastructure/layers/common/requirements.txt" ]; then
+          echo "Installing common layer dependencies in virtual environment for tests"
+          pip install -r application-infrastructure/layers/common/requirements.txt
+        else
+          echo "No common layer requirements found"
+        fi
             
   build:
     commands:

@@ -7,9 +7,9 @@ from typing import Dict
 import boto3
 from botocore.exceptions import ClientError
 
-from common.constants import MAX_RETRY_ATTEMPTS_SQS
-from common.retry import retry_with_backoff
-from common.logger import setup_logger
+from common.constants import MAX_RETRY_ATTEMPTS_SQS # pyright: ignore[reportMissingImports]
+from common.retry import retry_with_backoff # pyright: ignore[reportMissingImports]
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 
 logger = setup_logger(__name__)
 

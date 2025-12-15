@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from common.retry import (
+from common.retry import ( # pyright: ignore[reportMissingImports]
     calculate_delay_with_jitter,
     retry_with_backoff
 )

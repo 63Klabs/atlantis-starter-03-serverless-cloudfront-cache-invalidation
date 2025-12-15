@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from datetime import datetime
 import os
 
-from common.logger import setup_logger
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 
 
 class S3EventParseError(Exception):

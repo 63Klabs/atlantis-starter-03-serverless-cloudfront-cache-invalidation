@@ -8,9 +8,9 @@ from typing import Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from common.logger import setup_logger
-from common.retry import retry_with_backoff
-from common.constants import (
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
+from common.retry import retry_with_backoff # pyright: ignore[reportMissingImports]
+from common.constants import ( # pyright: ignore[reportMissingImports]
     MAX_RETRY_ATTEMPTS_SCHEDULER,
     AGGREGATION_WINDOW_SECONDS
 )

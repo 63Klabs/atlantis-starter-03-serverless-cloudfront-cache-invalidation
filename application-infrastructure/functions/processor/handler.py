@@ -16,15 +16,24 @@ import os
 from typing import Dict, Any, List, Tuple
 
 # Import from Lambda layer
-from common.logger import setup_logger
-from common.window_tracker import close_window
+from common.logger import setup_logger # pyright: ignore[reportMissingImports]
+from common.window_tracker import close_window # pyright: ignore[reportMissingImports]
 
-# Import function-specific modules
-from functions.processor.queue_client import receive_messages_batch, delete_messages_batch
-from functions.processor.tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
-from functions.processor.distribution_finder import find_matching_distributions
-from functions.processor.path_consolidator import consolidate_paths
-from functions.processor.invalidation_client import create_invalidation
+# Import function-specific modules (compatible with both Lambda and test environments)
+try:
+    # Lambda environment - files are at root level
+    from queue_client import receive_messages_batch, delete_messages_batch
+    from tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
+    from distribution_finder import find_matching_distributions
+    from path_consolidator import consolidate_paths
+    from invalidation_client import create_invalidation
+except ImportError:
+    # Development/test environment - use relative imports
+    from .queue_client import receive_messages_batch, delete_messages_batch
+    from .tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
+    from .distribution_finder import find_matching_distributions
+    from .path_consolidator import consolidate_paths
+    from .invalidation_client import create_invalidation
 
 logger = setup_logger(__name__)
 
@@ -825,8 +834,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return {
             'statusCode': 200,
             'body': f"Processed {summary['total_messages']} messages, "
-                   f"submitted {summary['invalidations_submitted']} invalidations, "
-                   f"deleted {summary['messages_deleted']} messages"
+                    f"submitted {summary['invalidations_submitted']} invalidations, "
+                    f"deleted {summary['messages_deleted']} messages"
         }
         
     except ValueError as e:
