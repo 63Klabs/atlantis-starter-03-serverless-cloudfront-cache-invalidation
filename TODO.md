@@ -1,5 +1,7 @@
 - [ ] Update AI Context to use virtual env
-- [ ] Ensure schedule clean up
-- [ ] Empty queue items processed only after success
+- [ ] Empty queue items only after success (or DLQ)
+- [ ] Add tag to bucket for number of items before consolidate (0 for just do root)
+- [ ] Add tag to bucket for consolidation depth limit
+- [ ] Add application parameter to set default number of items before consolidate
 - [ ] Clean up debug output
 - [ ] Remove Kiro directory from .gitignore
