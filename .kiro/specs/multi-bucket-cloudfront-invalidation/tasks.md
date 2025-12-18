@@ -204,12 +204,16 @@
   - **Property 24: Invalidation request splitting**
   - **Validates: Requirements 9.5**
 
-- [x] 12.6 Write unit tests for path consolidation edge cases
+- [x] 12.6 Write property test for redundant subdirectory removal
+  - **Property 25: Redundant subdirectory removal**
+  - **Validates: Requirements 9.6**
+
+- [x] 12.7 Write unit tests for path consolidation edge cases
   - Test empty path lists
   - Test single path
   - Test deeply nested structures
   - Test mixed file and directory paths
-  - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
+  - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6_
 
 - [x] 13. Implement CloudFront invalidation client (Processor)
   - Create invalidation_client module
@@ -222,11 +226,11 @@
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
 - [x] 13.1 Write property test for CreateInvalidation API call
-  - **Property 25: CreateInvalidation API call correctness**
+  - **Property 26: CreateInvalidation API call correctness**
   - **Validates: Requirements 10.1**
 
 - [x] 13.2 Write property test for successful invalidation logging
-  - **Property 26: Successful invalidation logging**
+  - **Property 27: Successful invalidation logging**
   - **Validates: Requirements 10.2**
 
 - [x] 14. Implement Processor Lambda handler
@@ -243,7 +247,7 @@
   - _Requirements: 5.1, 5.2, 5.3, 6.1, 6.2, 6.3, 7.1, 7.2, 7.3, 8.1, 8.2, 8.3, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 4.4_
 
 - [x] 14.1 Write property test for JSON log format validity
-  - **Property 27: JSON log format validity**
+  - **Property 28: JSON log format validity**
   - **Validates: Requirements 13.3**
 
 - [x] 14.2 Write unit tests for Processor handler

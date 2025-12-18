@@ -396,19 +396,23 @@ Property 24: Invalidation request splitting
 *For any* consolidated path list exceeding 1000 items, the paths should be split into multiple lists where each list contains at most 1000 items
 **Validates: Requirements 9.5**
 
+Property 25: Redundant subdirectory removal
+*For any* set of paths containing both a parent directory wildcard and subdirectory paths covered by that wildcard, the consolidation algorithm should remove the redundant subdirectory paths
+**Validates: Requirements 9.6**
+
 ### Invalidation Submission Properties
 
-Property 25: CreateInvalidation API call correctness
+Property 26: CreateInvalidation API call correctness
 *For any* validated distribution and consolidated path list, the CreateInvalidation request should include the distribution ID and the exact consolidated paths
 **Validates: Requirements 10.1**
 
-Property 26: Successful invalidation logging
+Property 27: Successful invalidation logging
 *For any* successful CreateInvalidation response, the log output should be valid JSON containing the invalidation ID and status
 **Validates: Requirements 10.2**
 
 ### Logging Properties
 
-Property 27: JSON log format validity
+Property 28: JSON log format validity
 *For any* log message produced by the Lambda functions, the message should be valid JSON that can be parsed without errors
 **Validates: Requirements 13.3**
 

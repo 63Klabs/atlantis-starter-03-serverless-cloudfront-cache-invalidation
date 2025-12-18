@@ -120,6 +120,7 @@ This specification defines an event-driven, decoupled, multi-bucket CloudFront i
 3. WHEN more than 10 sibling directories would individually receive directory-level invalidations THEN the Invalidation Service SHALL consolidate to their parent directory
 4. WHEN consolidation reaches the root of the originPath THEN the Invalidation Service SHALL use `/*` as the invalidation path
 5. WHEN the consolidated paths for a distribution exceed 1000 items THEN the Invalidation Service SHALL split the invalidation into multiple CreateInvalidation requests
+6. WHEN a higher-level directory is marked with a wildcard THEN the Invalidation Service SHALL remove all subdirectory paths that are already covered by the parent wildcard
 
 ### Requirement 10
 

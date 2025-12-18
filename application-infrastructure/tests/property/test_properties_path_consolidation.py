@@ -299,3 +299,142 @@ def test_property_24_invalidation_request_splitting(num_paths):
     # Total paths should equal input (no consolidation should happen)
     total_paths = sum(len(chunk) for chunk in result)
     assert total_paths == num_paths, f"Expected {num_paths} paths, got {total_paths}"
+
+
+@settings(max_examples=100)
+@given(st.data())
+def test_property_25_redundant_subdirectory_removal(data):
+    """Property 25: Redundant subdirectory removal.
+    
+    For any set of paths containing both a parent directory wildcard and 
+    subdirectory paths covered by that wildcard, the consolidation algorithm 
+    should remove the redundant subdirectory paths.
+    
+    **Feature: multi-bucket-cloudfront-invalidation, Property 25: Redundant subdirectory removal**
+    **Validates: Requirements 9.6**
+    """
+    # Generate a parent directory path
+    parent_depth = data.draw(st.integers(min_value=1, max_value=4))
+    parent_parts = []
+    for _ in range(parent_depth):
+        part = data.draw(st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+                                min_size=1, max_size=10))
+        parent_parts.append(part)
+    
+    parent_path = '/' + '/'.join(parent_parts)
+    
+    # Create the parent wildcard
+    parent_wildcard = f"{parent_path}/*"
+    
+    # Generate some subdirectory wildcards that should be removed
+    num_subdirs = data.draw(st.integers(min_value=1, max_value=5))
+    subdirectory_wildcards = []
+    
+    for i in range(num_subdirs):
+        subdir_name = data.draw(st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+                                       min_size=1, max_size=10))
+        # Create subdirectory wildcard
+        subdir_wildcard = f"{parent_path}/{subdir_name}/*"
+        subdirectory_wildcards.append(subdir_wildcard)
+    
+    # Also add some individual files under the parent that should be removed
+    num_files = data.draw(st.integers(min_value=0, max_value=3))
+    individual_files = []
+    
+    for i in range(num_files):
+        filename = data.draw(st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+                                    min_size=1, max_size=10))
+        file_path = f"{parent_path}/{filename}.html"
+        individual_files.append(file_path)
+    
+    # Create the input path list with parent wildcard and redundant subdirectories
+    input_paths = [parent_wildcard] + subdirectory_wildcards + individual_files
+    
+    # Add some unrelated paths that should not be affected
+    unrelated_paths = []
+    num_unrelated = data.draw(st.integers(min_value=0, max_value=3))
+    for i in range(num_unrelated):
+        unrelated_name = data.draw(st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+                                          min_size=1, max_size=10))
+        unrelated_path = f"/unrelated{i}/{unrelated_name}.css"
+        unrelated_paths.append(unrelated_path)
+    
+    all_input_paths = input_paths + unrelated_paths
+    
+    # Consolidate the paths
+    result = consolidate_paths(all_input_paths)
+    
+    # Should return a single chunk (not enough paths to split)
+    assert len(result) == 1, "Should return single chunk"
+    
+    consolidated = result[0]
+    
+    # The parent wildcard should be present
+    assert parent_wildcard in consolidated, f"Parent wildcard {parent_wildcard} should be present in {consolidated}"
+    
+    # None of the subdirectory wildcards should be present
+    for subdir_wildcard in subdirectory_wildcards:
+        assert subdir_wildcard not in consolidated, f"Subdirectory wildcard {subdir_wildcard} should be removed, but found in {consolidated}"
+    
+    # None of the individual files under the parent should be present
+    for file_path in individual_files:
+        assert file_path not in consolidated, f"Individual file {file_path} should be removed, but found in {consolidated}"
+    
+    # Unrelated paths should still be present
+    for unrelated_path in unrelated_paths:
+        assert unrelated_path in consolidated, f"Unrelated path {unrelated_path} should be preserved, but not found in {consolidated}"
+
+
+@settings(max_examples=100)
+@given(st.data())
+def test_property_25_nested_redundant_removal(data):
+    """Property 25: Redundant subdirectory removal - nested case.
+    
+    Test the specific example from the requirements:
+    /stage/public/asdf/qwerty/* should remove /stage/public/asdf/qwerty/e/*
+    
+    **Feature: multi-bucket-cloudfront-invalidation, Property 25: Redundant subdirectory removal**
+    **Validates: Requirements 9.6**
+    """
+    # Create the specific example paths
+    parent_wildcard = "/stage/public/asdf/qwerty/*"
+    redundant_subdir = "/stage/public/asdf/qwerty/e/*"
+    
+    # Add some additional paths to make it more realistic
+    other_file = "/stage/public/asdf/qwerty/c/test-03.html"
+    other_subdir = "/stage/public/asdf/qwerty/c/*"
+    
+    # Test case 1: Parent wildcard should remove subdirectory wildcard
+    input_paths = [parent_wildcard, redundant_subdir]
+    result = consolidate_paths(input_paths)
+    
+    assert len(result) == 1, "Should return single chunk"
+    consolidated = result[0]
+    
+    assert parent_wildcard in consolidated, f"Parent wildcard should be present: {consolidated}"
+    assert redundant_subdir not in consolidated, f"Redundant subdirectory should be removed: {consolidated}"
+    assert len(consolidated) == 1, f"Should only have parent wildcard: {consolidated}"
+    
+    # Test case 2: Parent wildcard should remove individual files too
+    input_paths = [parent_wildcard, other_file]
+    result = consolidate_paths(input_paths)
+    
+    assert len(result) == 1, "Should return single chunk"
+    consolidated = result[0]
+    
+    assert parent_wildcard in consolidated, f"Parent wildcard should be present: {consolidated}"
+    assert other_file not in consolidated, f"Individual file should be removed: {consolidated}"
+    assert len(consolidated) == 1, f"Should only have parent wildcard: {consolidated}"
+    
+    # Test case 3: Multiple redundant paths
+    input_paths = [parent_wildcard, redundant_subdir, other_file, other_subdir]
+    result = consolidate_paths(input_paths)
+    
+    assert len(result) == 1, "Should return single chunk"
+    consolidated = result[0]
+    
+    assert parent_wildcard in consolidated, f"Parent wildcard should be present: {consolidated}"
+    assert redundant_subdir not in consolidated, f"Redundant subdirectory should be removed: {consolidated}"
+    assert other_file not in consolidated, f"Individual file should be removed: {consolidated}"
+    assert other_subdir not in consolidated, f"Other subdirectory should be removed: {consolidated}"
+    assert len(consolidated) == 1, f"Should only have parent wildcard: {consolidated}"

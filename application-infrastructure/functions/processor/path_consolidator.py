@@ -207,11 +207,118 @@ def consolidate_sibling_directories(paths: Set[str]) -> Set[str]:
     return consolidated
 
 
+def remove_redundant_subdirectories(paths: Set[str]) -> Set[str]:
+    """Remove redundant subdirectory paths when parent directories have wildcards.
+    
+    Rule: When a higher-level directory is marked with a wildcard, remove all
+    subdirectory paths that are already covered by the parent wildcard.
+    
+    For example:
+    - Input: {'/stage/public/asdf/qwerty/*', '/stage/public/asdf/qwerty/e/*'}
+    - Output: {'/stage/public/asdf/qwerty/*'}
+    
+    Args:
+        paths: Set of paths (may include wildcards)
+        
+    Returns:
+        Set of paths with redundant subdirectories removed
+    """
+    # Separate wildcard paths from non-wildcard paths
+    wildcards = {p for p in paths if p.endswith('/*')}
+    non_wildcards = paths - wildcards
+    
+    # For each wildcard, find any other wildcards that are subdirectories
+    redundant_wildcards = set()
+    
+    for wildcard in wildcards:
+        # Get the directory path (remove the /*)
+        wildcard_dir = wildcard[:-2] if wildcard != '/*' else '/'
+        
+        # Check all other wildcards to see if they are subdirectories
+        for other_wildcard in wildcards:
+            if other_wildcard == wildcard:
+                continue
+                
+            # Get the other directory path
+            other_dir = other_wildcard[:-2] if other_wildcard != '/*' else '/'
+            
+            # Check if other_dir is a subdirectory of wildcard_dir
+            if is_subdirectory(other_dir, wildcard_dir):
+                redundant_wildcards.add(other_wildcard)
+    
+    # Remove redundant wildcards
+    final_wildcards = wildcards - redundant_wildcards
+    
+    # Also check non-wildcard paths against wildcards
+    redundant_non_wildcards = set()
+    
+    for non_wildcard in non_wildcards:
+        for wildcard in final_wildcards:
+            wildcard_dir = wildcard[:-2] if wildcard != '/*' else '/'
+            
+            # Check if the non-wildcard path is covered by this wildcard
+            if is_path_covered_by_wildcard(non_wildcard, wildcard_dir):
+                redundant_non_wildcards.add(non_wildcard)
+                break
+    
+    # Remove redundant non-wildcards
+    final_non_wildcards = non_wildcards - redundant_non_wildcards
+    
+    return final_wildcards | final_non_wildcards
+
+
+def is_subdirectory(potential_subdir: str, parent_dir: str) -> bool:
+    """Check if potential_subdir is a subdirectory of parent_dir.
+    
+    Args:
+        potential_subdir: Path that might be a subdirectory
+        parent_dir: Parent directory path
+        
+    Returns:
+        True if potential_subdir is a subdirectory of parent_dir
+    """
+    if parent_dir == '/':
+        # Everything is a subdirectory of root
+        return potential_subdir != '/'
+    
+    # Normalize paths - ensure no trailing slashes except for root
+    parent_normalized = parent_dir.rstrip('/')
+    subdir_normalized = potential_subdir.rstrip('/')
+    
+    # Check if subdir starts with parent + '/'
+    return (subdir_normalized.startswith(parent_normalized + '/') and 
+            subdir_normalized != parent_normalized)
+
+
+def is_path_covered_by_wildcard(path: str, wildcard_dir: str) -> bool:
+    """Check if a path is covered by a wildcard directory.
+    
+    Args:
+        path: File or directory path to check
+        wildcard_dir: Directory that has a wildcard (without the /*)
+        
+    Returns:
+        True if the path is covered by the wildcard directory
+    """
+    if wildcard_dir == '/':
+        # Root wildcard covers everything
+        return True
+    
+    # Normalize paths
+    wildcard_normalized = wildcard_dir.rstrip('/')
+    path_normalized = path.rstrip('/')
+    
+    # Path is covered if it starts with wildcard_dir + '/'
+    return (path_normalized.startswith(wildcard_normalized + '/') or 
+            path_normalized == wildcard_normalized)
+
+
 def consolidate_paths_recursive(paths: Set[str]) -> Set[str]:
     """Recursively apply consolidation rules until no more consolidation is possible.
     
-    This function applies directory threshold consolidation and sibling directory
-    consolidation in a loop until the path set stabilizes.
+    This function applies directory threshold consolidation, sibling directory
+    consolidation, and redundant subdirectory removal in a loop until the path 
+    set stabilizes.
     
     Args:
         paths: Set of paths to consolidate
@@ -227,6 +334,9 @@ def consolidate_paths_recursive(paths: Set[str]) -> Set[str]:
         
         # Apply sibling directory consolidation
         paths = consolidate_sibling_directories(paths)
+        
+        # Remove redundant subdirectories
+        paths = remove_redundant_subdirectories(paths)
         
         # Check if we've reached a stable state
         current_size = len(paths)
