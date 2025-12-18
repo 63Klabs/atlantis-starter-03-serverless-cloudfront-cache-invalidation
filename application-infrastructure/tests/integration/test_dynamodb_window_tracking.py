@@ -27,7 +27,7 @@ import pytest
 from datetime import datetime, timezone
 
 # Import the window tracker functions
-from functions.ingestor.window_tracker import (
+from common.window_tracker import (
     check_active_window,
     create_window,
     close_window

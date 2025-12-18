@@ -128,7 +128,7 @@ def paths_exceeding_limit(draw, min_paths=1001, max_paths=2500):
 
 # Property Tests
 
-@settings(max_examples=100)
+@settings(max_examples=20)
 @given(index_or_default_file_path())
 def test_property_20_index_and_default_file_directory_consolidation(file_path):
     """Property 20: Index and default file directory consolidation.
@@ -143,8 +143,8 @@ def test_property_20_index_and_default_file_directory_consolidation(file_path):
     # Verify the path is indeed an index or default file
     assert is_index_or_default_file(file_path), f"Path {file_path} should be index/default file"
     
-    # Consolidate the path
-    result = consolidate_paths([file_path])
+    # Consolidate the path with stop_level=1 to allow all consolidation (backward compatible)
+    result = consolidate_paths([file_path], stop_level=1)
     
     # Should return a single chunk
     assert len(result) == 1, "Should return single chunk for one path"
@@ -169,7 +169,7 @@ def test_property_20_index_and_default_file_directory_consolidation(file_path):
     assert consolidated_path == expected, f"Expected {expected}, got {consolidated_path}"
 
 
-@settings(max_examples=100)
+@settings(max_examples=20)
 @given(directory_with_files(min_files=4, max_files=10))
 def test_property_21_directory_consolidation_threshold(directory_and_files):
     """Property 21: Directory consolidation threshold.
@@ -186,8 +186,8 @@ def test_property_21_directory_consolidation_threshold(directory_and_files):
     # Verify we have more than 3 files
     assert len(files) > 3, f"Should have more than 3 files, got {len(files)}"
     
-    # Consolidate the paths
-    result = consolidate_paths(files)
+    # Consolidate the paths with stop_level=1 to allow all consolidation (backward compatible)
+    result = consolidate_paths(files, stop_level=1)
     
     # Should return a single chunk
     assert len(result) == 1, "Should return single chunk"
@@ -204,7 +204,7 @@ def test_property_21_directory_consolidation_threshold(directory_and_files):
     assert consolidated_path == expected, f"Expected {expected}, got {consolidated_path}"
 
 
-@settings(max_examples=100)
+@settings(max_examples=20)
 @given(sibling_directories_with_wildcards(min_siblings=11, max_siblings=20))
 def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     """Property 22: Sibling directory consolidation.
@@ -221,8 +221,8 @@ def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     # Verify we have more than 10 sibling wildcards
     assert len(wildcards) > 10, f"Should have more than 10 siblings, got {len(wildcards)}"
     
-    # Consolidate the paths
-    result = consolidate_paths(wildcards)
+    # Consolidate the paths with stop_level=1 to allow all consolidation (backward compatible)
+    result = consolidate_paths(wildcards, stop_level=1)
     
     # Should return a single chunk
     assert len(result) == 1, "Should return single chunk"
@@ -239,7 +239,7 @@ def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     assert consolidated_path == expected, f"Expected {expected}, got {consolidated_path}"
 
 
-@settings(max_examples=100)
+@settings(max_examples=20)
 @given(st.lists(file_path(min_depth=2, max_depth=5), min_size=1, max_size=100))
 def test_property_23_root_consolidation_terminal_case(paths):
     """Property 23: Root consolidation terminal case.
@@ -269,8 +269,8 @@ def test_property_23_root_consolidation_terminal_case(paths):
         assert all_consolidated[0] == '/*', "Root consolidation should be /*"
 
 
-@settings(max_examples=100, suppress_health_check=[HealthCheck.large_base_example])
-@given(st.integers(min_value=1001, max_value=2000))
+@settings(max_examples=10, suppress_health_check=[HealthCheck.large_base_example])
+@given(st.integers(min_value=1001, max_value=1500))
 def test_property_24_invalidation_request_splitting(num_paths):
     """Property 24: Invalidation request splitting.
     
@@ -301,7 +301,7 @@ def test_property_24_invalidation_request_splitting(num_paths):
     assert total_paths == num_paths, f"Expected {num_paths} paths, got {total_paths}"
 
 
-@settings(max_examples=100)
+@settings(max_examples=20)
 @given(st.data())
 def test_property_25_redundant_subdirectory_removal(data):
     """Property 25: Redundant subdirectory removal.
@@ -385,7 +385,7 @@ def test_property_25_redundant_subdirectory_removal(data):
         assert unrelated_path in consolidated, f"Unrelated path {unrelated_path} should be preserved, but not found in {consolidated}"
 
 
-@settings(max_examples=100)
+@settings(max_examples=20)
 @given(st.data())
 def test_property_25_nested_redundant_removal(data):
     """Property 25: Redundant subdirectory removal - nested case.

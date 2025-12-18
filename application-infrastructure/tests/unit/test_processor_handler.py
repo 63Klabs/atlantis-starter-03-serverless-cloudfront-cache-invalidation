@@ -440,3 +440,280 @@ class TestProcessorHandler:
         assert result['statusCode'] == 500
         assert 'Configuration error' in result['body']
         assert 'QUEUE_URL' in result['body']
+
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_configuration_resolution_with_bucket_tags(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test configuration resolution for buckets with configuration tags.
+        
+        Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 5.1, 5.2, 5.3
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': '/prod/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        bucket_config = {
+            'directory_threshold': 5,
+            'stop_level': 2,
+            'directory_threshold_source': 'tag',
+            'stop_level_source': 'tag'
+        }
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = bucket_config
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = [['/file1.js']]
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify configuration was retrieved for the bucket
+        mock_get_config.assert_called_once_with('test-bucket')
+        
+        # Verify consolidate_paths was called with bucket-specific configuration
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args
+        assert call_args[1]['directory_threshold'] == 5
+        assert call_args[1]['stop_level'] == 2
+
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_configuration_resolution_without_bucket_tags(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test configuration resolution for buckets without configuration tags.
+        
+        Requirements: 1.3, 2.3, 5.2
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': '/prod/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        # Configuration with default values
+        bucket_config = {
+            'directory_threshold': 3,  # Default value
+            'stop_level': 1,  # Default value
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default'
+        }
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = bucket_config
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = [['/file1.js']]
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify configuration was retrieved for the bucket
+        mock_get_config.assert_called_once_with('test-bucket')
+        
+        # Verify consolidate_paths was called with default configuration
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args
+        assert call_args[1]['directory_threshold'] == 3  # Default value
+        assert call_args[1]['stop_level'] == 1  # Default value
+
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    @patch('functions.processor.handler.DIRECTORY_CONSOLIDATION_THRESHOLD', 3)
+    @patch('functions.processor.handler.CONSOLIDATION_STOP_LEVEL', 1)
+    def test_configuration_reading_error_fallback(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test error handling when configuration reading fails.
+        
+        Requirements: 1.3, 2.3, 5.2, 5.3
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': '/prod/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.side_effect = Exception("S3 error")  # Simulate configuration reading failure
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = [['/file1.js']]
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify configuration reading was attempted
+        mock_get_config.assert_called_once_with('test-bucket')
+        
+        # Verify consolidate_paths was called with fallback default configuration
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args
+        assert call_args[1]['directory_threshold'] == 3  # Fallback default
+        assert call_args[1]['stop_level'] == 1  # Fallback default
+
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    @patch('functions.processor.handler.logger')
+    def test_configuration_decision_logging(
+        self, mock_logger, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test logging of configuration decisions.
+        
+        Requirements: 5.1, 5.2, 5.3
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': '/prod/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        bucket_config = {
+            'directory_threshold': 5,
+            'stop_level': 2,
+            'directory_threshold_source': 'tag',
+            'stop_level_source': 'tag'
+        }
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = bucket_config
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = [['/file1.js']]
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify configuration logging occurred
+        assert mock_logger.info.called, "Should log configuration decisions"
+        
+        # Check that configuration was logged
+        config_logged = False
+        for call in mock_logger.info.call_args_list:
+            call_str = str(call)
+            if 'Using consolidation configuration for bucket' in call_str and 'test-bucket' in call_str:
+                config_logged = True
+                break
+        
+        assert config_logged, "Should log effective configuration being used for bucket"

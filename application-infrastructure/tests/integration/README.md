@@ -23,6 +23,15 @@ export TEST_QUEUE_URL="https://sqs.region.amazonaws.com/account/queue-name"
 export TEST_BUCKET_NAME="your-test-bucket-name"
 export TEST_DISTRIBUTION_ID="E1234ABCD5678"
 export TRACKING_TABLE="your-prefix-project-stage-WindowTracking"
+
+# For enhanced configuration flow tests
+export TEST_BUCKET_WITH_CONFIG_TAGS="your-test-bucket-with-config-tags"
+export TEST_BUCKET_WITHOUT_CONFIG_TAGS="your-test-bucket-without-config-tags"
+export DIRECTORY_CONSOLIDATION_THRESHOLD="3"  # Expected default from CloudFormation
+export CONSOLIDATION_STOP_LEVEL="1"  # Expected default from CloudFormation
+
+# For backward compatibility tests (uses same variables as enhanced configuration flow)
+# TEST_BUCKET_WITHOUT_CONFIG_TAGS is the primary bucket for backward compatibility testing
 ```
 
 ### Run All Integration Tests
@@ -43,6 +52,12 @@ pytest tests/integration/test_dynamodb_window_tracking.py -v
 
 # End-to-end flow tests
 pytest tests/integration/test_end_to_end.py -v
+
+# Enhanced configuration flow tests
+pytest tests/integration/test_enhanced_configuration_flow.py -v
+
+# Backward compatibility tests
+pytest tests/integration/test_backward_compatibility.py -v
 ```
 
 ### Run Specific Test Classes
@@ -123,14 +138,81 @@ Tests DynamoDB window tracking mechanism:
 Tests complete event flow:
 - S3 event → Ingestor → SQS → Processor → CloudFront invalidation
 
+### test_enhanced_configuration_flow.py
+
+Tests enhanced configuration flow with bucket-specific settings:
+
+- **Bucket Configuration Tags**:
+  - ✓ End-to-end flow with buckets having configuration tags
+  - ✓ End-to-end flow with buckets without configuration tags
+  - ✓ Configuration tag reading and validation
+  - ✓ Default value fallback behavior
+  
+- **Mixed Environment**:
+  - ✓ Processing events from multiple buckets with different configurations
+  - ✓ Independent configuration application per bucket
+  - ✓ Mixed configuration logging
+  
+- **Consolidation Behavior Changes**:
+  - ✓ Different directory consolidation thresholds produce different behavior
+  - ✓ Different consolidation stop levels produce different behavior
+  - ✓ Stop level prevention and root consolidation
+  
+- **CloudFormation Parameter Integration**:
+  - ✓ Environment variables set from CloudFormation parameters
+  - ✓ Parameter validation and range checking
+  - ✓ Default parameter values
+  
+- **Error Handling and Logging**:
+  - ✓ Invalid tag value handling with graceful fallback
+  - ✓ Comprehensive configuration decision logging
+  - ✓ Warning messages for invalid values
+  - ✓ JSON-formatted configuration logging
+
+### test_backward_compatibility.py
+
+Tests backward compatibility of enhanced system with existing deployments:
+
+- **Existing Buckets Without New Tags**:
+  - ✓ Legacy bucket processing works without configuration tags
+  - ✓ Consolidation behavior matches original system with default configuration
+  - ✓ Index file handling works as before for legacy buckets
+  
+- **Consolidation Behavior Unchanged**:
+  - ✓ Default directory consolidation threshold behavior preserved
+  - ✓ Default stop level behavior (1) matches original system
+  - ✓ Sibling directory consolidation works as in original system
+  
+- **Enhanced System Deployment**:
+  - ✓ Required environment variables present in Lambda configuration
+  - ✓ Legacy event format still supported without modification
+  - ✓ Error handling remains robust with no new error conditions
+
 ## Setting Up Test Resources
 
-### Create Test S3 Bucket
+### Create Test S3 Buckets
 
 ```bash
+# Standard test bucket
 aws s3 mb s3://your-test-bucket-name
 aws s3api put-bucket-tagging \
   --bucket your-test-bucket-name \
+  --tagging 'TagSet=[{Key=AllowInvalidationEvents,Value=true}]'
+
+# Test bucket with configuration tags (for enhanced configuration flow tests)
+aws s3 mb s3://your-test-bucket-with-config-tags
+aws s3api put-bucket-tagging \
+  --bucket your-test-bucket-with-config-tags \
+  --tagging 'TagSet=[
+    {Key=AllowInvalidationEvents,Value=true},
+    {Key=invalidator:DirectoryConsolidationThreshold,Value=5},
+    {Key=invalidator:ConsolidationStopLevel,Value=2}
+  ]'
+
+# Test bucket without configuration tags (for enhanced configuration flow tests)
+aws s3 mb s3://your-test-bucket-without-config-tags
+aws s3api put-bucket-tagging \
+  --bucket your-test-bucket-without-config-tags \
   --tagging 'TagSet=[{Key=AllowInvalidationEvents,Value=true}]'
 ```
 

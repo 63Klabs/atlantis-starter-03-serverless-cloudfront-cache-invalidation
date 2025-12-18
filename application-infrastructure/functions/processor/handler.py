@@ -18,19 +18,20 @@ from typing import Dict, Any, List, Tuple
 # Import from Lambda layer
 from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 from common.window_tracker import close_window # pyright: ignore[reportMissingImports]
+from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
 
 # Import function-specific modules (compatible with both Lambda and test environments)
 try:
     # Lambda environment - files are at root level
     from queue_client import receive_messages_batch, delete_messages_batch
-    from tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
+    from tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags, get_bucket_consolidation_config
     from distribution_finder import find_matching_distributions
     from path_consolidator import consolidate_paths
     from invalidation_client import create_invalidation
 except ImportError:
     # Development/test environment - use relative imports
     from .queue_client import receive_messages_batch, delete_messages_batch
-    from .tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags
+    from .tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags, get_bucket_consolidation_config
     from .distribution_finder import find_matching_distributions
     from .path_consolidator import consolidate_paths
     from .invalidation_client import create_invalidation
@@ -415,14 +416,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Track messages to delete (successfully processed)
         messages_to_delete = []
         
-        # Step 3-7: Process each group
+        # Step 3-8: Process each group
         group_index = 0
         for (bucket_name, origin_path), messages in grouped_messages.items():
             group_index += 1
             
             # DEBUG: Log group processing start
             logger.info(
-                f"Step 3-7: Processing group {group_index}/{len(grouped_messages)} DEBUG",
+                f"Step 3-8: Processing group {group_index}/{len(grouped_messages)} DEBUG",
                 extra={'extra_fields': {
                     'groupIndex': group_index,
                     'totalGroups': len(grouped_messages),
@@ -654,7 +655,64 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 messages_to_delete.extend(messages)
                 continue
             
-            # Step 6: Extract and consolidate paths
+            # Step 6: Get bucket-specific consolidation configuration
+            # DEBUG: Log configuration resolution start
+            logger.info(
+                f"Step 6: Resolving consolidation configuration for bucket {bucket_name} DEBUG",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'aboutToCallGetBucketConsolidationConfig': True
+                }}
+            )
+            
+            try:
+                bucket_config = get_bucket_consolidation_config(bucket_name)
+                
+                # DEBUG: Log configuration resolution result
+                logger.info(
+                    f"Step 6: Consolidation configuration resolved DEBUG",
+                    extra={'extra_fields': {
+                        'bucketName': bucket_name,
+                        'bucketConfig': bucket_config,
+                        'configResolutionSuccessful': True
+                    }}
+                )
+                
+                # Log effective configuration being used for this bucket
+                logger.info(
+                    f"Using consolidation configuration for bucket {bucket_name}",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'directory_threshold': bucket_config['directory_threshold'],
+                        'stop_level': bucket_config['stop_level'],
+                        'directory_threshold_source': bucket_config['directory_threshold_source'],
+                        'stop_level_source': bucket_config['stop_level_source'],
+                        'operation': 'consolidation_config_applied'
+                    }}
+                )
+                
+            except Exception as e:
+                # Error handling: fall back to default configuration gracefully
+                logger.error(
+                    f"Failed to resolve consolidation configuration for bucket {bucket_name}, using defaults: {str(e)}",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'error': str(e),
+                        'fallback_directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
+                        'fallback_stop_level': CONSOLIDATION_STOP_LEVEL,
+                        'fallback_reason': 'config_resolution_error'
+                    }}
+                )
+                
+                # Use default configuration
+                bucket_config = {
+                    'directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
+                    'stop_level': CONSOLIDATION_STOP_LEVEL,
+                    'directory_threshold_source': 'default_fallback',
+                    'stop_level_source': 'default_fallback'
+                }
+            
+            # Step 7: Extract and consolidate paths
             object_paths = []
             for message in messages:
                 parsed_body = message.get('parsed_body', {})
@@ -722,8 +780,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }}
             )
             
-            # Consolidate paths
-            consolidated_path_chunks = consolidate_paths(object_paths)
+            # Consolidate paths with bucket-specific configuration
+            consolidated_path_chunks = consolidate_paths(
+                object_paths,
+                directory_threshold=bucket_config['directory_threshold'],
+                stop_level=bucket_config['stop_level']
+            )
             
             # DEBUG: Log paths after consolidation
             logger.info(
@@ -736,7 +798,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }}
             )
             
-            # Step 7: Submit invalidations for each valid distribution
+            # Step 8: Submit invalidations for each valid distribution
             for dist_id in valid_distributions:
                 for chunk_idx, path_chunk in enumerate(consolidated_path_chunks):
                     try:
@@ -779,7 +841,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Mark messages for deletion (processed successfully)
             messages_to_delete.extend(messages)
         
-        # Step 8: Delete processed messages from SQS
+        # Step 9: Delete processed messages from SQS
         if messages_to_delete:
             receipt_handles = [msg.get('ReceiptHandle') for msg in messages_to_delete if msg.get('ReceiptHandle')]
             
@@ -812,7 +874,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         }}
                     )
         
-        # Step 9: Close aggregation window
+        # Step 10: Close aggregation window
         try:
             close_window()
             logger.info("Successfully closed aggregation window")

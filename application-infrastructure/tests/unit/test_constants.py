@@ -1,0 +1,177 @@
+"""Unit tests for the enhanced constants module."""
+
+import os
+import unittest
+from unittest.mock import patch
+import sys
+from pathlib import Path
+
+# Add the layers/common/python directory to the path for testing
+test_dir = Path(__file__).parent
+layers_path = test_dir.parent.parent / "layers" / "common" / "python"
+sys.path.insert(0, str(layers_path))
+
+from common import constants
+
+
+class TestEnhancedConstants(unittest.TestCase):
+    """Test enhanced constants module with dynamic configuration."""
+
+    def setUp(self):
+        """Set up test environment."""
+        # Store original environment variables
+        self.original_env = {}
+        env_vars = [
+            'AGGREGATION_WINDOW_SECONDS',
+            'DIRECTORY_CONSOLIDATION_THRESHOLD', 
+            'CONSOLIDATION_STOP_LEVEL'
+        ]
+        for var in env_vars:
+            self.original_env[var] = os.environ.get(var)
+            # Clear environment variables for clean testing
+            if var in os.environ:
+                del os.environ[var]
+
+    def tearDown(self):
+        """Clean up test environment."""
+        # Restore original environment variables
+        for var, value in self.original_env.items():
+            if value is not None:
+                os.environ[var] = value
+            elif var in os.environ:
+                del os.environ[var]
+
+    def test_aggregation_window_seconds_environment_variable_reading(self):
+        """Test AGGREGATION_WINDOW_SECONDS reads from environment variable."""
+        # Test with valid environment variable
+        with patch.dict(os.environ, {'AGGREGATION_WINDOW_SECONDS': '600'}):
+            # Reload the module to pick up new environment variable
+            import importlib
+            importlib.reload(constants)
+            self.assertEqual(constants.AGGREGATION_WINDOW_SECONDS, 600)
+
+    def test_directory_consolidation_threshold_environment_variable_reading(self):
+        """Test DIRECTORY_CONSOLIDATION_THRESHOLD reads from environment variable."""
+        # Test with valid environment variable
+        with patch.dict(os.environ, {'DIRECTORY_CONSOLIDATION_THRESHOLD': '5'}):
+            import importlib
+            importlib.reload(constants)
+            self.assertEqual(constants.DIRECTORY_CONSOLIDATION_THRESHOLD, 5)
+
+    def test_consolidation_stop_level_environment_variable_reading(self):
+        """Test CONSOLIDATION_STOP_LEVEL reads from environment variable."""
+        # Test with valid environment variable
+        with patch.dict(os.environ, {'CONSOLIDATION_STOP_LEVEL': '2'}):
+            import importlib
+            importlib.reload(constants)
+            self.assertEqual(constants.CONSOLIDATION_STOP_LEVEL, 2)
+
+    def test_fallback_to_hardcoded_defaults_when_environment_variables_missing(self):
+        """Test fallback to hardcoded defaults when environment variables are missing."""
+        # Ensure no environment variables are set
+        env_vars = ['AGGREGATION_WINDOW_SECONDS', 'DIRECTORY_CONSOLIDATION_THRESHOLD', 'CONSOLIDATION_STOP_LEVEL']
+        with patch.dict(os.environ, {}, clear=True):
+            # Remove any existing env vars
+            for var in env_vars:
+                if var in os.environ:
+                    del os.environ[var]
+            
+            import importlib
+            importlib.reload(constants)
+            
+            # Check defaults
+            self.assertEqual(constants.AGGREGATION_WINDOW_SECONDS, 300)  # 5 minutes default
+            self.assertEqual(constants.DIRECTORY_CONSOLIDATION_THRESHOLD, 3)  # Default threshold
+            self.assertEqual(constants.CONSOLIDATION_STOP_LEVEL, 1)  # Default stop level
+
+    def test_handling_of_invalid_environment_variable_values(self):
+        """Test handling of invalid environment variable values."""
+        # Test with non-numeric values
+        with patch.dict(os.environ, {
+            'AGGREGATION_WINDOW_SECONDS': 'invalid',
+            'DIRECTORY_CONSOLIDATION_THRESHOLD': 'not_a_number',
+            'CONSOLIDATION_STOP_LEVEL': 'bad_value'
+        }):
+            import importlib
+            importlib.reload(constants)
+            
+            # Should fall back to defaults
+            self.assertEqual(constants.AGGREGATION_WINDOW_SECONDS, 300)
+            self.assertEqual(constants.DIRECTORY_CONSOLIDATION_THRESHOLD, 3)
+            self.assertEqual(constants.CONSOLIDATION_STOP_LEVEL, 1)
+
+    def test_handling_of_out_of_range_environment_variable_values(self):
+        """Test handling of out-of-range environment variable values."""
+        # Test with values outside valid ranges
+        with patch.dict(os.environ, {
+            'AGGREGATION_WINDOW_SECONDS': '100000',  # Too high (max 86400)
+            'DIRECTORY_CONSOLIDATION_THRESHOLD': '2000',  # Too high (max 1000)
+            'CONSOLIDATION_STOP_LEVEL': '-1'  # Too low (min 0)
+        }):
+            import importlib
+            importlib.reload(constants)
+            
+            # Should fall back to defaults
+            self.assertEqual(constants.AGGREGATION_WINDOW_SECONDS, 300)
+            self.assertEqual(constants.DIRECTORY_CONSOLIDATION_THRESHOLD, 3)
+            self.assertEqual(constants.CONSOLIDATION_STOP_LEVEL, 1)
+
+    def test_boundary_values_for_environment_variables(self):
+        """Test boundary values for environment variables."""
+        # Test minimum valid values
+        with patch.dict(os.environ, {
+            'AGGREGATION_WINDOW_SECONDS': '1',  # Min value
+            'DIRECTORY_CONSOLIDATION_THRESHOLD': '1',  # Min value
+            'CONSOLIDATION_STOP_LEVEL': '0'  # Min value
+        }):
+            import importlib
+            importlib.reload(constants)
+            
+            self.assertEqual(constants.AGGREGATION_WINDOW_SECONDS, 1)
+            self.assertEqual(constants.DIRECTORY_CONSOLIDATION_THRESHOLD, 1)
+            self.assertEqual(constants.CONSOLIDATION_STOP_LEVEL, 0)
+
+        # Test maximum valid values
+        with patch.dict(os.environ, {
+            'AGGREGATION_WINDOW_SECONDS': '86400',  # Max value (24 hours)
+            'DIRECTORY_CONSOLIDATION_THRESHOLD': '1000',  # Max value
+            'CONSOLIDATION_STOP_LEVEL': '1000'  # Max value
+        }):
+            import importlib
+            importlib.reload(constants)
+            
+            self.assertEqual(constants.AGGREGATION_WINDOW_SECONDS, 86400)
+            self.assertEqual(constants.DIRECTORY_CONSOLIDATION_THRESHOLD, 1000)
+            self.assertEqual(constants.CONSOLIDATION_STOP_LEVEL, 1000)
+
+    def test_validation_helper_function(self):
+        """Test the _get_validated_int_env helper function directly."""
+        # Test valid value
+        with patch.dict(os.environ, {'TEST_VAR': '50'}):
+            result = constants._get_validated_int_env('TEST_VAR', 10, 1, 100)
+            self.assertEqual(result, 50)
+
+        # Test missing environment variable
+        if 'TEST_VAR' in os.environ:
+            del os.environ['TEST_VAR']
+        result = constants._get_validated_int_env('TEST_VAR', 10, 1, 100)
+        self.assertEqual(result, 10)  # Should return default
+
+        # Test invalid value (non-numeric)
+        with patch.dict(os.environ, {'TEST_VAR': 'invalid'}):
+            result = constants._get_validated_int_env('TEST_VAR', 10, 1, 100)
+            self.assertEqual(result, 10)  # Should return default
+
+        # Test out of range value (too low)
+        with patch.dict(os.environ, {'TEST_VAR': '0'}):
+            result = constants._get_validated_int_env('TEST_VAR', 10, 1, 100)
+            self.assertEqual(result, 10)  # Should return default
+
+        # Test out of range value (too high)
+        with patch.dict(os.environ, {'TEST_VAR': '200'}):
+            result = constants._get_validated_int_env('TEST_VAR', 10, 1, 100)
+            self.assertEqual(result, 10)  # Should return default
+
+
+if __name__ == '__main__':
+    unittest.main()

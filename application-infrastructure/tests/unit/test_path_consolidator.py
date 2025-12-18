@@ -7,7 +7,10 @@ from functions.processor.path_consolidator import (
     get_parent_directory,
     consolidate_index_and_default_files,
     consolidate_by_directory_threshold,
-    consolidate_sibling_directories
+    consolidate_sibling_directories,
+    calculate_path_depth,
+    is_consolidation_allowed_at_depth,
+    apply_stop_level_constraints
 )
 
 
@@ -255,3 +258,155 @@ class TestSplitting:
         assert len(result) == 2
         assert len(result[0]) == 1000
         assert len(result[1]) == 500
+
+
+class TestPathDepthCalculation:
+    """Test path depth calculation functionality."""
+    
+    def test_calculate_depth_from_root(self):
+        """Test depth calculation from root directory."""
+        assert calculate_path_depth('/file.html', '/') == 1
+        assert calculate_path_depth('/dir/file.html', '/') == 2
+        assert calculate_path_depth('/dir/subdir/file.html', '/') == 3
+    
+    def test_calculate_depth_from_custom_root(self):
+        """Test depth calculation from custom root directory."""
+        assert calculate_path_depth('/prod/public/file.html', '/prod/public') == 1
+        assert calculate_path_depth('/prod/public/dir/file.html', '/prod/public') == 2
+        assert calculate_path_depth('/prod/public/dir/subdir/file.html', '/prod/public') == 3
+    
+    def test_calculate_depth_same_as_root(self):
+        """Test depth calculation when path equals root."""
+        assert calculate_path_depth('/prod/public', '/prod/public') == 0
+        assert calculate_path_depth('/', '/') == 0
+    
+    def test_calculate_depth_not_under_root(self):
+        """Test depth calculation when path is not under root."""
+        assert calculate_path_depth('/other/file.html', '/prod/public') == 0
+        assert calculate_path_depth('/prod/file.html', '/prod/public') == 0
+    
+    def test_calculate_depth_with_trailing_slashes(self):
+        """Test depth calculation with trailing slashes."""
+        assert calculate_path_depth('/prod/public/dir/', '/prod/public') == 1
+        assert calculate_path_depth('/prod/public/dir/', '/prod/public/') == 1
+
+
+class TestConsolidationAllowed:
+    """Test consolidation allowed at depth functionality."""
+    
+    def test_stop_level_one_allows_all(self):
+        """Test that stop level 1 allows consolidation at all depths."""
+        assert is_consolidation_allowed_at_depth(0, 1) is True
+        assert is_consolidation_allowed_at_depth(1, 1) is True
+        assert is_consolidation_allowed_at_depth(5, 1) is True
+    
+    def test_stop_level_zero_allows_all(self):
+        """Test that stop level 0 allows consolidation at all depths."""
+        assert is_consolidation_allowed_at_depth(0, 0) is True
+        assert is_consolidation_allowed_at_depth(1, 0) is True
+        assert is_consolidation_allowed_at_depth(5, 0) is True
+    
+    def test_stop_level_blocks_shallow_depths(self):
+        """Test that stop level blocks consolidation at shallow depths."""
+        # Stop level 3 blocks depths 0, 1, 2
+        assert is_consolidation_allowed_at_depth(0, 3) is False
+        assert is_consolidation_allowed_at_depth(1, 3) is False
+        assert is_consolidation_allowed_at_depth(2, 3) is False
+        # But allows depth 3 and deeper
+        assert is_consolidation_allowed_at_depth(3, 3) is True
+        assert is_consolidation_allowed_at_depth(4, 3) is True
+    
+    def test_stop_level_boundary_conditions(self):
+        """Test stop level boundary conditions."""
+        # Stop level 2 blocks depth 0 and 1, allows 2+
+        assert is_consolidation_allowed_at_depth(0, 2) is False
+        assert is_consolidation_allowed_at_depth(1, 2) is False
+        assert is_consolidation_allowed_at_depth(2, 2) is True
+        assert is_consolidation_allowed_at_depth(3, 2) is True
+
+
+class TestStopLevelConstraints:
+    """Test stop level constraint application."""
+    
+    def test_stop_level_zero_consolidates_to_root(self):
+        """Test that stop level 0 consolidates everything to root."""
+        paths = {'/dir1/file1.html', '/dir2/file2.html', '/dir3/file3.html'}
+        result = apply_stop_level_constraints(paths, 0, '/')
+        assert result == {'/*'}
+    
+    def test_stop_level_allows_deep_wildcards(self):
+        """Test that stop level allows wildcards at allowed depths."""
+        paths = {'/dir1/subdir1/*', '/dir1/subdir2/*', '/dir2/file.html'}
+        result = apply_stop_level_constraints(paths, 3, '/')
+        # All paths should be allowed since wildcards are at depth 2 (>= 3 not required)
+        assert '/dir1/subdir1/*' in result
+        assert '/dir1/subdir2/*' in result
+        assert '/dir2/file.html' in result
+    
+    def test_stop_level_blocks_shallow_wildcards(self):
+        """Test that stop level blocks wildcards at blocked depths."""
+        paths = {'/dir1/*', '/dir2/*', '/file.html'}
+        result = apply_stop_level_constraints(paths, 2, '/')
+        # Wildcards at depth 1 should be blocked, regular files allowed
+        assert '/file.html' in result
+        # Blocked wildcards are kept as-is (the prevention happens in consolidation functions)
+        assert '/dir1/*' in result
+        assert '/dir2/*' in result
+
+
+class TestBucketSpecificConfiguration:
+    """Test bucket-specific configuration parameters."""
+    
+    def test_custom_directory_threshold(self):
+        """Test consolidation with custom directory threshold."""
+        paths = ['/dir/file1.html', '/dir/file2.html']  # Only 2 files
+        
+        # With threshold 1, should consolidate
+        result = consolidate_paths(paths, directory_threshold=1)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]
+        
+        # With threshold 3, should not consolidate
+        result = consolidate_paths(paths, directory_threshold=3)
+        assert len(result) == 1
+        assert len(result[0]) == 2
+        assert '/dir/file1.html' in result[0]
+        assert '/dir/file2.html' in result[0]
+    
+    def test_custom_stop_level(self):
+        """Test consolidation with custom stop level."""
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        
+        # With stop level 1, should consolidate normally
+        result = consolidate_paths(paths, stop_level=1)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]
+        
+        # With stop level 2, should prevent consolidation at depth 1
+        result = consolidate_paths(paths, stop_level=2)
+        assert len(result) == 1
+        # Should keep individual files since consolidation to /dir/* (depth 1) is blocked
+        assert len(result[0]) == 4
+    
+    def test_stop_level_zero_special_case(self):
+        """Test that stop level 0 consolidates everything to root."""
+        paths = ['/dir1/file1.html', '/dir2/file2.html', '/dir3/file3.html']
+        result = consolidate_paths(paths, stop_level=0)
+        assert len(result) == 1
+        assert len(result[0]) == 1
+        assert result[0][0] == '/*'
+    
+    def test_index_file_with_stop_level(self):
+        """Test index file consolidation respects stop level."""
+        paths = ['/dir/index.html']
+        
+        # With stop level 1, should consolidate index file
+        result = consolidate_paths(paths, stop_level=1)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]
+        
+        # With stop level 2, should prevent consolidation to /dir/* (depth 1)
+        result = consolidate_paths(paths, stop_level=2)
+        assert len(result) == 1
+        assert '/dir/index.html' in result[0]
+        assert '/dir/*' not in result[0]

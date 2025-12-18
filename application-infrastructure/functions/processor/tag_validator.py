@@ -14,6 +14,7 @@ from botocore.exceptions import ClientError
 
 # Import from Lambda layer
 from common.logger import setup_logger # pyright: ignore[reportMissingImports]
+from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
 
 logger = setup_logger(__name__)
 
@@ -391,3 +392,176 @@ def validate_distribution_tags(
         )
     
     return is_valid
+
+
+def validate_consolidation_tag_value(tag_value: str, min_val: int, max_val: int) -> Optional[int]:
+    """Validate and convert a consolidation tag value to integer.
+    
+    Validates that the tag value is a valid integer within the specified range.
+    Used for validating DirectoryConsolidationThreshold and ConsolidationStopLevel tags.
+    
+    Args:
+        tag_value: String value from the bucket tag
+        min_val: Minimum allowed value (inclusive)
+        max_val: Maximum allowed value (inclusive)
+        
+    Returns:
+        Valid integer value, or None if invalid
+        
+    **Feature: dynamic-bucket-consolidation-config, Property 4 & 17: Tag value validation**
+    **Validates: Requirements 1.4, 5.3**
+    """
+    try:
+        int_value = int(tag_value)
+        if min_val <= int_value <= max_val:
+            return int_value
+        else:
+            logger.warning(
+                f"Consolidation tag value {int_value} is outside valid range [{min_val}, {max_val}]",
+                extra={'extra_fields': {
+                    'tag_value': tag_value,
+                    'parsed_value': int_value,
+                    'min_value': min_val,
+                    'max_value': max_val,
+                    'validation_result': False,
+                    'reason': 'value_out_of_range'
+                }}
+            )
+            return None
+    except (ValueError, TypeError):
+        logger.warning(
+            f"Consolidation tag value '{tag_value}' is not a valid integer",
+            extra={'extra_fields': {
+                'tag_value': tag_value,
+                'validation_result': False,
+                'reason': 'invalid_integer'
+            }}
+        )
+        return None
+
+
+def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
+    """Retrieve consolidation configuration from bucket tags.
+    
+    Reads the DirectoryConsolidationThreshold and ConsolidationStopLevel tags
+    from the specified bucket and returns the effective configuration values.
+    Falls back to default values from constants when tags are missing or invalid.
+    
+    Args:
+        bucket_name: Name of the S3 bucket
+        
+    Returns:
+        Dictionary with keys:
+        - 'directory_threshold': Effective directory consolidation threshold
+        - 'stop_level': Effective consolidation stop level
+        - 'directory_threshold_source': 'tag' or 'default'
+        - 'stop_level_source': 'tag' or 'default'
+        
+    **Feature: dynamic-bucket-consolidation-config, Property 1, 2, 3, 6, 7, 8, 15, 16: Configuration reading**
+    **Validates: Requirements 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 5.1, 5.2**
+    """
+    logger.info(
+        f"Reading consolidation configuration for bucket: {bucket_name}",
+        extra={'extra_fields': {
+            'bucket_name': bucket_name,
+            'operation': 'get_bucket_consolidation_config'
+        }}
+    )
+    
+    # Retrieve bucket tags
+    tags = get_bucket_tags(bucket_name)
+    
+    # Initialize configuration with defaults
+    config = {
+        'directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
+        'stop_level': CONSOLIDATION_STOP_LEVEL,
+        'directory_threshold_source': 'default',
+        'stop_level_source': 'default'
+    }
+    
+    # If tags could not be retrieved, use defaults
+    if tags is None:
+        logger.warning(
+            f"Could not retrieve tags for bucket {bucket_name}, using default consolidation configuration",
+            extra={'extra_fields': {
+                'bucket_name': bucket_name,
+                'directory_threshold': config['directory_threshold'],
+                'stop_level': config['stop_level'],
+                'directory_threshold_source': config['directory_threshold_source'],
+                'stop_level_source': config['stop_level_source'],
+                'reason': 'tag_retrieval_failed'
+            }}
+        )
+        return config
+    
+    # Check for DirectoryConsolidationThreshold tag
+    threshold_tag = tags.get('invalidator:DirectoryConsolidationThreshold')
+    if threshold_tag is not None:
+        validated_threshold = validate_consolidation_tag_value(threshold_tag, 1, 1000)
+        if validated_threshold is not None:
+            config['directory_threshold'] = validated_threshold
+            config['directory_threshold_source'] = 'tag'
+            logger.info(
+                f"Using bucket-specific directory consolidation threshold: {validated_threshold}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'tag_value': threshold_tag,
+                    'effective_value': validated_threshold,
+                    'source': 'tag'
+                }}
+            )
+        else:
+            logger.warning(
+                f"Invalid DirectoryConsolidationThreshold tag value '{threshold_tag}' for bucket {bucket_name}, using default: {config['directory_threshold']}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'invalid_tag_value': threshold_tag,
+                    'default_value': config['directory_threshold'],
+                    'fallback_reason': 'invalid_tag_value'
+                }}
+            )
+    
+    # Check for ConsolidationStopLevel tag
+    stop_level_tag = tags.get('invalidator:ConsolidationStopLevel')
+    if stop_level_tag is not None:
+        validated_stop_level = validate_consolidation_tag_value(stop_level_tag, 0, 1000)
+        if validated_stop_level is not None:
+            config['stop_level'] = validated_stop_level
+            config['stop_level_source'] = 'tag'
+            logger.info(
+                f"Using bucket-specific consolidation stop level: {validated_stop_level}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'tag_value': stop_level_tag,
+                    'effective_value': validated_stop_level,
+                    'source': 'tag'
+                }}
+            )
+        else:
+            logger.warning(
+                f"Invalid ConsolidationStopLevel tag value '{stop_level_tag}' for bucket {bucket_name}, using default: {config['stop_level']}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'invalid_tag_value': stop_level_tag,
+                    'default_value': config['stop_level'],
+                    'fallback_reason': 'invalid_tag_value'
+                }}
+            )
+    
+    # Log final configuration
+    logger.info(
+        f"Effective consolidation configuration for bucket {bucket_name}",
+        extra={'extra_fields': {
+            'bucket_name': bucket_name,
+            'directory_threshold': config['directory_threshold'],
+            'stop_level': config['stop_level'],
+            'directory_threshold_source': config['directory_threshold_source'],
+            'stop_level_source': config['stop_level_source'],
+            'configuration_tags_found': {
+                'DirectoryConsolidationThreshold': threshold_tag,
+                'ConsolidationStopLevel': stop_level_tag
+            }
+        }}
+    )
+    
+    return config

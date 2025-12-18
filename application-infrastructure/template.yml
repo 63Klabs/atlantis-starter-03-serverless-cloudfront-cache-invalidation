@@ -69,6 +69,8 @@ Metadata:
           - LogRetentionInDaysForPROD
           - LogRetentionInDaysForDEVTEST
           - AggregationWindowSeconds
+          - DirectoryConsolidationThreshold
+          - ConsolidationStopLevel
           - MaxPathsPerInvalidation
 
 # =============================================================================
@@ -231,6 +233,20 @@ Parameters:
     Default: 300
     MinValue: 60
     MaxValue: 900
+
+  DirectoryConsolidationThreshold:
+    Type: Number
+    Description: "Default threshold for directory consolidation (number of files that triggers consolidation to directory wildcard)"
+    Default: 3
+    MinValue: 1
+    MaxValue: 1000
+
+  ConsolidationStopLevel:
+    Type: Number
+    Description: "Directory depth from root where consolidation stops (0 = consolidate to root, 1+ = prevent consolidation at that depth or shallower)"
+    Default: 1
+    MinValue: 0
+    MaxValue: 1000
 
   MaxPathsPerInvalidation:
     Type: Number
@@ -594,6 +610,11 @@ Resources:
           TRACKING_TABLE: !Ref WindowTrackingTable
           MAX_BATCH_SIZE: 10
           MAX_PATHS_PER_INVALIDATION: !Ref MaxPathsPerInvalidation
+          
+          # Path consolidation configuration
+          AGGREGATION_WINDOW_SECONDS: !Ref AggregationWindowSeconds
+          DIRECTORY_CONSOLIDATION_THRESHOLD: !Ref DirectoryConsolidationThreshold
+          CONSOLIDATION_STOP_LEVEL: !Ref ConsolidationStopLevel
           
       Tags:
         AllowInvalidationEvents: "true"

@@ -83,7 +83,12 @@ The system consists of two primary Lambda functions that work together to proces
 - **Decoupled Architecture**: Single stack supports any number of S3 buckets and CloudFront distributions
 - **Tag-Driven Discovery**: Uses AWS resource tags for permission validation and resource discovery
 - **Event Aggregation**: Collects events over a 5-minute window to batch process invalidations
-- **Path Consolidation**: Intelligently reduces the number of invalidation paths to minimize API calls
+- **Dynamic Path Consolidation**: Intelligently reduces invalidation paths with configurable thresholds and stop levels
+- **Per-Bucket Configuration**: Override global settings using S3 bucket tags for customized behavior
+- **Consolidation Stop Level**: Control consolidation depth to prevent over-consolidation
+- **CloudFormation Parameters**: System-wide default configuration with environment-specific values
+- **Comprehensive Logging**: Detailed configuration decision logging for troubleshooting and auditing
+- **Backward Compatible**: Existing deployments continue to work without changes
 - **Secure**: Implements least-privilege IAM policies with tag-based conditions
 - **Cost-Effective**: Uses on-demand scheduling instead of constant cron jobs
 - **Production-Ready**: Includes monitoring, alarms, and gradual deployment for PROD environments
@@ -206,13 +211,46 @@ The aggregation window mechanism batches S3 events over a 5-minute period to pro
 
 ## Path Consolidation Algorithm
 
-The path consolidation algorithm reduces the number of invalidation paths by replacing multiple individual paths with directory-level wildcards.
+The path consolidation algorithm reduces the number of invalidation paths by replacing multiple individual paths with directory-level wildcards. The system supports both global defaults (set via CloudFormation parameters) and per-bucket overrides (set via S3 bucket tags).
+
+### Dynamic Configuration
+
+#### Global Configuration (CloudFormation Parameters)
+
+Set system-wide defaults for all buckets:
+
+- **DirectoryConsolidationThreshold**: Number of files that triggers directory consolidation (default: 3, range: 1-1000)
+- **ConsolidationStopLevel**: Directory depth from root where consolidation stops (default: 1, range: 0-1000)
+- **AggregationWindowSeconds**: Event aggregation window duration (default: 300, range: 60-900)
+
+#### Per-Bucket Configuration (S3 Bucket Tags)
+
+Override global settings for specific buckets using these tags:
+
+```
+Key: invalidator:DirectoryConsolidationThreshold
+Value: 5  (range: 1-1000)
+
+Key: invalidator:ConsolidationStopLevel  
+Value: 2  (range: 0-1000)
+```
+
+**How to Add Bucket Configuration Tags**:
+```bash
+aws s3api put-bucket-tagging \
+  --bucket your-bucket-name \
+  --tagging 'TagSet=[
+    {Key=AllowInvalidationEvents,Value=true},
+    {Key=invalidator:DirectoryConsolidationThreshold,Value=5},
+    {Key=invalidator:ConsolidationStopLevel,Value=2}
+  ]'
+```
 
 ### Consolidation Rules
 
 #### 1. Index and Default File Consolidation
 
-When an event is received for a file matching `*/index.*` or `*/default.*`, the system automatically creates a directory-level invalidation:
+When an event is received for a file matching `*/index.*` or `*/default.*`, the system automatically creates a directory-level invalidation (unless prevented by stop level):
 
 ```
 Input:  /prod/public/docs/index.html
@@ -221,29 +259,56 @@ Output: /prod/public/docs/*
 
 #### 2. Directory Threshold Consolidation
 
-When more than 3 files in the same directory are modified, consolidate to directory level:
+When the number of files in a directory exceeds the threshold (global default or bucket-specific), consolidate to directory level:
 
 ```
+# With DirectoryConsolidationThreshold = 3
 Input:  /prod/public/images/logo.png
         /prod/public/images/banner.jpg
         /prod/public/images/icon.svg
         /prod/public/images/background.png
 Output: /prod/public/images/*
+
+# With bucket tag DirectoryConsolidationThreshold = 5
+Input:  5+ files in /prod/public/css/
+Output: /prod/public/css/*
 ```
 
-#### 3. Sibling Directory Consolidation
+#### 3. Consolidation Stop Level
 
-When more than 10 sibling directories would be invalidated, consolidate to parent:
+The stop level prevents consolidation at or above a specified directory depth from the root:
+
+```
+# ConsolidationStopLevel = 0: Consolidate everything to root
+Input:  Any paths
+Output: /*
+
+# ConsolidationStopLevel = 1 (default): Allow normal consolidation
+Input:  /prod/public/dir1/*, /prod/public/dir2/*
+Output: /prod/public/* (if threshold met)
+
+# ConsolidationStopLevel = 2: Prevent consolidation at depth 2
+Input:  /prod/public/dir1/a/*, /prod/public/dir1/b/*
+Output: /prod/public/dir1/a/*, /prod/public/dir1/b/* (no consolidation to /prod/public/dir1/*)
+
+# ConsolidationStopLevel = 3: Prevent consolidation at depth 3
+Input:  /prod/public/dir1/sub/file1.html, /prod/public/dir1/sub/file2.html
+Output: Individual files (no consolidation to /prod/public/dir1/sub/*)
+```
+
+#### 4. Sibling Directory Consolidation
+
+When more than 10 sibling directories would be invalidated, consolidate to parent (unless prevented by stop level):
 
 ```
 Input:  /prod/public/dir1/*
         /prod/public/dir2/*
         /prod/public/dir3/*
         ... (11 directories)
-Output: /prod/public/*
+Output: /prod/public/* (if stop level allows)
 ```
 
-#### 4. Root Consolidation
+#### 5. Root Consolidation
 
 When consolidation reaches the origin path root, use `/*`:
 
@@ -252,9 +317,9 @@ Input:  Multiple directories at root level
 Output: /*
 ```
 
-#### 5. Request Splitting
+#### 6. Request Splitting
 
-If consolidated paths exceed 1000 items (CloudFront limit), split into multiple requests:
+If consolidated paths exceed the limit (default 1000), split into multiple requests:
 
 ```
 Input:  1500 paths
@@ -262,8 +327,17 @@ Output: Request 1: 1000 paths
         Request 2: 500 paths
 ```
 
-### Example Consolidation Flow
+### Configuration Priority
 
+The system uses the following priority order for configuration values:
+
+1. **Bucket Tags** (highest priority): `invalidator:DirectoryConsolidationThreshold`, `invalidator:ConsolidationStopLevel`
+2. **CloudFormation Parameters**: `DirectoryConsolidationThreshold`, `ConsolidationStopLevel`
+3. **Hardcoded Defaults** (fallback): threshold=3, stop_level=1
+
+### Example Consolidation Flows
+
+#### Standard Configuration (threshold=3, stop_level=1)
 ```
 Original Events:
 - /prod/public/css/main.css
@@ -281,9 +355,37 @@ After Consolidation:
 - /prod/public/images/*     (index.html → directory)
 ```
 
+#### High Stop Level Configuration (threshold=3, stop_level=3)
+```
+Original Events:
+- /prod/public/docs/api/file1.html
+- /prod/public/docs/api/file2.html
+- /prod/public/docs/api/file3.html
+- /prod/public/docs/api/file4.html
+
+After Consolidation:
+- /prod/public/docs/api/file1.html  (stop level prevents consolidation)
+- /prod/public/docs/api/file2.html
+- /prod/public/docs/api/file3.html
+- /prod/public/docs/api/file4.html
+```
+
+#### Root Consolidation (stop_level=0)
+```
+Original Events:
+- /prod/public/css/main.css
+- /prod/public/js/app.js
+- /prod/public/images/logo.png
+
+After Consolidation:
+- /*  (all paths consolidated to root)
+```
+
 ## Required Tags
 
 ### S3 Bucket Tags
+
+#### Required Tags
 
 For an S3 bucket to trigger invalidations, it MUST have the following tag:
 
@@ -292,12 +394,51 @@ Key: AllowInvalidationEvents
 Value: true
 ```
 
-**How to Add**:
+#### Optional Configuration Tags
+
+Buckets can override global consolidation settings using these optional tags:
+
+```
+Key: invalidator:DirectoryConsolidationThreshold
+Value: 1-1000 (number of files that triggers directory consolidation)
+
+Key: invalidator:ConsolidationStopLevel
+Value: 0-1000 (directory depth from root where consolidation stops)
+```
+
+**Configuration Tag Behavior**:
+- **DirectoryConsolidationThreshold**: Controls when files in a directory are consolidated to `directory/*`
+  - Lower values = more aggressive consolidation
+  - Higher values = less consolidation, more individual file invalidations
+  - Range: 1-1000, defaults to CloudFormation parameter value
+- **ConsolidationStopLevel**: Controls the maximum depth where consolidation can occur
+  - 0 = consolidate everything to root `/*`
+  - 1 = allow normal consolidation (default)
+  - 2+ = prevent consolidation at that depth or shallower
+  - Range: 0-1000, defaults to CloudFormation parameter value
+
+**How to Add Required Tag Only**:
 ```bash
 aws s3api put-bucket-tagging \
   --bucket your-bucket-name \
   --tagging 'TagSet=[{Key=AllowInvalidationEvents,Value=true}]'
 ```
+
+**How to Add with Configuration Overrides**:
+```bash
+aws s3api put-bucket-tagging \
+  --bucket your-bucket-name \
+  --tagging 'TagSet=[
+    {Key=AllowInvalidationEvents,Value=true},
+    {Key=invalidator:DirectoryConsolidationThreshold,Value=5},
+    {Key=invalidator:ConsolidationStopLevel,Value=2}
+  ]'
+```
+
+**Tag Validation**:
+- Invalid tag values (non-numeric, out of range) are logged and ignored
+- System falls back to CloudFormation parameter defaults for invalid tags
+- Missing configuration tags use CloudFormation parameter defaults
 
 ### CloudFront Distribution Tags
 
@@ -382,6 +523,21 @@ aws cloudfront tag-resource \
        FunctionGradualDeploymentType=Linear10PercentEvery1Minute
    ```
 
+6. **Deploy with Custom Consolidation Settings**:
+   ```bash
+   sam deploy \
+     --stack-name atlantis-cloudfront-invalidation-prod \
+     --parameter-overrides \
+       DeployEnvironment=PROD \
+       Prefix=atlantis \
+       ProjectId=cloudfront-invalidation \
+       StageId=prod \
+       DirectoryConsolidationThreshold=5 \
+       ConsolidationStopLevel=2 \
+       AggregationWindowSeconds=180 \
+       AlarmNotificationEmail=ops@example.com
+   ```
+
 ### Configure S3 Bucket Notifications
 
 After deployment, configure your S3 buckets to send events to the Ingestor Lambda:
@@ -427,19 +583,42 @@ aws s3api put-bucket-notification-configuration \
 - `QUEUE_URL`: SQS queue URL for event messages
 - `TRACKING_TABLE`: DynamoDB table name for window tracking
 - `MAX_BATCH_SIZE`: SQS batch size (default: 10)
-- `MAX_PATHS_PER_INVALIDATION`: CloudFront limit (1000)
+- `MAX_PATHS_PER_INVALIDATION`: CloudFront limit (default: 1000)
+- `DIRECTORY_CONSOLIDATION_THRESHOLD`: Default directory consolidation threshold (default: 3)
+- `CONSOLIDATION_STOP_LEVEL`: Default consolidation stop level (default: 1)
+- `AGGREGATION_WINDOW_SECONDS`: Event aggregation window duration (default: 300)
 - `LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
 
 ### CloudFormation Parameters
 
-- `DeployEnvironment`: PROD, TEST, or DEV
+#### Application Resource Naming
 - `Prefix`: Resource naming prefix (e.g., "atlantis")
 - `ProjectId`: Project identifier
 - `StageId`: Stage identifier (prod, test, dev)
-- `AlarmNotificationEmail`: Email for CloudWatch Alarms (PROD only)
+- `S3BucketNameOrgPrefix`: S3 bucket naming prefix
+- `RolePath`: IAM role path
+- `PermissionsBoundaryArn`: IAM permissions boundary
+
+#### Deployment Environment
+- `DeployEnvironment`: PROD, TEST, or DEV
 - `FunctionGradualDeploymentType`: Deployment strategy (PROD only)
+- `DeployRole`: CloudFormation service role
+- `AlarmNotificationEmail`: Email for CloudWatch Alarms (PROD only)
+
+#### Application Parameters
 - `LogRetentionInDaysForPROD`: Log retention for PROD (default: 90)
 - `LogRetentionInDaysForDEVTEST`: Log retention for TEST/DEV (default: 7)
+- `AggregationWindowSeconds`: Event aggregation window duration (default: 300, range: 60-900)
+- `DirectoryConsolidationThreshold`: Default threshold for directory consolidation (default: 3, range: 1-1000)
+- `ConsolidationStopLevel`: Directory depth from root where consolidation stops (default: 1, range: 0-1000)
+- `MaxPathsPerInvalidation`: Maximum paths per CloudFront invalidation request (default: 1000, range: 1-3000)
+
+#### Lambda Function Settings
+- `IngestorTimeoutInSeconds`: Ingestor Lambda timeout (default: 10)
+- `IngestorMemoryInMB`: Ingestor Lambda memory (default: 256)
+- `ProcessorTimeoutInSeconds`: Processor Lambda timeout (default: 300)
+- `ProcessorMemoryInMB`: Processor Lambda memory (default: 512)
+- `FunctionArchitecture`: Lambda architecture (x86_64 or arm64)
 
 ## Monitoring and Troubleshooting
 
@@ -471,6 +650,27 @@ Find all errors:
 ```
 fields @timestamp, @message
 | filter @type = "ERROR"
+| sort @timestamp desc
+```
+
+Find configuration decisions:
+```
+fields @timestamp, bucketName, directoryThreshold, stopLevel, source
+| filter @message like /effective configuration/
+| sort @timestamp desc
+```
+
+Find consolidation prevention due to stop level:
+```
+fields @timestamp, @message, paths
+| filter @message like /consolidation prevented.*stop level/
+| sort @timestamp desc
+```
+
+Find bucket tag validation warnings:
+```
+fields @timestamp, bucketName, tagKey, tagValue, reason
+| filter @message like /invalid.*tag/
 | sort @timestamp desc
 ```
 
@@ -535,8 +735,71 @@ The system creates the following alarms in PROD:
 1. Check number of invalidation requests in CloudWatch
 2. Review path consolidation effectiveness
 3. Check for excessive S3 events
+4. Review consolidation configuration (threshold too high, stop level too high)
 
 **Solution**: Adjust consolidation thresholds or reduce S3 event frequency
+
+#### Issue: Bucket Configuration Tags Not Working
+
+**Symptoms**: Bucket-specific consolidation settings are ignored
+
+**Troubleshooting**:
+1. Verify bucket tags are correctly formatted:
+   ```bash
+   aws s3api get-bucket-tagging --bucket your-bucket-name
+   ```
+2. Check Processor Lambda logs for tag reading errors
+3. Verify tag values are within valid ranges (1-1000 for threshold, 0-1000 for stop level)
+4. Check for typos in tag keys (`invalidator:DirectoryConsolidationThreshold`, `invalidator:ConsolidationStopLevel`)
+
+**Solution**: Fix tag formatting or values, redeploy if needed
+
+#### Issue: Consolidation Not Working as Expected
+
+**Symptoms**: Files not being consolidated or over-consolidated
+
+**Troubleshooting**:
+1. Check effective configuration in Processor Lambda logs:
+   ```
+   fields @timestamp, bucketName, effectiveConfig
+   | filter @message like /effective configuration/
+   ```
+2. Verify stop level settings aren't preventing expected consolidation
+3. Check directory threshold settings
+4. Review path depth calculations in logs
+
+**Solution**: Adjust bucket tags or CloudFormation parameters
+
+#### Issue: Invalid Configuration Values
+
+**Symptoms**: Warning logs about invalid tag values, fallback to defaults
+
+**Troubleshooting**:
+1. Check Processor Lambda logs for validation warnings:
+   ```
+   fields @timestamp, @message
+   | filter @message like /invalid.*tag/
+   ```
+2. Verify tag values are numeric and within valid ranges
+3. Check for extra whitespace or special characters in tag values
+
+**Solution**: Update bucket tags with valid values
+
+#### Issue: Configuration Changes Not Taking Effect
+
+**Symptoms**: Updated bucket tags or CloudFormation parameters not reflected in behavior
+
+**Troubleshooting**:
+1. For bucket tags: Changes take effect immediately on next processing cycle
+2. For CloudFormation parameters: Requires stack update and Lambda restart
+3. Check Lambda environment variables match CloudFormation parameters:
+   ```bash
+   aws lambda get-function-configuration \
+     --function-name <processor-function-name> \
+     --query 'Environment.Variables'
+   ```
+
+**Solution**: Update CloudFormation stack or wait for next processing cycle
 
 ### X-Ray Tracing
 
@@ -651,9 +914,20 @@ The system scales automatically with S3 event volume:
 
 ## Related Documentation
 
+### Project Documentation
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Step-by-step deployment instructions for enhanced system
+- [Configuration Troubleshooting Guide](CONFIGURATION_TROUBLESHOOTING.md) - Detailed troubleshooting for configuration issues
+- [Requirements Document](.kiro/specs/dynamic-bucket-consolidation-config/requirements.md) - Feature requirements
+- [Design Document](.kiro/specs/dynamic-bucket-consolidation-config/design.md) - Technical design details
+
+### AWS Documentation
 - [AWS Serverless Application Model (SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
 - [CloudFront Invalidation API](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Invalidation.html)
 - [EventBridge Scheduler](https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html)
+- [S3 Bucket Tagging](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html)
+- [CloudFormation Parameters](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/parameters-section-structure.html)
+
+### Platform Documentation
 - [Atlantis Platform Documentation](https://github.com/63klabs/serverless-deploy-pipeline-atlantis)
 
 ## Support
