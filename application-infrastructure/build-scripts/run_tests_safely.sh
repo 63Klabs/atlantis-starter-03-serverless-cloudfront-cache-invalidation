@@ -50,6 +50,11 @@ $PYTHON_CMD -c "import pytest" 2>/dev/null || {
 
 echo "✅ Python and pytest available"
 
+# Add Lambda layer to Python path for testing
+echo "🔄 Adding Lambda layer to Python path..."
+export PYTHONPATH="${PYTHONPATH}:$(pwd)/layers/common/python"
+echo "✅ Updated PYTHONPATH: $PYTHONPATH"
+
 # Debug Python path and environment
 echo "🔍 Debugging Python environment..."
 echo "PYTHONPATH: $PYTHONPATH"

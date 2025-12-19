@@ -1,7 +1,8 @@
 version: 0.2
 
 # Many BUILD ENVIRONMENT VARIABLES are specified in the template-pipeline.yml template.
-# Search for 'EnvironmentVariables' under AWS::CodeBuild::Project in the template.
+# You can also check the environment variables and values for this CodeBuild project
+# AWS Web Console >> CodeBuild >> Build >> Projects >> [this project] >> [build run] >> Environment Variables
 # 
 # You can also run the command `printenv`
 
@@ -9,6 +10,7 @@ phases:
   install:
     runtime-versions:
       nodejs: latest
+      python: latest
     commands:
       
       - ls -l -a
