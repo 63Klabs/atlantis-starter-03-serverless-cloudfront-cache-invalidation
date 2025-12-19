@@ -89,10 +89,18 @@ $PYTHON_CMD -m pytest tests/unit/ -v --tb=short --maxfail=5 || {
 
 echo ""
 echo "🔬 Running safe property tests..."
-$PYTHON_CMD -m pytest tests/property/test_properties_functional_behavior_preservation.py -v --tb=short --maxfail=3 || {
-    echo "❌ Safe property tests failed"
-    exit 1
-}
+if [ -f "tests/property/test_properties_functional_behavior_preservation.py" ]; then
+    $PYTHON_CMD -m pytest tests/property/test_properties_functional_behavior_preservation.py -v --tb=short --maxfail=3 || {
+        echo "❌ Safe property tests failed"
+        exit 1
+    }
+else
+    echo "⚠️  Specific safe property test file not found, running all property tests with limited scope..."
+    $PYTHON_CMD -m pytest tests/property/ -v --tb=short --maxfail=3 -x || {
+        echo "❌ Property tests failed"
+        exit 1
+    }
+fi
 
 echo ""
 echo "⚠️  SKIPPING integration tests (they make real AWS calls and can crash CI/CD)"

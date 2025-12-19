@@ -8,7 +8,3 @@
 pytest==8.3.3
 pytest-mock==3.14.0
 hypothesis==6.112.1
-
-# AWS SDK (safe - already available in Lambda runtime)
-boto3==1.35.36
-botocore==1.35.36
