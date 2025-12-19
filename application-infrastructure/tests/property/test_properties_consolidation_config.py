@@ -58,8 +58,8 @@ def valid_threshold_tag_strategy(draw):
 
 @st.composite
 def valid_stop_level_tag_strategy(draw):
-    """Generate valid ConsolidationStopLevel tag values (0-1000)."""
-    return str(draw(st.integers(min_value=0, max_value=1000)))
+    """Generate valid ConsolidationStopLevel tag values (0-20)."""
+    return str(draw(st.integers(min_value=0, max_value=20)))
 
 
 @st.composite
@@ -78,7 +78,7 @@ def invalid_tag_value_strategy(draw):
     elif invalid_type == 'negative':
         return str(draw(st.integers(max_value=-1)))
     elif invalid_type == 'too_large':
-        return str(draw(st.integers(min_value=1001)))
+        return str(draw(st.integers(min_value=1001)))  # DirectoryConsolidationThreshold max is 1000
     elif invalid_type == 'empty':
         return ''
     elif invalid_type == 'float':
@@ -292,7 +292,7 @@ def test_property_7_valid_stop_level_usage(bucket_name, stop_level_value):
     """Property 7: Valid stop level tag usage.
     
     For any bucket with invalidator:ConsolidationStopLevel tag containing a value
-    between 0 and 1000, the system should use that value as the consolidation stop level.
+    between 0 and 20, the system should use that value as the consolidation stop level.
     
     **Feature: dynamic-bucket-consolidation-config, Property 7: Valid stop level tag usage**
     **Validates: Requirements 2.2**
@@ -462,7 +462,7 @@ def test_property_17_invalid_tag_logging(bucket_name, invalid_value):
 
 @given(
     directory_threshold=st.integers(min_value=1, max_value=1000),
-    stop_level=st.integers(min_value=0, max_value=1000),
+    stop_level=st.integers(min_value=0, max_value=20),
     aggregation_window=st.integers(min_value=60, max_value=3600)
 )
 @settings(max_examples=20)  # Reduced iterations per testing guidelines

@@ -220,7 +220,8 @@ The path consolidation algorithm reduces the number of invalidation paths by rep
 Set system-wide defaults for all buckets:
 
 - **DirectoryConsolidationThreshold**: Number of files that triggers directory consolidation (default: 3, range: 1-1000)
-- **ConsolidationStopLevel**: Directory depth from root where consolidation stops (default: 1, range: 0-1000)
+- **SiblingDirectoryConsolidationThreshold**: Number of sibling directories that triggers consolidation to parent wildcard (default: 10, range: 1-1000)
+- **ConsolidationStopLevel**: Directory depth from root where consolidation stops (default: 1, range: 0-20)
 - **AggregationWindowSeconds**: Event aggregation window duration (default: 300, range: 60-900)
 
 #### Per-Bucket Configuration (S3 Bucket Tags)
@@ -231,8 +232,11 @@ Override global settings for specific buckets using these tags:
 Key: invalidator:DirectoryConsolidationThreshold
 Value: 5  (range: 1-1000)
 
+Key: invalidator:SiblingDirectoryConsolidationThreshold
+Value: 15  (range: 1-1000)
+
 Key: invalidator:ConsolidationStopLevel  
-Value: 2  (range: 0-1000)
+Value: 2  (range: 0-20)
 ```
 
 **How to Add Bucket Configuration Tags**:
@@ -242,6 +246,7 @@ aws s3api put-bucket-tagging \
   --tagging 'TagSet=[
     {Key=AllowInvalidationEvents,Value=true},
     {Key=invalidator:DirectoryConsolidationThreshold,Value=5},
+    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=15},
     {Key=invalidator:ConsolidationStopLevel,Value=2}
   ]'
 ```
@@ -298,13 +303,18 @@ Output: Individual files (no consolidation to /prod/public/dir1/sub/*)
 
 #### 4. Sibling Directory Consolidation
 
-When more than 10 sibling directories would be invalidated, consolidate to parent (unless prevented by stop level):
+When the number of sibling directories exceeds the threshold (global default or bucket-specific), consolidate to parent (unless prevented by stop level):
 
 ```
+# With SiblingDirectoryConsolidationThreshold = 10 (default)
 Input:  /prod/public/dir1/*
         /prod/public/dir2/*
         /prod/public/dir3/*
         ... (11 directories)
+Output: /prod/public/* (if stop level allows)
+
+# With bucket tag SiblingDirectoryConsolidationThreshold = 5
+Input:  6+ sibling directories at /prod/public/
 Output: /prod/public/* (if stop level allows)
 ```
 
@@ -331,9 +341,9 @@ Output: Request 1: 1000 paths
 
 The system uses the following priority order for configuration values:
 
-1. **Bucket Tags** (highest priority): `invalidator:DirectoryConsolidationThreshold`, `invalidator:ConsolidationStopLevel`
-2. **CloudFormation Parameters**: `DirectoryConsolidationThreshold`, `ConsolidationStopLevel`
-3. **Hardcoded Defaults** (fallback): threshold=3, stop_level=1
+1. **Bucket Tags** (highest priority): `invalidator:DirectoryConsolidationThreshold`, `invalidator:SiblingDirectoryConsolidationThreshold`, `invalidator:ConsolidationStopLevel`
+2. **CloudFormation Parameters**: `DirectoryConsolidationThreshold`, `SiblingDirectoryConsolidationThreshold`, `ConsolidationStopLevel`
+3. **Hardcoded Defaults** (fallback): directory_threshold=3, sibling_threshold=10, stop_level=1
 
 ### Example Consolidation Flows
 
@@ -402,8 +412,11 @@ Buckets can override global consolidation settings using these optional tags:
 Key: invalidator:DirectoryConsolidationThreshold
 Value: 1-1000 (number of files that triggers directory consolidation)
 
+Key: invalidator:SiblingDirectoryConsolidationThreshold
+Value: 1-1000 (number of sibling directories that triggers consolidation to parent wildcard)
+
 Key: invalidator:ConsolidationStopLevel
-Value: 0-1000 (directory depth from root where consolidation stops)
+Value: 0-20 (directory depth from root where consolidation stops)
 ```
 
 **Configuration Tag Behavior**:
@@ -411,11 +424,15 @@ Value: 0-1000 (directory depth from root where consolidation stops)
   - Lower values = more aggressive consolidation
   - Higher values = less consolidation, more individual file invalidations
   - Range: 1-1000, defaults to CloudFormation parameter value
+- **SiblingDirectoryConsolidationThreshold**: Controls when sibling directories are consolidated to parent wildcard
+  - Lower values = more aggressive sibling consolidation
+  - Higher values = less sibling consolidation, more individual directory wildcards
+  - Range: 1-1000, defaults to CloudFormation parameter value
 - **ConsolidationStopLevel**: Controls the maximum depth where consolidation can occur
   - 0 = consolidate everything to root `/*`
   - 1 = allow normal consolidation (default)
   - 2+ = prevent consolidation at that depth or shallower
-  - Range: 0-1000, defaults to CloudFormation parameter value
+  - Range: 0-20, defaults to CloudFormation parameter value
 
 **How to Add Required Tag Only**:
 ```bash
@@ -431,6 +448,7 @@ aws s3api put-bucket-tagging \
   --tagging 'TagSet=[
     {Key=AllowInvalidationEvents,Value=true},
     {Key=invalidator:DirectoryConsolidationThreshold,Value=5},
+    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=15},
     {Key=invalidator:ConsolidationStopLevel,Value=2}
   ]'
 ```
@@ -585,6 +603,7 @@ aws s3api put-bucket-notification-configuration \
 - `MAX_BATCH_SIZE`: SQS batch size (default: 10)
 - `MAX_PATHS_PER_INVALIDATION`: CloudFront limit (default: 1000)
 - `DIRECTORY_CONSOLIDATION_THRESHOLD`: Default directory consolidation threshold (default: 3)
+- `SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD`: Default sibling directory consolidation threshold (default: 10)
 - `CONSOLIDATION_STOP_LEVEL`: Default consolidation stop level (default: 1)
 - `AGGREGATION_WINDOW_SECONDS`: Event aggregation window duration (default: 300)
 - `LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
@@ -610,7 +629,8 @@ aws s3api put-bucket-notification-configuration \
 - `LogRetentionInDaysForDEVTEST`: Log retention for TEST/DEV (default: 7)
 - `AggregationWindowSeconds`: Event aggregation window duration (default: 300, range: 60-900)
 - `DirectoryConsolidationThreshold`: Default threshold for directory consolidation (default: 3, range: 1-1000)
-- `ConsolidationStopLevel`: Directory depth from root where consolidation stops (default: 1, range: 0-1000)
+- `SiblingDirectoryConsolidationThreshold`: Default threshold for sibling directory consolidation (default: 10, range: 1-1000)
+- `ConsolidationStopLevel`: Directory depth from root where consolidation stops (default: 1, range: 0-20)
 - `MaxPathsPerInvalidation`: Maximum paths per CloudFront invalidation request (default: 1000, range: 1-3000)
 
 #### Lambda Function Settings

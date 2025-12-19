@@ -25,10 +25,12 @@ The enhanced system includes the following new capabilities:
 
 1. **Bucket Tags for Configuration**:
    - `invalidator:DirectoryConsolidationThreshold` (1-1000)
-   - `invalidator:ConsolidationStopLevel` (0-1000)
+   - `invalidator:SiblingDirectoryConsolidationThreshold` (1-1000)
+   - `invalidator:ConsolidationStopLevel` (0-20)
 
 2. **CloudFormation Parameters**:
    - `DirectoryConsolidationThreshold` (default: 3)
+   - `SiblingDirectoryConsolidationThreshold` (default: 10)
    - `ConsolidationStopLevel` (default: 1)
    - `AggregationWindowSeconds` (default: 300)
 
@@ -78,6 +80,7 @@ Before deployment, decide on your configuration strategy:
 
 #### Option A: Use Default Configuration
 - DirectoryConsolidationThreshold: 3
+- SiblingDirectoryConsolidationThreshold: 10
 - ConsolidationStopLevel: 1
 - No additional parameters needed
 
@@ -117,6 +120,10 @@ Create a parameter file for your environment:
     "ParameterValue": "3"
   },
   {
+    "ParameterKey": "SiblingDirectoryConsolidationThreshold",
+    "ParameterValue": "10"
+  },
+  {
     "ParameterKey": "ConsolidationStopLevel",
     "ParameterValue": "1"
   },
@@ -149,6 +156,10 @@ Create a parameter file for your environment:
   {
     "ParameterKey": "DirectoryConsolidationThreshold",
     "ParameterValue": "5"
+  },
+  {
+    "ParameterKey": "SiblingDirectoryConsolidationThreshold",
+    "ParameterValue": "8"
   },
   {
     "ParameterKey": "ConsolidationStopLevel",
@@ -240,6 +251,7 @@ sam deploy \
   --stack-name atlantis-cloudfront-invalidation-prod \
   --parameter-overrides \
     DirectoryConsolidationThreshold=7 \
+    SiblingDirectoryConsolidationThreshold=12 \
     ConsolidationStopLevel=3 \
     AggregationWindowSeconds=240 \
   --capabilities CAPABILITY_IAM
@@ -265,6 +277,7 @@ aws s3api put-bucket-tagging \
   --tagging 'TagSet=[
     {Key=AllowInvalidationEvents,Value=true},
     {Key=invalidator:DirectoryConsolidationThreshold,Value=10},
+    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=5},
     {Key=invalidator:ConsolidationStopLevel,Value=0}
   ]'
 ```
@@ -273,36 +286,39 @@ aws s3api put-bucket-tagging \
 
 **High-Traffic Bucket (Aggressive Consolidation)**:
 ```bash
-# Consolidate at 2 files, allow root consolidation
+# Consolidate at 2 files, 3 sibling directories, allow root consolidation
 aws s3api put-bucket-tagging \
   --bucket high-traffic-bucket \
   --tagging 'TagSet=[
     {Key=AllowInvalidationEvents,Value=true},
     {Key=invalidator:DirectoryConsolidationThreshold,Value=2},
+    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=3},
     {Key=invalidator:ConsolidationStopLevel,Value=0}
   ]'
 ```
 
 **Documentation Bucket (Conservative Consolidation)**:
 ```bash
-# Consolidate at 20 files, prevent deep consolidation
+# Consolidate at 20 files, 25 sibling directories, prevent deep consolidation
 aws s3api put-bucket-tagging \
   --bucket docs-bucket \
   --tagging 'TagSet=[
     {Key=AllowInvalidationEvents,Value=true},
     {Key=invalidator:DirectoryConsolidationThreshold,Value=20},
+    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=25},
     {Key=invalidator:ConsolidationStopLevel,Value=4}
   ]'
 ```
 
 **API Assets Bucket (Minimal Consolidation)**:
 ```bash
-# High threshold, prevent most consolidation
+# High thresholds, prevent most consolidation
 aws s3api put-bucket-tagging \
   --bucket api-assets-bucket \
   --tagging 'TagSet=[
     {Key=AllowInvalidationEvents,Value=true},
     {Key=invalidator:DirectoryConsolidationThreshold,Value=100},
+    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=50},
     {Key=invalidator:ConsolidationStopLevel,Value=5}
   ]'
 ```
@@ -341,7 +357,7 @@ aws lambda list-functions \
 # Check Lambda environment variables
 aws lambda get-function-configuration \
   --function-name atlantis-cloudfront-invalidation-prod-processor \
-  --query 'Environment.Variables.{DirectoryThreshold:DIRECTORY_CONSOLIDATION_THRESHOLD,StopLevel:CONSOLIDATION_STOP_LEVEL,WindowSeconds:AGGREGATION_WINDOW_SECONDS}'
+  --query 'Environment.Variables.{DirectoryThreshold:DIRECTORY_CONSOLIDATION_THRESHOLD,SiblingThreshold:SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,StopLevel:CONSOLIDATION_STOP_LEVEL,WindowSeconds:AGGREGATION_WINDOW_SECONDS}'
 
 # Verify bucket tags
 aws s3api get-bucket-tagging --bucket your-bucket-name
@@ -370,7 +386,7 @@ aws logs start-query \
   --log-group-name /aws/lambda/atlantis-cloudfront-invalidation-prod-processor \
   --start-time $(date -d '10 minutes ago' +%s) \
   --end-time $(date +%s) \
-  --query-string 'fields @timestamp, bucketName, directoryThreshold, stopLevel, source | filter @message like /effective configuration/ | sort @timestamp desc'
+  --query-string 'fields @timestamp, bucketName, directoryThreshold, siblingThreshold, stopLevel, source | filter @message like /effective configuration/ | sort @timestamp desc'
 ```
 
 ## Migration from Previous Version
@@ -392,6 +408,7 @@ The enhanced system is fully backward compatible:
      --stack-name atlantis-cloudfront-invalidation-prod \
      --parameter-overrides \
        DirectoryConsolidationThreshold=3 \
+       SiblingDirectoryConsolidationThreshold=10 \
        ConsolidationStopLevel=1 \
      --capabilities CAPABILITY_IAM
    ```
@@ -450,6 +467,7 @@ If issues occur after deployment:
      --stack-name atlantis-cloudfront-invalidation-prod \
      --parameter-overrides \
        DirectoryConsolidationThreshold=3 \
+       SiblingDirectoryConsolidationThreshold=10 \
        ConsolidationStopLevel=1 \
      --capabilities CAPABILITY_IAM
    ```

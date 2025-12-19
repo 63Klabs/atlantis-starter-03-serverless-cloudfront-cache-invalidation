@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 
 # Import from Lambda layer
 from common.logger import setup_logger # pyright: ignore[reportMissingImports]
-from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
+from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_STOP_LEVEL, SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD # pyright: ignore[reportMissingImports]
 
 logger = setup_logger(__name__)
 
@@ -443,9 +443,10 @@ def validate_consolidation_tag_value(tag_value: str, min_val: int, max_val: int)
 def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
     """Retrieve consolidation configuration from bucket tags.
     
-    Reads the DirectoryConsolidationThreshold and ConsolidationStopLevel tags
-    from the specified bucket and returns the effective configuration values.
-    Falls back to default values from constants when tags are missing or invalid.
+    Reads the DirectoryConsolidationThreshold, ConsolidationStopLevel, and
+    SiblingDirectoryConsolidationThreshold tags from the specified bucket and
+    returns the effective configuration values. Falls back to default values
+    from constants when tags are missing or invalid.
     
     Args:
         bucket_name: Name of the S3 bucket
@@ -454,11 +455,13 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
         Dictionary with keys:
         - 'directory_threshold': Effective directory consolidation threshold
         - 'stop_level': Effective consolidation stop level
+        - 'sibling_directory_threshold': Effective sibling directory consolidation threshold
         - 'directory_threshold_source': 'tag' or 'default'
         - 'stop_level_source': 'tag' or 'default'
+        - 'sibling_directory_threshold_source': 'tag' or 'default'
         
-    **Feature: dynamic-bucket-consolidation-config, Property 1, 2, 3, 6, 7, 8, 15, 16: Configuration reading**
-    **Validates: Requirements 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 5.1, 5.2**
+    **Feature: sibling-directory-consolidation-threshold, Property 4, 5, 6, 7, 8, 9, 10, 12: Configuration reading**
+    **Validates: Requirements 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.4, 4.2**
     """
     logger.info(
         f"Reading consolidation configuration for bucket: {bucket_name}",
@@ -475,8 +478,10 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
     config = {
         'directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
         'stop_level': CONSOLIDATION_STOP_LEVEL,
+        'sibling_directory_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
         'directory_threshold_source': 'default',
-        'stop_level_source': 'default'
+        'stop_level_source': 'default',
+        'sibling_directory_threshold_source': 'default'
     }
     
     # If tags could not be retrieved, use defaults
@@ -487,8 +492,10 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
                 'bucket_name': bucket_name,
                 'directory_threshold': config['directory_threshold'],
                 'stop_level': config['stop_level'],
+                'sibling_directory_threshold': config['sibling_directory_threshold'],
                 'directory_threshold_source': config['directory_threshold_source'],
                 'stop_level_source': config['stop_level_source'],
+                'sibling_directory_threshold_source': config['sibling_directory_threshold_source'],
                 'reason': 'tag_retrieval_failed'
             }}
         )
@@ -524,7 +531,7 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
     # Check for ConsolidationStopLevel tag
     stop_level_tag = tags.get('invalidator:ConsolidationStopLevel')
     if stop_level_tag is not None:
-        validated_stop_level = validate_consolidation_tag_value(stop_level_tag, 0, 1000)
+        validated_stop_level = validate_consolidation_tag_value(stop_level_tag, 0, 20)
         if validated_stop_level is not None:
             config['stop_level'] = validated_stop_level
             config['stop_level_source'] = 'tag'
@@ -548,6 +555,33 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
                 }}
             )
     
+    # Check for SiblingDirectoryConsolidationThreshold tag
+    sibling_threshold_tag = tags.get('invalidator:SiblingDirectoryConsolidationThreshold')
+    if sibling_threshold_tag is not None:
+        validated_sibling_threshold = validate_consolidation_tag_value(sibling_threshold_tag, 1, 1000)
+        if validated_sibling_threshold is not None:
+            config['sibling_directory_threshold'] = validated_sibling_threshold
+            config['sibling_directory_threshold_source'] = 'tag'
+            logger.info(
+                f"Using bucket-specific sibling directory consolidation threshold: {validated_sibling_threshold}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'tag_value': sibling_threshold_tag,
+                    'effective_value': validated_sibling_threshold,
+                    'source': 'tag'
+                }}
+            )
+        else:
+            logger.warning(
+                f"Invalid SiblingDirectoryConsolidationThreshold tag value '{sibling_threshold_tag}' for bucket {bucket_name}, using default: {config['sibling_directory_threshold']}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'invalid_tag_value': sibling_threshold_tag,
+                    'default_value': config['sibling_directory_threshold'],
+                    'fallback_reason': 'invalid_tag_value'
+                }}
+            )
+    
     # Log final configuration
     logger.info(
         f"Effective consolidation configuration for bucket {bucket_name}",
@@ -555,11 +589,14 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
             'bucket_name': bucket_name,
             'directory_threshold': config['directory_threshold'],
             'stop_level': config['stop_level'],
+            'sibling_directory_threshold': config['sibling_directory_threshold'],
             'directory_threshold_source': config['directory_threshold_source'],
             'stop_level_source': config['stop_level_source'],
+            'sibling_directory_threshold_source': config['sibling_directory_threshold_source'],
             'configuration_tags_found': {
                 'DirectoryConsolidationThreshold': threshold_tag,
-                'ConsolidationStopLevel': stop_level_tag
+                'ConsolidationStopLevel': stop_level_tag,
+                'SiblingDirectoryConsolidationThreshold': sibling_threshold_tag
             }
         }}
     )

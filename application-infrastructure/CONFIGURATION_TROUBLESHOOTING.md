@@ -21,12 +21,14 @@ The system supports three levels of configuration:
 
 2. **CloudFormation Parameters** (system-wide defaults)
    - DirectoryConsolidationThreshold: 1-1000
-   - ConsolidationStopLevel: 0-1000
+   - SiblingDirectoryConsolidationThreshold: 1-1000
+   - ConsolidationStopLevel: 0-20
    - AggregationWindowSeconds: 60-900
 
 3. **S3 Bucket Tags** (per-bucket overrides)
    - `invalidator:DirectoryConsolidationThreshold`: 1-1000
-   - `invalidator:ConsolidationStopLevel`: 0-1000
+   - `invalidator:SiblingDirectoryConsolidationThreshold`: 1-1000
+   - `invalidator:ConsolidationStopLevel`: 0-20
 
 ## Common Issues
 
@@ -55,6 +57,10 @@ The system supports three levels of configuration:
        {
          "Key": "invalidator:DirectoryConsolidationThreshold",
          "Value": "5"
+       },
+       {
+         "Key": "invalidator:SiblingDirectoryConsolidationThreshold",
+         "Value": "15"
        },
        {
          "Key": "invalidator:ConsolidationStopLevel",
@@ -109,7 +115,8 @@ The system supports three levels of configuration:
 
 2. **Validate tag value ranges**:
    - DirectoryConsolidationThreshold: Must be 1-1000
-   - ConsolidationStopLevel: Must be 0-1000
+   - SiblingDirectoryConsolidationThreshold: Must be 1-1000
+   - ConsolidationStopLevel: Must be 0-20
    - Values must be numeric (no letters, spaces, or special characters)
 
 3. **Check for common formatting issues**:
@@ -249,7 +256,7 @@ The system supports three levels of configuration:
 # Get CloudFormation stack parameters
 aws cloudformation describe-stacks \
   --stack-name your-stack-name \
-  --query 'Stacks[0].Parameters[?ParameterKey==`DirectoryConsolidationThreshold` || ParameterKey==`ConsolidationStopLevel`]'
+  --query 'Stacks[0].Parameters[?ParameterKey==`DirectoryConsolidationThreshold` || ParameterKey==`SiblingDirectoryConsolidationThreshold` || ParameterKey==`ConsolidationStopLevel`]'
 
 # Get bucket tags
 aws s3api get-bucket-tagging --bucket your-bucket-name
@@ -257,7 +264,7 @@ aws s3api get-bucket-tagging --bucket your-bucket-name
 # Get Lambda environment variables
 aws lambda get-function-configuration \
   --function-name your-processor-function-name \
-  --query 'Environment.Variables.{DirectoryThreshold:DIRECTORY_CONSOLIDATION_THRESHOLD,StopLevel:CONSOLIDATION_STOP_LEVEL,WindowSeconds:AGGREGATION_WINDOW_SECONDS}'
+  --query 'Environment.Variables.{DirectoryThreshold:DIRECTORY_CONSOLIDATION_THRESHOLD,SiblingThreshold:SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,StopLevel:CONSOLIDATION_STOP_LEVEL,WindowSeconds:AGGREGATION_WINDOW_SECONDS}'
 ```
 
 ### Test Configuration
@@ -362,14 +369,16 @@ fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
 
 - [ ] **CloudFormation Parameters**
   - [ ] DirectoryConsolidationThreshold: 1-1000
-  - [ ] ConsolidationStopLevel: 0-1000
+  - [ ] SiblingDirectoryConsolidationThreshold: 1-1000
+  - [ ] ConsolidationStopLevel: 0-20
   - [ ] AggregationWindowSeconds: 60-900
   - [ ] Parameters applied to Lambda environment variables
 
 - [ ] **S3 Bucket Tags**
   - [ ] AllowInvalidationEvents: "true" (required)
   - [ ] invalidator:DirectoryConsolidationThreshold: 1-1000 (optional)
-  - [ ] invalidator:ConsolidationStopLevel: 0-1000 (optional)
+  - [ ] invalidator:SiblingDirectoryConsolidationThreshold: 1-1000 (optional)
+  - [ ] invalidator:ConsolidationStopLevel: 0-20 (optional)
   - [ ] Tag keys spelled correctly (case-sensitive)
   - [ ] Tag values are numeric strings
 
@@ -394,6 +403,7 @@ fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
      --tagging 'TagSet=[
        {Key=AllowInvalidationEvents,Value=true},
        {Key=invalidator:DirectoryConsolidationThreshold,Value=2},
+       {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=5},
        {Key=invalidator:ConsolidationStopLevel,Value=3}
      ]'
    
@@ -412,6 +422,7 @@ fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
      --bucket test-bucket \
      --tagging 'TagSet=[
        {Key=AllowInvalidationEvents,Value=true},
+       {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=8},
        {Key=invalidator:ConsolidationStopLevel,Value=3}
      ]'
    

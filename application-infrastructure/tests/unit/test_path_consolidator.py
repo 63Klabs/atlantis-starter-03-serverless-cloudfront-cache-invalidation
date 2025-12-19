@@ -133,7 +133,7 @@ class TestDirectoryThreshold:
             '/dir/file3.html',
             '/dir/file4.html'
         }
-        result = consolidate_by_directory_threshold(paths)
+        result = consolidate_by_directory_threshold(paths, stop_level=0)
         # Should consolidate to directory wildcard
         assert len(result) == 1
         assert '/dir/*' in result
@@ -148,7 +148,7 @@ class TestDirectoryThreshold:
             '/dir2/file1.html',
             '/dir2/file2.html'
         }
-        result = consolidate_by_directory_threshold(paths)
+        result = consolidate_by_directory_threshold(paths, stop_level=0)
         # dir1 should consolidate (4 files), dir2 should not (2 files)
         assert '/dir1/*' in result
         assert '/dir2/file1.html' in result
@@ -169,7 +169,7 @@ class TestSiblingConsolidation:
     def test_above_sibling_threshold(self):
         """Test sibling directories above threshold (more than 10)."""
         paths = {f'/parent/dir{i}/*' for i in range(11)}
-        result = consolidate_sibling_directories(paths)
+        result = consolidate_sibling_directories(paths, stop_level=0)
         # Should consolidate to parent wildcard
         assert len(result) == 1
         assert '/parent/*' in result
@@ -182,7 +182,7 @@ class TestSiblingConsolidation:
         # Parent2 has 5 siblings (should not consolidate)
         paths.update({f'/parent2/dir{i}/*' for i in range(5)})
         
-        result = consolidate_sibling_directories(paths)
+        result = consolidate_sibling_directories(paths, stop_level=0)
         # Parent1 should consolidate
         assert '/parent1/*' in result
         # Parent2 siblings should remain
@@ -200,11 +200,11 @@ class TestComplexScenarios:
             for j in range(5):  # More than 3 files per directory
                 paths.append(f'/root/dir{i}/file{j}.html')
         
-        result = consolidate_paths(paths)
-        # Should consolidate all the way to /root/*
+        result = consolidate_paths(paths, stop_level=0)
+        # Should consolidate all the way to /*
         assert len(result) == 1
         assert len(result[0]) == 1
-        assert result[0][0] == '/root/*'
+        assert result[0][0] == '/*'
     
     def test_no_consolidation_needed(self):
         """Test paths that don't meet any consolidation criteria."""
@@ -230,7 +230,7 @@ class TestComplexScenarios:
             '/dir2/file1.html',
             '/dir3/file1.html'
         ]
-        result = consolidate_paths(paths)
+        result = consolidate_paths(paths, stop_level=1)  # Allow consolidation at depth 1
         assert len(result) == 1
         assert '/dir1/*' in result[0]
         assert '/dir2/file1.html' in result[0]
@@ -362,7 +362,7 @@ class TestBucketSpecificConfiguration:
         paths = ['/dir/file1.html', '/dir/file2.html']  # Only 2 files
         
         # With threshold 1, should consolidate
-        result = consolidate_paths(paths, directory_threshold=1)
+        result = consolidate_paths(paths, directory_threshold=1, stop_level=1)  # Allow consolidation at depth 1
         assert len(result) == 1
         assert '/dir/*' in result[0]
         

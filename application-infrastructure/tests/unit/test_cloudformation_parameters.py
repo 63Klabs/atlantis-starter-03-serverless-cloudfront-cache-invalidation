@@ -29,10 +29,17 @@ class TestCloudFormationParameterIntegration(unittest.TestCase):
         )
 
         # Test ConsolidationStopLevel parameter
-        stop_level_pattern = r'ConsolidationStopLevel:\s*\n\s*Type:\s*Number\s*\n.*?MinValue:\s*0\s*\n\s*MaxValue:\s*1000'
+        stop_level_pattern = r'ConsolidationStopLevel:\s*\n\s*Type:\s*Number\s*\n.*?MinValue:\s*0\s*\n\s*MaxValue:\s*20'
         self.assertIsNotNone(
             re.search(stop_level_pattern, template_content, re.DOTALL),
-            "ConsolidationStopLevel parameter should have MinValue: 0 and MaxValue: 1000"
+            "ConsolidationStopLevel parameter should have MinValue: 0 and MaxValue: 20"
+        )
+
+        # Test SiblingDirectoryConsolidationThreshold parameter
+        sibling_threshold_pattern = r'SiblingDirectoryConsolidationThreshold:\s*\n\s*Type:\s*Number\s*\n.*?MinValue:\s*1\s*\n\s*MaxValue:\s*1000'
+        self.assertIsNotNone(
+            re.search(sibling_threshold_pattern, template_content, re.DOTALL),
+            "SiblingDirectoryConsolidationThreshold parameter should have MinValue: 1 and MaxValue: 1000"
         )
 
         # Test AggregationWindowSeconds parameter (should already exist)
@@ -58,6 +65,10 @@ class TestCloudFormationParameterIntegration(unittest.TestCase):
         self.assertIn('CONSOLIDATION_STOP_LEVEL: !Ref ConsolidationStopLevel', processor_env_section,
                      "Processor Lambda should have CONSOLIDATION_STOP_LEVEL environment variable")
 
+        # Test SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD environment variable
+        self.assertIn('SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD: !Ref SiblingDirectoryConsolidationThreshold', processor_env_section,
+                     "Processor Lambda should have SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD environment variable")
+
         # Test AGGREGATION_WINDOW_SECONDS environment variable
         self.assertIn('AGGREGATION_WINDOW_SECONDS: !Ref AggregationWindowSeconds', processor_env_section,
                      "Processor Lambda should have AGGREGATION_WINDOW_SECONDS environment variable")
@@ -79,6 +90,13 @@ class TestCloudFormationParameterIntegration(unittest.TestCase):
         self.assertIsNotNone(
             re.search(stop_level_default_pattern, template_content, re.DOTALL),
             "ConsolidationStopLevel parameter should have Default: 1"
+        )
+
+        # Test SiblingDirectoryConsolidationThreshold default value
+        sibling_default_pattern = r'SiblingDirectoryConsolidationThreshold:\s*\n\s*Type:\s*Number\s*\n.*?Default:\s*10'
+        self.assertIsNotNone(
+            re.search(sibling_default_pattern, template_content, re.DOTALL),
+            "SiblingDirectoryConsolidationThreshold parameter should have Default: 10"
         )
 
         # Test AggregationWindowSeconds default value
@@ -105,6 +123,8 @@ class TestCloudFormationParameterIntegration(unittest.TestCase):
                      "DirectoryConsolidationThreshold should be in Application Parameters section")
         self.assertIn('- ConsolidationStopLevel', app_params_section,
                      "ConsolidationStopLevel should be in Application Parameters section")
+        self.assertIn('- SiblingDirectoryConsolidationThreshold', app_params_section,
+                     "SiblingDirectoryConsolidationThreshold should be in Application Parameters section")
         self.assertIn('- AggregationWindowSeconds', app_params_section,
                      "AggregationWindowSeconds should be in Application Parameters section")
 
@@ -127,6 +147,13 @@ class TestCloudFormationParameterIntegration(unittest.TestCase):
             "ConsolidationStopLevel should have a descriptive description mentioning depth"
         )
 
+        # Test SiblingDirectoryConsolidationThreshold description
+        sibling_desc_pattern = r'SiblingDirectoryConsolidationThreshold:\s*\n\s*Type:\s*Number\s*\n\s*Description:\s*"[^"]*sibling[^"]*"'
+        self.assertIsNotNone(
+            re.search(sibling_desc_pattern, template_content, re.IGNORECASE),
+            "SiblingDirectoryConsolidationThreshold should have a descriptive description mentioning sibling"
+        )
+
     def test_template_syntax_validity(self):
         """Test that the CloudFormation template is syntactically valid YAML."""
         try:
@@ -141,6 +168,7 @@ class TestCloudFormationParameterIntegration(unittest.TestCase):
                 self.assertIn('Resources:', content)
                 self.assertIn('DirectoryConsolidationThreshold:', content)
                 self.assertIn('ConsolidationStopLevel:', content)
+                self.assertIn('SiblingDirectoryConsolidationThreshold:', content)
                 
         except Exception as e:
             self.fail(f"CloudFormation template should be valid YAML structure: {e}")

@@ -71,6 +71,7 @@ Metadata:
           - AggregationWindowSeconds
           - DirectoryConsolidationThreshold
           - ConsolidationStopLevel
+          - SiblingDirectoryConsolidationThreshold
           - MaxPathsPerInvalidation
 
 # =============================================================================
@@ -246,6 +247,13 @@ Parameters:
     Description: "Directory depth from root where consolidation stops (0 = consolidate to root, 1+ = prevent consolidation at that depth or shallower)"
     Default: 1
     MinValue: 0
+    MaxValue: 20
+
+  SiblingDirectoryConsolidationThreshold:
+    Type: Number
+    Description: "Default threshold for sibling directory consolidation (number of sibling directories that triggers consolidation to parent wildcard)"
+    Default: 10
+    MinValue: 1
     MaxValue: 1000
 
   MaxPathsPerInvalidation:
@@ -615,6 +623,7 @@ Resources:
           AGGREGATION_WINDOW_SECONDS: !Ref AggregationWindowSeconds
           DIRECTORY_CONSOLIDATION_THRESHOLD: !Ref DirectoryConsolidationThreshold
           CONSOLIDATION_STOP_LEVEL: !Ref ConsolidationStopLevel
+          SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD: !Ref SiblingDirectoryConsolidationThreshold
           
       Tags:
         AllowInvalidationEvents: "true"
