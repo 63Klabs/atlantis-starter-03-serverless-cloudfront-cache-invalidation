@@ -26,7 +26,7 @@ import time
 class Configuration:
     """Configuration data for the upload utility"""
     buckets: List[str]
-    environment: str
+    stages: List[str]
     aws_profile: Optional[str]
     verbose: bool
     base_path: str
@@ -71,11 +71,10 @@ class ArgumentParser:
         )
         
         parser.add_argument(
-            '--environment',
+            '--stages',
             type=str,
-            choices=['local', 'dev', 'staging', 'prod'],
-            default='staging',
-            help='Target environment (determines base path: /prod/public/ or /stage/public/)'
+            default='prod',
+            help='Comma-delimited list of stages (determines base path: /prod/public/ or /stage/public/)'
         )
         
         parser.add_argument(
@@ -141,6 +140,18 @@ class EnvironmentManager:
         raise ValueError(
             "No buckets specified. Use --buckets parameter or set S3_STATIC_HOST_BUCKET environment variable."
         )
+
+    def get_target_stages(self, stages_arg: str) -> List[str]:
+        """
+        Resolve stage list from arguments
+
+        Args:
+            stages_arg: Comma-delimited stage string from --stages argument
+
+        Returns:
+            List of stage names
+        """
+        return [stage.strip() for stage in stages_arg.split(',') if stage]
     
     def setup_aws_session(self, profile: Optional[str]) -> boto3.Session:
         """
@@ -160,22 +171,17 @@ class EnvironmentManager:
             self.logger.info("Using default AWS profile (CI/CD mode)")
             return boto3.Session()
     
-    def determine_base_path(self, environment: str) -> str:
+    def determine_base_path(self, stage: str) -> str:
         """
-        Determine S3 base path based on environment
+        Determine S3 base path based on stage
         
         Args:
-            environment: Target environment name
+            stage: Target stage name
             
         Returns:
             Base S3 path for uploads
         """
-        if environment == 'prod':
-            return '/prod/public/'
-        else:
-            # All non-prod environments use staging path
-            return '/stage/public/'
-
+        return f'/{stage}/public/'
 
 class FileGenerator:
     """Generates test file content and random naming"""
@@ -362,7 +368,7 @@ class Logger:
         self.logger.info("=== Test File Upload Utility ===")
         self.logger.info(f"Source file: {source_file_path}")
         self.logger.info(f"Target buckets: {', '.join(buckets)}")
-        self.logger.info(f"Environment: {self.config.environment}")
+        self.logger.info(f"Target stages: {', '.join(self.config.stages)}")
         self.logger.info(f"Base path: {self.config.base_path}")
         
         if self.config.verbose:
@@ -697,15 +703,11 @@ def main():
         
         # Setup AWS session
         session = env_manager.setup_aws_session(args.profile)
-        
-        # Determine base path
-        base_path = env_manager.determine_base_path(args.environment)
-        
+                
         # Create configuration
         source_file_path = Path(__file__).parent.parent.parent / "test.html"
         config = Configuration(
             buckets=buckets,
-            environment=args.environment,
             aws_profile=args.profile,
             verbose=args.verbose,
             base_path=base_path,
@@ -726,15 +728,17 @@ def main():
         source_content = file_generator.get_source_content()
         
         for bucket in buckets:
-            upload_paths = path_generator.generate_upload_paths(base_path)
-            for s3_key, filename in upload_paths:
-                task = UploadTask(
-                    bucket=bucket,
-                    key=s3_key,
-                    content=source_content,
-                    filename=filename
-                )
-                upload_tasks.append(task)
+            for stage in args.stages:
+                base_path = path_generator.generate_base_path(stage)
+                upload_paths = path_generator.generate_upload_paths(base_path)
+                for s3_key, filename in upload_paths:
+                    task = UploadTask(
+                        bucket=bucket,
+                        key=s3_key,
+                        content=source_content,
+                        filename=filename
+                    )
+                    upload_tasks.append(task)
         
         # Execute uploads
         results = s3_uploader.execute_upload_tasks(upload_tasks)
@@ -787,7 +791,7 @@ def main():
         if suggestions:
             logger_component = Logger(Configuration(
                 buckets=[],
-                environment=args.environment,
+                stages=args.stages,
                 aws_profile=args.profile,
                 verbose=args.verbose,
                 base_path="",

@@ -10,4 +10,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Run upload-test-files.py with proper path and Python interpreter
 echo "Running test file upload utility from post-deploy script"
-python "${SCRIPT_DIR}/upload-test-files.py" --environment "${ENVIRONMENT:-staging}" --verbose
+python "${SCRIPT_DIR}/upload-test-files.py" --stages "stage,prod" --verbose
