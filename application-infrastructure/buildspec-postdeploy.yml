@@ -1,0 +1,93 @@
+version: 0.2
+
+# Many BUILD ENVIRONMENT VARIABLES are specified in the template-pipeline.yml template.
+# Search for 'EnvironmentVariables' under AWS::CodeBuild::Project in the template.
+# 
+# You can also run the command `printenv`
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: latest
+    commands:
+      
+      - ls -l -a
+
+      # Build Environment information for debugging purposes
+      - python3 --version
+      - node --version
+      - aws --version
+
+      # Install virtualenv and create virtual environment
+      - pip3 install --upgrade pip virtualenv
+      - virtualenv /tmp/build-venv
+      - source /tmp/build-venv/bin/activate
+      - python --version
+      - which python
+      - which pip
+
+      # Configure pip cache directory
+      - mkdir -p /root/.cache/pip
+      - pip config set global.cache-dir /root/.cache/pip
+
+      # Set execution permissions for shell scripts
+      - |
+        echo "Set execution permissions for shell scripts"
+        chmod +x application-infrastructure/build-scripts/*.sh
+
+      # Build Environment: Install Python dependencies for Build Scripts if build-scripts/requirements.txt exists
+      - |
+        if [ -f "application-infrastructure/build-scripts/requirements.txt" ]; then
+          echo "Installing Python dependencies for build scripts"
+          pip install -r application-infrastructure/build-scripts/requirements.txt
+        else
+          echo "No build-scripts/requirements.txt found, skipping pip install"
+        fi
+
+  pre_build:
+    commands:
+      
+      # Activate virtual environment for pre_build phase
+      - source /tmp/build-venv/bin/activate
+                  
+  build:
+    commands:
+
+      - cd application-infrastructure
+      
+      # Activate virtual environment for build phase
+      - source /tmp/build-venv/bin/activate
+      
+      - echo "This is my Post Deploy Spec!"
+
+      - cd ..
+
+      # Build Environment: Run post-deploy.sh if it exists
+      - |
+        if [ -f "application-infrastructure/build-scripts/post-deploy.sh" ]; then
+          echo "Running post-deploy.sh"
+          chmod +x build-scripts/post-deploy.sh
+          ./application-infrastructure/build-scripts/post-deploy.sh
+        else
+          echo "No build-scripts/post-deploy.sh found, skipping"
+        fi
+
+      # Upload test files to S3 buckets for CloudFront invalidation testing
+      - |
+        echo "Running test file upload utility"
+        cd application-infrastructure
+        python build-scripts/upload-test-files.py --environment ${ENVIRONMENT:-staging} --verbose
+        cd ..
+      
+      # list files in the artifacts
+      - ls -l -a
+
+artifacts:
+  files:
+    - 'application-infrastructure/**/*'
+
+# add cache
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+    - '/tmp/build-venv/**/*'
