@@ -19,7 +19,6 @@ Run with: pytest tests/integration/test_upload_utility_cicd.py -v
 
 Environment variables for testing:
 - S3_STATIC_HOST_BUCKET: Test bucket for CI/CD mode testing
-- ENVIRONMENT: Target environment (staging/prod)
 - RUN_INTEGRATION_TESTS: Set to '1' to enable integration tests
 """
 
@@ -56,7 +55,7 @@ def test_config():
     """Load test configuration from environment variables."""
     config = {
         'test_bucket': os.environ.get('S3_STATIC_HOST_BUCKET'),
-        'environment': os.environ.get('ENVIRONMENT', 'staging'),
+        'stage': 'staging',  # Default stage for testing
         'build_scripts_dir': Path(__file__).parent.parent.parent / 'build-scripts',
         'upload_script_path': Path(__file__).parent.parent.parent / 'build-scripts' / 'upload-test-files.py',
         'buildspec_path': Path(__file__).parent.parent.parent / 'buildspec-postdeploy.yml',
@@ -83,8 +82,7 @@ def clean_test_environment():
     # Clean up environment variables that might affect tests
     env_vars_to_clean = [
         'AWS_PROFILE',
-        'S3_STATIC_HOST_BUCKET',
-        'ENVIRONMENT',
+        'S3_STATIC_HOST_BUCKET'
     ]
     
     original_values = {}
@@ -205,78 +203,75 @@ class TestEnvironmentVariableResolution:
         # Test 1: With S3_STATIC_HOST_BUCKET set
         if test_config['test_bucket']:
             env_vars = {
-                'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-                'ENVIRONMENT': 'staging'
+                'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
             }
             
             result = run_upload_script(
                 script_path,
-                ['--environment', 'staging', '--verbose'],
+                ['--stages', 'staging', '--verbose'],
                 env_vars
             )
             
             # Should succeed (or fail only due to AWS permissions, not config)
-            assert 'No buckets specified' not in result.stderr
-            assert test_config['test_bucket'] in result.stdout or test_config['test_bucket'] in result.stderr
+            output = result.stdout + result.stderr
+            assert 'No buckets specified' not in output
+            assert test_config['test_bucket'] in output
         
         # Test 2: Without S3_STATIC_HOST_BUCKET (should fail with helpful message)
-        env_vars = {
-            'ENVIRONMENT': 'staging'
-        }
+        env_vars = {}
         # Remove S3_STATIC_HOST_BUCKET if it exists
         if 'S3_STATIC_HOST_BUCKET' in os.environ:
             del os.environ['S3_STATIC_HOST_BUCKET']
         
         result = run_upload_script(
             script_path,
-            ['--environment', 'staging'],
+            ['--stages', 'staging'],
             env_vars
         )
         
         # Should fail with helpful error message
         assert result.returncode != 0
-        assert 'No buckets specified' in result.stderr or 'S3_STATIC_HOST_BUCKET' in result.stderr
+        output = result.stdout + result.stderr
+        assert 'No buckets specified' in output or 'S3_STATIC_HOST_BUCKET' in output
     
-    def test_environment_parameter_resolution(self, test_config, clean_test_environment):
+    def test_stages_parameter_resolution(self, test_config, clean_test_environment):
         """
-        Test that ENVIRONMENT parameter is correctly resolved and used.
+        Test that stages parameter is correctly resolved and used.
         
         **Validates: Requirements 2.3**
         
         This test verifies:
-        1. ENVIRONMENT variable affects base path determination
-        2. Different environments produce different base paths
-        3. Environment configuration is logged correctly
+        1. --stages parameter affects base path determination
+        2. Different stages produce different base paths
+        3. Stage configuration is logged correctly
         """
         script_path = test_config['upload_script_path']
         
         if not test_config['test_bucket']:
             pytest.skip("No test bucket configured")
         
-        # Test staging environment
+        # Test staging stage
         env_vars_staging = {
-            'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-            'ENVIRONMENT': 'staging'
+            'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
         }
         
         result_staging = run_upload_script(
             script_path,
-            ['--verbose'],  # No --environment, should use env var
+            ['--stages', 'staging', '--verbose'],  # Use --stages parameter
             env_vars_staging
         )
         
         # Should use staging base path
         assert '/stage/public/' in result_staging.stdout or '/stage/public/' in result_staging.stderr
         
-        # Test production environment
+        # Test production stage
         env_vars_prod = {
-            'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-            'ENVIRONMENT': 'prod'
+            'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
         }
         
         result_prod = run_upload_script(
             script_path,
-            ['--verbose'],
+            ['--stages', 'prod', '--verbose'],
             env_vars_prod
         )
         
@@ -301,8 +296,7 @@ class TestEnvironmentVariableResolution:
         
         # Simulate CI/CD environment (no AWS_PROFILE set)
         env_vars = {
-            'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-            'ENVIRONMENT': 'staging'
+            'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
         }
         
         # Remove AWS_PROFILE if it exists
@@ -311,7 +305,7 @@ class TestEnvironmentVariableResolution:
         
         result = run_upload_script(
             script_path,
-            ['--verbose'],
+            ['--stages', 'staging', '--verbose'],
             env_vars
         )
         
@@ -340,8 +334,7 @@ class TestBuildspecIntegration:
         
         # Simulate CodeBuild environment variables
         env_vars = {
-            'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-            'ENVIRONMENT': 'staging'
+            'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
         }
         
         result = simulate_buildspec_execution(buildspec_path, env_vars)
@@ -409,13 +402,12 @@ class TestScriptExecutionInCICD:
             pytest.skip("No test bucket configured")
         
         env_vars = {
-            'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-            'ENVIRONMENT': 'staging'
+            'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
         }
         
         result = run_upload_script(
             script_path,
-            ['--verbose'],
+            ['--stages', 'staging', '--verbose'],
             env_vars
         )
         
@@ -425,7 +417,7 @@ class TestScriptExecutionInCICD:
         # Should log startup information
         assert 'Test File Upload Utility' in output
         assert test_config['test_bucket'] in output
-        assert 'staging' in output or 'Environment: staging' in output
+        assert 'staging' in output or 'Stage: staging' in output
         
         # Should log base path
         assert '/stage/public/' in output
@@ -454,8 +446,7 @@ class TestScriptExecutionInCICD:
         # Test 1: Missing source file (simulate by using wrong working directory)
         with tempfile.TemporaryDirectory() as temp_dir:
             env_vars = {
-                'S3_STATIC_HOST_BUCKET': 'nonexistent-bucket-for-testing',
-                'ENVIRONMENT': 'staging'
+                'S3_STATIC_HOST_BUCKET': 'nonexistent-bucket-for-testing'
             }
             
             # Run from temp directory where test.html doesn't exist
@@ -464,7 +455,7 @@ class TestScriptExecutionInCICD:
                 os.chdir(temp_dir)
                 
                 result = subprocess.run(
-                    ['python', str(script_path), '--verbose'],
+                    ['python', str(script_path), '--stages', 'staging', '--verbose'],
                     env=env_vars,
                     capture_output=True,
                     text=True,
@@ -480,13 +471,12 @@ class TestScriptExecutionInCICD:
         
         # Test 2: Invalid bucket name (should be handled gracefully)
         env_vars = {
-            'S3_STATIC_HOST_BUCKET': 'definitely-nonexistent-bucket-12345',
-            'ENVIRONMENT': 'staging'
+            'S3_STATIC_HOST_BUCKET': 'definitely-nonexistent-bucket-12345'
         }
         
         result = run_upload_script(
             script_path,
-            ['--verbose'],
+            ['--stages', 'staging', '--verbose'],
             env_vars
         )
         
@@ -517,14 +507,13 @@ class TestScriptExecutionInCICD:
             pytest.skip("No test bucket configured")
         
         env_vars = {
-            'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-            'ENVIRONMENT': 'staging'
+            'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
         }
         
         # Run with verbose flag
         result = run_upload_script(
             script_path,
-            ['--verbose'],
+            ['--stages', 'staging', '--verbose'],
             env_vars
         )
         
@@ -537,7 +526,7 @@ class TestScriptExecutionInCICD:
             'CI/CD mode',
             'Verbose mode',
             'Base path',
-            'Environment: staging'
+            'staging'  # Should mention the stage being processed
         ]
         
         found_indicators = [indicator for indicator in verbose_indicators if indicator in output]
@@ -608,12 +597,11 @@ class TestCrossPlatformCompatibility:
                 os.chdir(test_dir)
                 
                 env_vars = {
-                    'S3_STATIC_HOST_BUCKET': test_config['test_bucket'],
-                    'ENVIRONMENT': 'staging'
+                    'S3_STATIC_HOST_BUCKET': test_config['test_bucket']
                 }
                 
                 result = subprocess.run(
-                    ['python', str(script_path), '--verbose'],
+                    ['python', str(script_path), '--stages', 'staging', '--verbose'],
                     env=env_vars,
                     capture_output=True,
                     text=True,

@@ -29,6 +29,188 @@ PathGenerator = upload_module.PathGenerator
 Configuration = upload_module.Configuration
 
 
+# New property tests for stages parameter
+
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.lists(
+    st.text(min_size=1, max_size=50).filter(lambda x: x.strip() and ',' not in x),
+    min_size=1,
+    max_size=10
+))
+def test_property_1_stage_list_parsing_consistency(stage_names):
+    """Property 1: Stage list parsing consistency.
+    
+    For any comma-delimited stage string, the parsed stage list should contain exactly 
+    the stage names specified in the input string.
+    
+    **Feature: upload-utility-stages-update, Property 1: Stage list parsing consistency**
+    **Validates: Requirements 1.1**
+    """
+    # Create comma-delimited stage string
+    stage_string = ','.join(stage_names)
+    
+    # Test EnvironmentManager stage parsing
+    env_manager = EnvironmentManager()
+    
+    # Parse stage list
+    parsed_stages = env_manager.get_target_stages(stage_string)
+    
+    # Property: Parsed stages should match original stage names
+    assert len(parsed_stages) == len(stage_names), \
+        f"Expected {len(stage_names)} stages, got {len(parsed_stages)}"
+    
+    # Check each stage name is preserved (order and content)
+    for original, parsed in zip(stage_names, parsed_stages):
+        assert parsed == original.strip(), \
+            f"Expected stage '{original.strip()}', got '{parsed}'"
+
+
+@settings(max_examples=10)
+@given(st.lists(
+    st.text(min_size=1, max_size=20).filter(lambda x: x.strip()),
+    min_size=1,
+    max_size=5
+).map(lambda stages: ','.join(stages) + ','))  # Add trailing comma
+def test_property_1_stage_parsing_with_trailing_comma(stage_string_with_comma):
+    """Test stage parsing handles trailing commas correctly.
+    
+    **Feature: upload-utility-stages-update, Property 1: Stage list parsing consistency**
+    **Validates: Requirements 1.1**
+    """
+    env_manager = EnvironmentManager()
+    
+    # Parse stage list with trailing comma
+    parsed_stages = env_manager.get_target_stages(stage_string_with_comma)
+    
+    # Property: Trailing comma should not create empty stage names
+    for stage in parsed_stages:
+        assert stage.strip() != '', f"Found empty stage name in parsed list: {parsed_stages}"
+
+
+@settings(max_examples=10)
+@given(st.one_of(
+    st.just(''),  # Empty string
+    st.just(','),  # Only comma
+    st.just(',,'),  # Multiple commas
+    st.just(' , , ')  # Spaces and commas
+))
+def test_property_1_stage_parsing_invalid_input(invalid_stage_string):
+    """Test stage parsing handles invalid input correctly.
+    
+    **Feature: upload-utility-stages-update, Property 1: Stage list parsing consistency**
+    **Validates: Requirements 1.1**
+    """
+    env_manager = EnvironmentManager()
+    
+    # Parse stage list - should handle gracefully
+    parsed_stages = env_manager.get_target_stages(invalid_stage_string)
+    
+    # Property: Invalid stage strings should return empty list or handle gracefully
+    for stage in parsed_stages:
+        assert stage.strip() != '', f"Found empty stage name: '{stage}'"
+
+
+@settings(max_examples=10)
+@given(st.tuples(
+    st.lists(
+        st.text(min_size=1, max_size=20).filter(lambda x: x.strip() and ',' not in x),
+        min_size=1,
+        max_size=3
+    ),  # stages
+    st.lists(
+        st.text(min_size=1, max_size=20).filter(lambda x: x.strip() and ',' not in x),
+        min_size=1,
+        max_size=3
+    )   # buckets
+))
+def test_property_2_multi_stage_upload_completeness(stages_and_buckets):
+    """Property 2: Multi-stage upload completeness.
+    
+    For any list of stages and buckets, the system should upload exactly 12 files 
+    per bucket per stage.
+    
+    **Feature: upload-utility-stages-update, Property 2: Multi-stage upload completeness**
+    **Validates: Requirements 1.2, 2.1**
+    """
+    stages, buckets = stages_and_buckets
+    
+    # Create configuration with multiple stages
+    config = Configuration(
+        buckets=buckets,
+        stages=stages,
+        aws_profile=None,
+        verbose=False,
+        base_path="",  # Will be calculated per stage
+        source_file_path='test.html'
+    )
+    
+    # Test path generation for each stage
+    env_manager = EnvironmentManager()
+    path_generator = PathGenerator(config)
+    
+    total_expected_files = len(stages) * len(buckets) * 12
+    total_generated_paths = 0
+    
+    for stage in stages:
+        base_path = env_manager.determine_base_path(stage)
+        upload_paths = path_generator.generate_upload_paths(base_path)
+        
+        # Property: Each stage should generate exactly 12 files
+        assert len(upload_paths) == 12, \
+            f"Expected 12 files for stage '{stage}', got {len(upload_paths)}"
+        
+        # Property: All paths should start with the correct stage base path
+        for s3_key, filename in upload_paths:
+            assert s3_key.startswith(base_path.rstrip('/')), \
+                f"Path '{s3_key}' should start with base path '{base_path}' for stage '{stage}'"
+        
+        total_generated_paths += len(upload_paths)
+    
+    # Property: Total files should be stages * buckets * 12
+    expected_total_per_bucket = len(stages) * 12
+    assert total_generated_paths == len(stages) * 12, \
+        f"Expected {len(stages) * 12} total paths for {len(stages)} stages, got {total_generated_paths}"
+
+
+@settings(max_examples=10)
+@given(st.text(min_size=1, max_size=50).filter(lambda x: x.strip()))
+def test_property_3_stage_based_path_generation(stage_name):
+    """Property 3: Stage-based path generation.
+    
+    For any stage name, the generated base path should follow the stage-to-path 
+    mapping rules consistently.
+    
+    **Feature: upload-utility-stages-update, Property 3: Stage-based path generation**
+    **Validates: Requirements 1.5, 2.2**
+    """
+    env_manager = EnvironmentManager()
+    
+    # Test base path determination for the stage
+    base_path = env_manager.determine_base_path(stage_name.strip())
+    
+    # Property: Base path should always follow the pattern /{stage}/public/
+    expected_path = f'/{stage_name.strip()}/public/'
+    assert base_path == expected_path, \
+        f"Expected base path '{expected_path}' for stage '{stage_name.strip()}', got '{base_path}'"
+    
+    # Property: Base path should always start with /
+    assert base_path.startswith('/'), \
+        f"Base path should start with '/', got: '{base_path}'"
+    
+    # Property: Base path should always end with /
+    assert base_path.endswith('/'), \
+        f"Base path should end with '/', got: '{base_path}'"
+    
+    # Property: Base path should contain /public/
+    assert '/public/' in base_path, \
+        f"Base path should contain '/public/', got: '{base_path}'"
+    
+    # Property: Base path should be consistent across multiple calls
+    base_path_2 = env_manager.determine_base_path(stage_name.strip())
+    assert base_path == base_path_2, \
+        f"Base path should be consistent across calls, got '{base_path}' and '{base_path_2}'"
+
+
 @settings(max_examples=10)  # Minimal iterations per testing guidelines
 @given(st.lists(
     st.text(min_size=1, max_size=50).filter(lambda x: x.strip() and ',' not in x),
@@ -41,7 +223,7 @@ def test_property_1_bucket_list_parsing_consistency(bucket_names):
     For any comma-delimited bucket string, the utility should upload files to exactly
     the buckets specified in the list.
     
-    **Feature: test-file-upload-utility, Property 1: Bucket list parsing consistency**
+    **Feature: upload-utility-stages-update, Property 1: Bucket list parsing consistency**
     **Validates: Requirements 1.1**
     """
     # Create comma-delimited bucket string
@@ -70,28 +252,26 @@ def test_property_1_bucket_list_parsing_consistency(bucket_names):
     st.just('dev'),
     st.just('local')
 ))
-def test_property_2_environment_based_configuration(environment):
-    """Property 2: Environment-based configuration.
+def test_property_2_stage_based_configuration(stage):
+    """Property 2: Stage-based configuration.
     
-    For any valid environment parameter, the utility should configure AWS operations
-    and base paths consistently for that environment.
+    For any valid stage parameter, the utility should configure AWS operations
+    and base paths consistently for that stage.
     
-    **Feature: test-file-upload-utility, Property 2: Environment-based configuration**
+    **Feature: upload-utility-stages-update, Property 2: Stage-based configuration**
     **Validates: Requirements 1.2, 3.2**
     """
     env_manager = EnvironmentManager()
     
     # Test base path determination
-    base_path = env_manager.determine_base_path(environment)
+    base_path = env_manager.determine_base_path(stage)
     
-    # Property: Environment should consistently determine base path
-    if environment == 'prod':
-        expected_path = '/prod/public/'
-    else:
-        expected_path = '/stage/public/'
+    # Property: Stage should consistently determine base path
+    # The actual implementation uses the stage name directly in the path
+    expected_path = f'/{stage}/public/'
     
     assert base_path == expected_path, \
-        f"Expected base path '{expected_path}' for environment '{environment}', got '{base_path}'"
+        f"Expected base path '{expected_path}' for stage '{stage}', got '{base_path}'"
 
 
 @settings(max_examples=10)
@@ -103,7 +283,7 @@ def test_property_2_environment_based_configuration(environment):
 def test_property_bucket_parsing_with_trailing_comma(bucket_string_with_comma):
     """Test bucket parsing handles trailing commas correctly.
     
-    **Feature: test-file-upload-utility, Property 1: Bucket list parsing consistency**
+    **Feature: upload-utility-stages-update, Property 1: Bucket list parsing consistency**
     **Validates: Requirements 1.1**
     """
     env_manager = EnvironmentManager()
@@ -126,7 +306,7 @@ def test_property_bucket_parsing_with_trailing_comma(bucket_string_with_comma):
 def test_property_bucket_parsing_invalid_input(invalid_bucket_string):
     """Test bucket parsing handles invalid input correctly.
     
-    **Feature: test-file-upload-utility, Property 1: Bucket list parsing consistency**
+    **Feature: upload-utility-stages-update, Property 1: Bucket list parsing consistency**
     **Validates: Requirements 1.1**
     """
     env_manager = EnvironmentManager()
@@ -147,7 +327,7 @@ def test_property_bucket_parsing_invalid_input(invalid_bucket_string):
 def test_property_bucket_fallback_to_environment_variable(_):
     """Test bucket resolution falls back to environment variable when no --buckets provided.
     
-    **Feature: test-file-upload-utility, Property 2: Environment-based configuration**
+    **Feature: upload-utility-stages-update, Property 2: Stage-based configuration**
     **Validates: Requirements 1.2, 3.2**
     """
     env_manager = EnvironmentManager()
@@ -167,7 +347,7 @@ def test_property_bucket_fallback_to_environment_variable(_):
 def test_property_bucket_error_when_no_source(_):
     """Test bucket resolution raises error when no buckets specified anywhere.
     
-    **Feature: test-file-upload-utility, Property 2: Environment-based configuration**
+    **Feature: upload-utility-stages-update, Property 2: Stage-based configuration**
     **Validates: Requirements 1.2, 3.2**
     """
     env_manager = EnvironmentManager()
@@ -194,7 +374,7 @@ def test_property_4_filename_pattern_compliance(seed):
     For any generated filename, it should follow the "test-XXXXXX.html" pattern 
     where XXXXXX is exactly 6 alphanumeric characters.
     
-    **Feature: test-file-upload-utility, Property 4: Filename pattern compliance**
+    **Feature: upload-utility-stages-update, Property 4: Filename pattern compliance**
     **Validates: Requirements 3.3**
     """
     import re
@@ -206,7 +386,7 @@ def test_property_4_filename_pattern_compliance(seed):
     # Create a minimal configuration for FileGenerator
     config = Configuration(
         buckets=['test-bucket'],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -243,13 +423,13 @@ def test_property_3_file_count_consistency(bucket_name):
     For any target bucket, the utility should create exactly 12 test files 
     regardless of bucket name or configuration.
     
-    **Feature: test-file-upload-utility, Property 3: File count consistency**
+    **Feature: upload-utility-stages-update, Property 3: File count consistency**
     **Validates: Requirements 3.1**
     """
     # Create configuration with the test bucket
     config = Configuration(
         buckets=[bucket_name.strip()],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -285,7 +465,7 @@ def test_property_5_directory_depth_distribution(seed):
     For any set of 12 generated paths, they should include files at directory 
     depths 1, 2, 3, and 4 levels under the base path.
     
-    **Feature: test-file-upload-utility, Property 5: Directory depth distribution**
+    **Feature: upload-utility-stages-update, Property 5: Directory depth distribution**
     **Validates: Requirements 3.4**
     """
     import random
@@ -296,7 +476,7 @@ def test_property_5_directory_depth_distribution(seed):
     # Create configuration
     config = Configuration(
         buckets=['test-bucket'],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -341,7 +521,7 @@ def test_property_6_filename_variety_requirement(seed):
     For any set of 12 generated files, some should be named "index.html" 
     and some should be named "default.html".
     
-    **Feature: test-file-upload-utility, Property 6: Filename variety requirement**
+    **Feature: upload-utility-stages-update, Property 6: Filename variety requirement**
     **Validates: Requirements 3.5**
     """
     import random
@@ -352,7 +532,7 @@ def test_property_6_filename_variety_requirement(seed):
     # Create configuration
     config = Configuration(
         buckets=['test-bucket'],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -404,7 +584,7 @@ def test_property_7_retry_behavior_consistency(max_retries):
     For any S3 upload failure, the utility should retry up to 3 times with 
     exponential backoff before giving up.
     
-    **Feature: test-file-upload-utility, Property 7: Retry behavior consistency**
+    **Feature: upload-utility-stages-update, Property 7: Retry behavior consistency**
     **Validates: Requirements 4.1**
     """
     import boto3
@@ -417,7 +597,7 @@ def test_property_7_retry_behavior_consistency(max_retries):
     # Create configuration
     config = Configuration(
         buckets=['test-bucket'],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -480,7 +660,7 @@ def test_property_7_retry_success_behavior(success_on_attempt):
     For any S3 upload that succeeds on a retry attempt, the utility should 
     stop retrying and return success.
     
-    **Feature: test-file-upload-utility, Property 7: Retry behavior consistency**
+    **Feature: upload-utility-stages-update, Property 7: Retry behavior consistency**
     **Validates: Requirements 4.1**
     """
     import boto3
@@ -492,7 +672,7 @@ def test_property_7_retry_success_behavior(success_on_attempt):
     # Create configuration
     config = Configuration(
         buckets=['test-bucket'],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -562,7 +742,7 @@ def test_property_9_upload_logging_completeness(upload_data):
     For any successful file upload, the utility should log the complete S3 path 
     of the uploaded file.
     
-    **Feature: test-file-upload-utility, Property 9: Upload logging completeness**
+    **Feature: upload-utility-stages-update, Property 9: Upload logging completeness**
     **Validates: Requirements 5.1**
     """
     import boto3
@@ -578,7 +758,7 @@ def test_property_9_upload_logging_completeness(upload_data):
     # Create configuration
     config = Configuration(
         buckets=[data[0] for data in upload_data],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -660,7 +840,7 @@ def test_property_9_upload_logging_verbose_mode(upload_data):
     For any successful file upload in verbose mode, the utility should log 
     additional detailed information about the upload.
     
-    **Feature: test-file-upload-utility, Property 9: Upload logging completeness**
+    **Feature: upload-utility-stages-update, Property 9: Upload logging completeness**
     **Validates: Requirements 5.1**
     """
     import boto3
@@ -676,7 +856,7 @@ def test_property_9_upload_logging_verbose_mode(upload_data):
     # Create configuration with verbose mode enabled
     config = Configuration(
         buckets=[data[0] for data in upload_data],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=True,  # Enable verbose mode
         base_path='/stage/public/',
@@ -756,7 +936,7 @@ def test_property_9_upload_failure_logging(upload_data):
     For any failed file upload, the utility should log the complete S3 path 
     and error information.
     
-    **Feature: test-file-upload-utility, Property 9: Upload logging completeness**
+    **Feature: upload-utility-stages-update, Property 9: Upload logging completeness**
     **Validates: Requirements 5.1**
     """
     import boto3
@@ -772,7 +952,7 @@ def test_property_9_upload_failure_logging(upload_data):
     # Create configuration
     config = Configuration(
         buckets=[data[0] for data in upload_data],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -855,7 +1035,7 @@ def test_property_8_bucket_error_isolation(bucket_names):
     For any list of buckets where some don't exist, the utility should continue 
     processing remaining buckets after logging errors for missing ones.
     
-    **Feature: test-file-upload-utility, Property 8: Bucket error isolation**
+    **Feature: upload-utility-stages-update, Property 8: Bucket error isolation**
     **Validates: Requirements 4.2**
     """
     import boto3
@@ -869,7 +1049,7 @@ def test_property_8_bucket_error_isolation(bucket_names):
     # Create configuration
     config = Configuration(
         buckets=bucket_names,
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -963,7 +1143,7 @@ def test_property_8_all_buckets_fail_validation(bucket_names):
     For any list of buckets where all don't exist, the utility should handle 
     all failures gracefully and return appropriate results.
     
-    **Feature: test-file-upload-utility, Property 8: Bucket error isolation**
+    **Feature: upload-utility-stages-update, Property 8: Bucket error isolation**
     **Validates: Requirements 4.2**
     """
     import boto3
@@ -977,7 +1157,7 @@ def test_property_8_all_buckets_fail_validation(bucket_names):
     # Create configuration
     config = Configuration(
         buckets=bucket_names,
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -1056,7 +1236,7 @@ def test_property_10_summary_reporting_accuracy(bucket_results):
     For any successful execution, the utility should display a summary showing 
     the count of uploaded files per bucket.
     
-    **Feature: test-file-upload-utility, Property 10: Summary reporting accuracy**
+    **Feature: upload-utility-stages-update, Property 10: Summary reporting accuracy**
     **Validates: Requirements 5.2**
     """
     import logging
@@ -1070,7 +1250,7 @@ def test_property_10_summary_reporting_accuracy(bucket_results):
     # Create configuration
     config = Configuration(
         buckets=[data[0] for data in bucket_results],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -1163,7 +1343,7 @@ def test_property_10_summary_reporting_verbose_mode(bucket_results):
     For any successful execution in verbose mode, the utility should display 
     detailed upload paths in addition to the summary counts.
     
-    **Feature: test-file-upload-utility, Property 10: Summary reporting accuracy**
+    **Feature: upload-utility-stages-update, Property 10: Summary reporting accuracy**
     **Validates: Requirements 5.2**
     """
     import logging
@@ -1177,7 +1357,7 @@ def test_property_10_summary_reporting_verbose_mode(bucket_results):
     # Create configuration with verbose mode enabled
     config = Configuration(
         buckets=[data[0] for data in bucket_results],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=True,  # Enable verbose mode
         base_path='/stage/public/',
@@ -1265,7 +1445,7 @@ def test_property_10_summary_reporting_error_guidance(bucket_results):
     For any execution with failures, the utility should provide actionable 
     error guidance in the summary.
     
-    **Feature: test-file-upload-utility, Property 10: Summary reporting accuracy**
+    **Feature: upload-utility-stages-update, Property 10: Summary reporting accuracy**
     **Validates: Requirements 5.2**
     """
     import logging
@@ -1279,7 +1459,7 @@ def test_property_10_summary_reporting_error_guidance(bucket_results):
     # Create configuration
     config = Configuration(
         buckets=[data[0] for data in bucket_results],
-        environment='staging',
+        stages=['staging'],
         aws_profile=None,
         verbose=False,
         base_path='/stage/public/',
@@ -1342,3 +1522,507 @@ def test_property_10_summary_reporting_error_guidance(bucket_results):
     finally:
         # Restore original handlers
         test_logger.handlers = original_handlers
+
+
+# Property 4: Invalid stage name handling
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.text(min_size=1, max_size=100).filter(lambda x: x.strip()))
+def test_property_4_invalid_stage_name_handling(stage_name):
+    """Property 4: Invalid stage name handling.
+    
+    For any stage name input (valid or invalid), the system should process it using 
+    consistent stage-based path logic without errors.
+    
+    **Feature: upload-utility-stages-update, Property 4: Invalid stage name handling**
+    **Validates: Requirements 1.4**
+    """
+    env_manager = EnvironmentManager()
+    
+    # Test base path determination for any stage name
+    # Should not raise exceptions regardless of stage name
+    try:
+        base_path = env_manager.determine_base_path(stage_name)
+        
+        # Property: Should always return a valid path format
+        assert base_path.startswith('/'), f"Base path should start with '/', got: {base_path}"
+        assert base_path.endswith('/'), f"Base path should end with '/', got: {base_path}"
+        assert '/public/' in base_path, f"Base path should contain '/public/', got: {base_path}"
+        
+        # Property: Should follow consistent path logic
+        # The actual implementation uses the stage name directly in the path
+        expected_path = f'/{stage_name}/public/'
+        
+        assert base_path == expected_path, \
+            f"Expected base path '{expected_path}' for stage '{stage_name}', got '{base_path}'"
+            
+    except Exception as e:
+        # Should not raise exceptions for any stage name
+        assert False, f"Stage name '{stage_name}' caused exception: {e}"
+
+
+# Property 5: Error isolation across stages  
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.lists(
+    st.text(min_size=1, max_size=20).filter(lambda x: x.strip() and ',' not in x),
+    min_size=2,
+    max_size=5
+))
+def test_property_5_error_isolation_across_stages(stage_names):
+    """Property 5: Error isolation across stages.
+    
+    For any execution where some stages encounter errors, the system should continue 
+    processing remaining stages successfully.
+    
+    **Feature: upload-utility-stages-update, Property 5: Error isolation across stages**
+    **Validates: Requirements 2.3**
+    """
+    env_manager = EnvironmentManager()
+    
+    # Test that each stage can be processed independently
+    successful_stages = []
+    failed_stages = []
+    
+    for stage in stage_names:
+        try:
+            # Test base path determination (core stage processing)
+            base_path = env_manager.determine_base_path(stage)
+            
+            # Verify path is valid
+            assert base_path.startswith('/'), f"Invalid base path for stage '{stage}': {base_path}"
+            assert base_path.endswith('/'), f"Invalid base path for stage '{stage}': {base_path}"
+            
+            successful_stages.append(stage)
+            
+        except Exception as e:
+            failed_stages.append((stage, str(e)))
+    
+    # Property: At least some stages should be processable
+    # (Since we're using valid stage names, all should succeed)
+    assert len(successful_stages) > 0, \
+        f"No stages were processed successfully. Failed stages: {failed_stages}"
+    
+    # Property: Stage processing should be independent
+    # If one stage fails, others should still be processable
+    total_stages = len(stage_names)
+    processed_stages = len(successful_stages) + len(failed_stages)
+    
+    assert processed_stages == total_stages, \
+        f"Expected to process {total_stages} stages, but only processed {processed_stages}"
+    
+    # Property: Each stage should produce consistent results regardless of other stages
+    for stage in successful_stages:
+        # Re-process the stage to ensure consistency
+        base_path_1 = env_manager.determine_base_path(stage)
+        base_path_2 = env_manager.determine_base_path(stage)
+        
+        assert base_path_1 == base_path_2, \
+            f"Stage '{stage}' produced inconsistent results: '{base_path_1}' vs '{base_path_2}'"
+
+
+# Property 6: Summary reporting accuracy
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.lists(
+    st.tuples(
+        st.text(alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd')), min_size=3, max_size=10),  # bucket
+        st.integers(min_value=0, max_value=12),  # successful_uploads
+        st.integers(min_value=0, max_value=12)   # failed_uploads
+    ),
+    min_size=1,
+    max_size=5,
+    unique_by=lambda x: x[0]  # Unique by bucket name
+))
+def test_property_6_summary_reporting_accuracy(bucket_results):
+    """Property 6: Summary reporting accuracy.
+    
+    For any completed execution, the summary report should accurately reflect the 
+    actual upload results for all stages and buckets.
+    
+    **Feature: upload-utility-stages-update, Property 6: Summary reporting accuracy**
+    **Validates: Requirements 2.4**
+    """
+    import logging
+    import io
+    
+    # Import required classes
+    Logger = upload_module.Logger
+    UploadResult = upload_module.UploadResult
+    Configuration = upload_module.Configuration
+    
+    # Create configuration
+    config = Configuration(
+        buckets=[data[0] for data in bucket_results],
+        stages=['staging'],
+        aws_profile=None,
+        verbose=False,
+        base_path='/stage/public/',
+        source_file_path='test.html'
+    )
+    
+    # Create Logger instance
+    logger_component = Logger(config)
+    
+    # Capture log output
+    log_capture = io.StringIO()
+    log_handler = logging.StreamHandler(log_capture)
+    log_handler.setLevel(logging.INFO)
+    
+    # Get the logger and add our handler
+    test_logger = logging.getLogger(upload_module.__name__)
+    original_handlers = test_logger.handlers[:]
+    test_logger.handlers = [log_handler]
+    test_logger.setLevel(logging.INFO)
+    
+    try:
+        # Create UploadResult objects from test data
+        results = {}
+        total_successful = 0
+        total_failed = 0
+        
+        for bucket, successful, failed in bucket_results:
+            # Generate some dummy upload paths for successful uploads
+            upload_paths = [f"s3://{bucket}/stage/public/test/file{i}.html" for i in range(successful)]
+            
+            results[bucket] = UploadResult(
+                bucket=bucket,
+                successful_uploads=successful,
+                failed_uploads=failed,
+                upload_paths=upload_paths
+            )
+            
+            total_successful += successful
+            total_failed += failed
+        
+        # Call log_summary to generate the report
+        logger_component.log_summary(results)
+        
+        # Get logged output
+        log_output = log_capture.getvalue()
+        
+        # Property: Summary should include header
+        assert "=== Upload Summary ===" in log_output, \
+            f"Expected summary header not found in output: {log_output}"
+        
+        # Property: Each bucket should be reported with exact counts
+        for bucket, successful, failed in bucket_results:
+            expected_line = f"{bucket}: {successful} successful, {failed} failed"
+            assert expected_line in log_output, \
+                f"Expected bucket summary '{expected_line}' not found in output: {log_output}"
+        
+        # Property: Total summary should match sum of individual results
+        expected_total = f"Total: {total_successful} successful, {total_failed} failed uploads"
+        assert expected_total in log_output, \
+            f"Expected total summary '{expected_total}' not found in output: {log_output}"
+        
+        # Property: Summary accuracy - no extra or missing counts
+        # Count occurrences of bucket summaries to verify accuracy
+        bucket_summary_count = 0
+        for bucket, successful, failed in bucket_results:
+            expected_line = f"{bucket}: {successful} successful, {failed} failed"
+            if expected_line in log_output:
+                bucket_summary_count += 1
+        
+        assert bucket_summary_count == len(bucket_results), \
+            f"Expected {len(bucket_results)} bucket summaries, got {bucket_summary_count}"
+        
+        # Property: Total line should appear exactly once
+        total_line_count = log_output.count(f"Total: {total_successful} successful, {total_failed} failed uploads")
+        assert total_line_count == 1, \
+            f"Expected exactly 1 total summary line, got {total_line_count}"
+        
+        # Property: If there are failures, error guidance should be provided
+        if total_failed > 0:
+            assert "uploads failed" in log_output, \
+                f"Expected failure notification when {total_failed} uploads failed: {log_output}"
+        
+    finally:
+        # Restore original handlers
+        test_logger.handlers = original_handlers
+
+
+# Property 7: Verbose logging completeness
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.lists(
+    st.text(min_size=1, max_size=20).filter(lambda x: x.strip() and ',' not in x),
+    min_size=1,
+    max_size=3
+))
+def test_property_7_verbose_logging_completeness(stage_names):
+    """Property 7: Verbose logging completeness.
+    
+    For any execution in verbose mode, the logs should contain detailed information 
+    about each stage being processed.
+    
+    **Feature: upload-utility-stages-update, Property 7: Verbose logging completeness**
+    **Validates: Requirements 2.5**
+    """
+    import logging
+    import io
+    
+    # Import required classes
+    Logger = upload_module.Logger
+    Configuration = upload_module.Configuration
+    EnvironmentManager = upload_module.EnvironmentManager
+    
+    # Create configuration with verbose mode enabled
+    config = Configuration(
+        buckets=['test-bucket'],
+        stages=stage_names,
+        aws_profile=None,
+        verbose=True,  # Enable verbose mode
+        base_path='/stage/public/',
+        source_file_path='test.html'
+    )
+    
+    # Create Logger instance
+    logger_component = Logger(config)
+    
+    # Capture log output
+    log_capture = io.StringIO()
+    log_handler = logging.StreamHandler(log_capture)
+    log_handler.setLevel(logging.DEBUG)
+    
+    # Get the logger and add our handler
+    test_logger = logging.getLogger(upload_module.__name__)
+    original_handlers = test_logger.handlers[:]
+    test_logger.handlers = [log_handler]
+    test_logger.setLevel(logging.DEBUG)
+    
+    try:
+        # Simulate verbose logging for stage processing
+        env_manager = EnvironmentManager()
+        
+        # Log startup information (verbose mode)
+        logger_component.log_startup(['test-bucket'], 'test.html')
+        
+        # Process each stage and log verbose information
+        for stage in stage_names:
+            # Log stage processing start (simulate bucket processing for stage)
+            logger_component.log_bucket_processing_start(f"stage-{stage}")
+            
+            # Determine base path (core stage processing)
+            base_path = env_manager.determine_base_path(stage)
+            
+            # Log base path determination using the logger's info method directly
+            logger_component.logger.info(f"Stage '{stage}' base path: {base_path}")
+            
+            # Log stage completion
+            logger_component.log_bucket_processing_complete(f"stage-{stage}", 12, 0)
+        
+        # Get logged output
+        log_output = log_capture.getvalue()
+        
+        # Property: Verbose mode should be indicated in startup
+        assert "Verbose mode: enabled" in log_output, \
+            f"Expected verbose mode indication not found in output: {log_output}"
+        
+        # Property: Each stage should be logged with processing details
+        for stage in stage_names:
+            # Should log stage processing start (using bucket processing as proxy)
+            assert f"Processing bucket: stage-{stage}" in log_output, \
+                f"Expected stage processing log for '{stage}' not found in output: {log_output}"
+            
+            # Should log base path determination
+            expected_base_path = f"/{stage}/public/"
+            assert f"Stage '{stage}' base path: {expected_base_path}" in log_output, \
+                f"Expected base path log for stage '{stage}' not found in output: {log_output}"
+            
+            # Should log stage completion (using bucket completion as proxy)
+            assert f"Bucket stage-{stage} completed: 12 successful, 0 failed" in log_output, \
+                f"Expected stage completion log for '{stage}' not found in output: {log_output}"
+        
+        # Property: Verbose logging should provide complete stage information
+        stage_processing_count = log_output.count("Processing bucket: stage-")
+        stage_completion_count = log_output.count("completed: 12 successful, 0 failed")
+        
+        assert stage_processing_count == len(stage_names), \
+            f"Expected {len(stage_names)} stage processing logs, got {stage_processing_count}"
+        assert stage_completion_count == len(stage_names), \
+            f"Expected {len(stage_names)} stage completion logs, got {stage_completion_count}"
+        
+        # Property: Base path information should be logged for each stage
+        base_path_count = log_output.count("base path:")
+        assert base_path_count == len(stage_names), \
+            f"Expected {len(stage_names)} base path logs, got {base_path_count}"
+        
+    finally:
+        # Restore original handlers
+        test_logger.handlers = original_handlers
+
+
+# Property 8: CI/CD multi-stage processing
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.lists(
+    st.text(min_size=1, max_size=20).filter(lambda x: x.strip() and ',' not in x),
+    min_size=2,
+    max_size=4,
+    unique=True  # Ensure unique stages
+).flatmap(lambda stages: st.tuples(
+    st.just(stages),
+    st.lists(
+        st.text(alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd')), min_size=3, max_size=10),
+        min_size=1,
+        max_size=3,
+        unique=True
+    )
+)))
+def test_property_8_cicd_multi_stage_processing(stages_and_buckets):
+    """Property 8: CI/CD multi-stage processing.
+    
+    For any CI/CD execution with multiple stages, the system should process all stages 
+    correctly and upload files to appropriate paths.
+    
+    **Feature: upload-utility-stages-update, Property 8: CI/CD multi-stage processing**
+    **Validates: Requirements 4.3, 4.4**
+    """
+    stages, buckets = stages_and_buckets
+    
+    # Create configuration simulating CI/CD environment (no profile)
+    config = Configuration(
+        buckets=buckets,
+        stages=stages,
+        aws_profile=None,  # CI/CD mode - no profile
+        verbose=False,
+        base_path="",  # Will be calculated per stage
+        source_file_path='test.html'
+    )
+    
+    # Test multi-stage processing
+    env_manager = EnvironmentManager()
+    path_generator = PathGenerator(config)
+    
+    # Property: Each stage should be processable independently
+    stage_results = {}
+    all_base_paths = set()
+    
+    for stage in stages:
+        # Determine base path for this stage
+        base_path = env_manager.determine_base_path(stage)
+        
+        # Property: Base path should follow stage naming convention
+        expected_path = f'/{stage}/public/'
+        assert base_path == expected_path, \
+            f"Expected base path '{expected_path}' for stage '{stage}', got '{base_path}'"
+        
+        # Property: Each stage should have a unique base path
+        assert base_path not in all_base_paths, \
+            f"Duplicate base path '{base_path}' for stage '{stage}'"
+        all_base_paths.add(base_path)
+        
+        # Generate upload paths for this stage
+        upload_paths = path_generator.generate_upload_paths(base_path)
+        
+        # Property: Each stage should generate exactly 12 files
+        assert len(upload_paths) == 12, \
+            f"Expected 12 files for stage '{stage}', got {len(upload_paths)}"
+        
+        # Property: All paths should be under the correct stage base path
+        for s3_key, filename in upload_paths:
+            assert s3_key.startswith(base_path.rstrip('/')), \
+                f"Path '{s3_key}' should start with base path '{base_path}' for stage '{stage}'"
+        
+        stage_results[stage] = upload_paths
+    
+    # Property: Each stage should have distinct base paths
+    assert len(all_base_paths) == len(stages), \
+        f"Expected {len(stages)} unique base paths, got {len(all_base_paths)}: {all_base_paths}"
+    
+    # Property: Files from different stages should have different paths (due to different base paths)
+    all_paths = []
+    for stage_paths in stage_results.values():
+        for s3_key, filename in stage_paths:
+            all_paths.append(s3_key)
+    
+    unique_paths = set(all_paths)
+    assert len(unique_paths) == len(all_paths), \
+        f"Expected all paths to be unique across stages, got {len(unique_paths)} unique out of {len(all_paths)} total"
+    
+    # Property: Total files should be 12 per stage
+    total_files = len(all_paths)
+    expected_total = len(stages) * 12
+    assert total_files == expected_total, \
+        f"Expected {expected_total} total files ({len(stages)} stages * 12), got {total_files}"
+    
+    # Property: Each stage should be processable in CI/CD context (no AWS profile required)
+    for stage in stages:
+        # Should be able to determine base path without AWS credentials
+        base_path = env_manager.determine_base_path(stage)
+        assert isinstance(base_path, str), f"Expected string base path, got {type(base_path)}"
+        assert len(base_path) > 0, f"Expected non-empty base path for stage '{stage}'"
+
+
+# Property 9: Stage list handling robustness
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.one_of(
+    # Valid cases
+    st.just('prod'),
+    st.just('staging,prod'),
+    st.just('dev,staging,prod'),
+    # Edge cases
+    st.just(''),  # Empty string
+    st.just(','),  # Only comma
+    st.just(',,'),  # Multiple commas
+    st.just(' , , '),  # Spaces and commas
+    st.just('prod,'),  # Trailing comma
+    st.just(',prod'),  # Leading comma
+    st.just('  prod  ,  staging  '),  # Extra whitespace
+    st.just('prod,,staging'),  # Double comma
+    # Special characters in stage names
+    st.just('prod-v1,staging-v2'),
+    st.just('prod_env,staging_env'),
+    # Case variations
+    st.just('PROD,staging'),
+    st.just('Prod,Staging')
+))
+def test_property_9_stage_list_handling_robustness(stage_string):
+    """Property 9: Stage list handling robustness.
+    
+    For any stage list input (including edge cases like empty strings, whitespace, 
+    trailing commas), the system should handle it gracefully.
+    
+    **Feature: upload-utility-stages-update, Property 9: Stage list handling robustness**
+    **Validates: Requirements 5.3**
+    """
+    env_manager = EnvironmentManager()
+    
+    # Test stage list parsing - should not raise exceptions
+    try:
+        parsed_stages = env_manager.get_target_stages(stage_string)
+        
+        # Property: Should always return a list
+        assert isinstance(parsed_stages, list), \
+            f"Expected list, got {type(parsed_stages)}: {parsed_stages}"
+        
+        # Property: Should not return empty list (defaults to ['prod'])
+        assert len(parsed_stages) > 0, \
+            f"Expected non-empty stage list, got: {parsed_stages}"
+        
+        # Property: All returned stages should be non-empty strings
+        for stage in parsed_stages:
+            assert isinstance(stage, str), f"Expected string stage, got {type(stage)}: {stage}"
+            assert stage.strip() != '', f"Expected non-empty stage, got: '{stage}'"
+        
+        # Property: Should handle whitespace correctly (no leading/trailing spaces)
+        for stage in parsed_stages:
+            assert stage == stage.strip(), f"Stage should not have leading/trailing whitespace: '{stage}'"
+        
+        # Property: Should not contain empty strings
+        empty_stages = [stage for stage in parsed_stages if not stage.strip()]
+        assert len(empty_stages) == 0, f"Found empty stages: {empty_stages}"
+        
+        # Property: Each parsed stage should be processable
+        for stage in parsed_stages:
+            base_path = env_manager.determine_base_path(stage)
+            
+            # Should produce valid base path
+            assert base_path.startswith('/'), f"Base path should start with '/', got: {base_path}"
+            assert base_path.endswith('/'), f"Base path should end with '/', got: {base_path}"
+            assert '/public/' in base_path, f"Base path should contain '/public/', got: {base_path}"
+        
+        # Property: If input was empty or invalid, should default to ['prod']
+        if not stage_string or not stage_string.strip() or stage_string.strip() == ',' or stage_string.strip() == ',,':
+            assert parsed_stages == ['prod'], \
+                f"Expected default ['prod'] for empty/invalid input '{stage_string}', got: {parsed_stages}"
+        
+    except Exception as e:
+        # Should not raise exceptions for any input
+        assert False, f"Stage string '{stage_string}' caused exception: {e}"

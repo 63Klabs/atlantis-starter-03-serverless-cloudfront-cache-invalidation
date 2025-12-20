@@ -41,32 +41,33 @@ class TestArgumentParserIntegration:
         parser = ArgumentParser()
         args = parser.parse_args([
             '--buckets', 'bucket1,bucket2',
-            '--environment', 'staging',
+            '--stages', 'staging',
             '--profile', 'test-profile',
             '--verbose'
         ])
         
         assert args.buckets == 'bucket1,bucket2'
-        assert args.environment == 'staging'
+        assert args.stages == 'staging'
         assert args.profile == 'test-profile'
         assert args.verbose is True
     
     def test_argument_parser_minimal_args(self):
         """Test argument parser with minimal required arguments"""
         parser = ArgumentParser()
-        args = parser.parse_args(['--environment', 'prod'])
+        args = parser.parse_args(['--stages', 'prod'])
         
         assert args.buckets is None
-        assert args.environment == 'prod'
+        assert args.stages == 'prod'
         assert args.profile is None
         assert args.verbose is False
     
-    def test_argument_parser_invalid_environment(self):
-        """Test argument parser with invalid environment"""
+    def test_argument_parser_invalid_stages(self):
+        """Test argument parser with stages parameter"""
         parser = ArgumentParser()
         
-        with pytest.raises(SystemExit):
-            parser.parse_args(['--environment', 'invalid'])
+        # Stages parameter should accept any string (no validation in parser)
+        args = parser.parse_args(['--stages', 'custom-stage'])
+        assert args.stages == 'custom-stage'
 
 
 class TestEnvironmentManagerIntegration:
@@ -107,7 +108,7 @@ class TestEnvironmentManagerIntegration:
         env_mgr = EnvironmentManager()
         base_path = env_mgr.determine_base_path('staging')
         
-        assert base_path == '/stage/public/'
+        assert base_path == '/staging/public/'
 
 
 class TestFileGeneratorIntegration:
@@ -117,10 +118,10 @@ class TestFileGeneratorIntegration:
         """Test random filename generation"""
         config = Configuration(
             buckets=['test'],
-            environment='staging',
+            stages=['staging'],
             aws_profile=None,
             verbose=False,
-            base_path='/stage/public/',
+            base_path='/staging/public/',
             source_file_path='test.html'
         )
         
@@ -135,10 +136,10 @@ class TestFileGeneratorIntegration:
         """Test error when source file is missing"""
         config = Configuration(
             buckets=['test'],
-            environment='staging',
+            stages=['staging'],
             aws_profile=None,
             verbose=False,
-            base_path='/stage/public/',
+            base_path='/staging/public/',
             source_file_path='/nonexistent/file.html'
         )
         
@@ -155,15 +156,15 @@ class TestPathGeneratorIntegration:
         """Test that exactly 12 paths are generated"""
         config = Configuration(
             buckets=['test'],
-            environment='staging',
+            stages=['staging'],
             aws_profile=None,
             verbose=False,
-            base_path='/stage/public/',
+            base_path='/staging/public/',
             source_file_path='test.html'
         )
         
         path_gen = PathGenerator(config)
-        paths = path_gen.generate_upload_paths('/stage/public/')
+        paths = path_gen.generate_upload_paths('/staging/public/')
         
         assert len(paths) == 12
     
@@ -171,36 +172,36 @@ class TestPathGeneratorIntegration:
         """Test that paths have correct structure"""
         config = Configuration(
             buckets=['test'],
-            environment='staging',
+            stages=['staging'],
             aws_profile=None,
             verbose=False,
-            base_path='/stage/public/',
+            base_path='/staging/public/',
             source_file_path='test.html'
         )
         
         path_gen = PathGenerator(config)
-        paths = path_gen.generate_upload_paths('/stage/public/')
+        paths = path_gen.generate_upload_paths('/staging/public/')
         
         # All paths should start with base path
         for s3_key, filename in paths:
-            assert s3_key.startswith('/stage/public/')
+            assert s3_key.startswith('/staging/public/')
             assert filename.endswith('.html')
     
     def test_generate_upload_paths_invalid_count(self):
         """Test error when requesting invalid count"""
         config = Configuration(
             buckets=['test'],
-            environment='staging',
+            stages=['staging'],
             aws_profile=None,
             verbose=False,
-            base_path='/stage/public/',
+            base_path='/staging/public/',
             source_file_path='test.html'
         )
         
         path_gen = PathGenerator(config)
         
         with pytest.raises(ValueError, match="must create exactly 12 files"):
-            path_gen.generate_upload_paths('/stage/public/', count=10)
+            path_gen.generate_upload_paths('/staging/public/', count=10)
 
 
 class TestConfigurationIntegration:
@@ -210,18 +211,18 @@ class TestConfigurationIntegration:
         """Test configuration object creation with all fields"""
         config = Configuration(
             buckets=['bucket1', 'bucket2'],
-            environment='staging',
+            stages=['staging'],
             aws_profile='test-profile',
             verbose=True,
-            base_path='/stage/public/',
+            base_path='/staging/public/',
             source_file_path='/path/to/test.html'
         )
         
         assert config.buckets == ['bucket1', 'bucket2']
-        assert config.environment == 'staging'
+        assert config.stages == ['staging']
         assert config.aws_profile == 'test-profile'
         assert config.verbose is True
-        assert config.base_path == '/stage/public/'
+        assert config.base_path == '/staging/public/'
         assert config.source_file_path == '/path/to/test.html'
 
 
@@ -268,7 +269,7 @@ class TestMainScriptExitCodes:
         """Test that main exits with 0 on success"""
         test_args = [
             '--buckets', 'test-bucket',
-            '--environment', 'staging'
+            '--stages', 'staging'
         ]
         
         with patch('sys.argv', ['upload-test-files.py'] + test_args), \
@@ -283,8 +284,9 @@ class TestMainScriptExitCodes:
             mock_env_instance = Mock()
             mock_env_mgr.return_value = mock_env_instance
             mock_env_instance.get_target_buckets.return_value = ['test-bucket']
+            mock_env_instance.get_target_stages.return_value = ['staging']
             mock_env_instance.setup_aws_session.return_value = Mock()
-            mock_env_instance.determine_base_path.return_value = '/stage/public/'
+            mock_env_instance.determine_base_path.return_value = '/staging/public/'
             
             mock_file_instance = Mock()
             mock_file_gen.return_value = mock_file_instance
@@ -293,13 +295,13 @@ class TestMainScriptExitCodes:
             mock_path_instance = Mock()
             mock_path_gen.return_value = mock_path_instance
             mock_path_instance.generate_upload_paths.return_value = [
-                ('/stage/public/test/file1.html', 'file1.html')
+                ('/staging/public/test/file1.html', 'file1.html')
             ]
             
             mock_s3_instance = Mock()
             mock_s3_uploader.return_value = mock_s3_instance
             mock_s3_instance.execute_upload_tasks.return_value = {
-                'test-bucket': UploadResult('test-bucket', 1, 0, ['/stage/public/test/file1.html'])
+                'test-bucket': UploadResult('test-bucket', 1, 0, ['/staging/public/test/file1.html'])
             }
             
             mock_logger_instance = Mock()
@@ -315,7 +317,7 @@ class TestMainScriptExitCodes:
         """Test that main exits with 1 on failure"""
         test_args = [
             '--buckets', 'test-bucket',
-            '--environment', 'staging'
+            '--stages', 'staging'
         ]
         
         with patch('sys.argv', ['upload-test-files.py'] + test_args), \

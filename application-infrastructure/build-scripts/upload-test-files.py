@@ -151,7 +151,8 @@ class EnvironmentManager:
         Returns:
             List of stage names
         """
-        return [stage.strip() for stage in stages_arg.split(',') if stage]
+        stages = [stage.strip() for stage in stages_arg.split(',') if stage.strip()]
+        return stages if stages else ['prod']  # Default to prod if no valid stages
     
     def setup_aws_session(self, profile: Optional[str]) -> boto3.Session:
         """
@@ -704,13 +705,17 @@ def main():
         # Setup AWS session
         session = env_manager.setup_aws_session(args.profile)
                 
+        # Get target stages
+        stages = env_manager.get_target_stages(args.stages)
+        
         # Create configuration
         source_file_path = Path(__file__).parent.parent.parent / "test.html"
         config = Configuration(
             buckets=buckets,
+            stages=stages,
             aws_profile=args.profile,
             verbose=args.verbose,
-            base_path=base_path,
+            base_path="",  # Will be calculated per stage
             source_file_path=str(source_file_path)
         )
         
@@ -728,8 +733,8 @@ def main():
         source_content = file_generator.get_source_content()
         
         for bucket in buckets:
-            for stage in args.stages:
-                base_path = path_generator.generate_base_path(stage)
+            for stage in stages:
+                base_path = env_manager.determine_base_path(stage)
                 upload_paths = path_generator.generate_upload_paths(base_path)
                 for s3_key, filename in upload_paths:
                     task = UploadTask(
@@ -791,7 +796,7 @@ def main():
         if suggestions:
             logger_component = Logger(Configuration(
                 buckets=[],
-                stages=args.stages,
+                stages=env_manager.get_target_stages(args.stages),
                 aws_profile=args.profile,
                 verbose=args.verbose,
                 base_path="",
