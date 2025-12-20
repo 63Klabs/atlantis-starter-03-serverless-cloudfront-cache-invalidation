@@ -66,18 +66,11 @@ phases:
       - |
         if [ -f "application-infrastructure/build-scripts/post-deploy.sh" ]; then
           echo "Running post-deploy.sh"
-          chmod +x build-scripts/post-deploy.sh
+          source /tmp/build-venv/bin/activate
           ./application-infrastructure/build-scripts/post-deploy.sh
         else
           echo "No build-scripts/post-deploy.sh found, skipping"
         fi
-
-      # Upload test files to S3 buckets for CloudFront invalidation testing
-      - |
-        echo "Running test file upload utility"
-        cd application-infrastructure
-        python build-scripts/upload-test-files.py --environment ${ENVIRONMENT:-staging} --verbose
-        cd ..
       
       # list files in the artifacts
       - ls -l -a
