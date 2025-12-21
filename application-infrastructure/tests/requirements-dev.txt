@@ -8,8 +8,8 @@
 # pip install -r requirements-dev.txt
 
 # AWS SDK - already available in Lambda runtime, but included for local testing
-boto3==1.35.36
-botocore==1.35.36
+boto3>=1.35.36
+botocore>=1.35.36
 
 # moto[all]==5.0.18  # This package is 500MB+ and can crash the system
 # Only install if absolutely necessary and monitor system resources

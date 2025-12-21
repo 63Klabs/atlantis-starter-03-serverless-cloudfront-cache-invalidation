@@ -9,6 +9,7 @@ phases:
   install:
     runtime-versions:
       nodejs: latest
+      python: latest
     commands:
       
       - ls -l -a
@@ -17,6 +18,7 @@ phases:
       - python3 --version
       - node --version
       - aws --version
+      - boto3 --version
 
       # Install virtualenv and create virtual environment
       - pip3 install --upgrade pip virtualenv
