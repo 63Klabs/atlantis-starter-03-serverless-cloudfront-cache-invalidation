@@ -1,3 +1,4 @@
-- [ ] Update AI Context to use virtual env
+- [ ] Boto3
+- [ ] Move up path consolidation
 - [ ] Clean up debug output
 - [ ] Remove Kiro directory from .gitignore
