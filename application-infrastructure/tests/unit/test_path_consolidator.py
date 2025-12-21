@@ -295,8 +295,10 @@ class TestConsolidationAllowed:
     """Test consolidation allowed at depth functionality."""
     
     def test_stop_level_one_allows_all(self):
-        """Test that stop level 1 allows consolidation at all depths."""
-        assert is_consolidation_allowed_at_depth(0, 1) is True
+        """Test that stop level 1 allows consolidation at depth 1 and deeper."""
+        # Stop level 1 should NOT allow consolidation at depth 0 (root)
+        assert is_consolidation_allowed_at_depth(0, 1) is False
+        # But should allow at depth 1 and deeper
         assert is_consolidation_allowed_at_depth(1, 1) is True
         assert is_consolidation_allowed_at_depth(5, 1) is True
     
@@ -410,3 +412,219 @@ class TestBucketSpecificConfiguration:
         assert len(result) == 1
         assert '/dir/index.html' in result[0]
         assert '/dir/*' not in result[0]
+
+
+class TestStopLevelEdgeCases:
+    """Test stop level edge cases and boundary conditions."""
+    
+    def test_stop_level_zero_with_complex_paths(self):
+        """Test stop level 0 with complex nested paths."""
+        paths = [
+            '/level1/level2/level3/file1.html',
+            '/level1/level2/file2.html',
+            '/level1/file3.html',
+            '/file4.html'
+        ]
+        result = consolidate_paths(paths, stop_level=0)
+        assert len(result) == 1
+        assert len(result[0]) == 1
+        assert result[0][0] == '/*'
+    
+    def test_stop_level_zero_with_index_files(self):
+        """Test stop level 0 overrides index file consolidation."""
+        paths = ['/dir1/index.html', '/dir2/default.html', '/dir3/file.html']
+        result = consolidate_paths(paths, stop_level=0)
+        assert len(result) == 1
+        assert len(result[0]) == 1
+        assert result[0][0] == '/*'
+    
+    def test_stop_level_one_boundary_conditions(self):
+        """Test stop level 1 boundary conditions."""
+        # Test consolidation at exactly depth 1 (should be allowed)
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        result = consolidate_paths(paths, stop_level=1)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]
+        
+        # Test that depth 0 consolidation is prevented with stop level 1
+        # This would happen if we had many root-level files
+        root_paths = [f'/file{i}.html' for i in range(15)]  # Many root files
+        result = consolidate_paths(root_paths, stop_level=1)
+        # Should not consolidate to /* (depth 0) with stop level 1
+        assert len(result) == 1
+        assert '/*' not in result[0]
+        assert len(result[0]) == 15  # All individual files preserved
+    
+    def test_stop_level_two_prevents_depth_one(self):
+        """Test that stop level 2 prevents consolidation at depth 1."""
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        result = consolidate_paths(paths, stop_level=2)
+        assert len(result) == 1
+        # Should not consolidate to /dir/* (depth 1) with stop level 2
+        assert '/dir/*' not in result[0]
+        assert len(result[0]) == 4
+        
+        # But should allow consolidation at depth 2
+        deep_paths = [
+            '/dir/subdir/file1.html', '/dir/subdir/file2.html', 
+            '/dir/subdir/file3.html', '/dir/subdir/file4.html'
+        ]
+        result = consolidate_paths(deep_paths, stop_level=2)
+        assert len(result) == 1
+        assert '/dir/subdir/*' in result[0]
+    
+    def test_stop_level_three_allows_deeper_consolidation(self):
+        """Test that stop level 3 allows consolidation at depth 3 and deeper."""
+        # Should prevent consolidation at depths 0, 1, 2
+        paths_depth_1 = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        result = consolidate_paths(paths_depth_1, stop_level=3)
+        assert len(result) == 1
+        assert '/dir/*' not in result[0]
+        assert len(result[0]) == 4
+        
+        paths_depth_2 = [
+            '/dir/subdir/file1.html', '/dir/subdir/file2.html',
+            '/dir/subdir/file3.html', '/dir/subdir/file4.html'
+        ]
+        result = consolidate_paths(paths_depth_2, stop_level=3)
+        assert len(result) == 1
+        assert '/dir/subdir/*' not in result[0]
+        assert len(result[0]) == 4
+        
+        # Should allow consolidation at depth 3
+        paths_depth_3 = [
+            '/dir/subdir/subsubdir/file1.html', '/dir/subdir/subsubdir/file2.html',
+            '/dir/subdir/subsubdir/file3.html', '/dir/subdir/subsubdir/file4.html'
+        ]
+        result = consolidate_paths(paths_depth_3, stop_level=3)
+        assert len(result) == 1
+        assert '/dir/subdir/subsubdir/*' in result[0]
+    
+    def test_stop_level_with_sibling_directories(self):
+        """Test stop level behavior with sibling directory consolidation."""
+        # Create 12 sibling directories (exceeds threshold of 10)
+        # Each directory needs more than 3 files to trigger directory consolidation first
+        paths = []
+        for i in range(12):
+            for j in range(4):  # 4 files per directory (exceeds threshold of 3)
+                paths.append(f'/parent/dir{i}/file{j}.html')
+        
+        # With stop level 1, should consolidate to directory wildcards first, then siblings
+        result = consolidate_paths(paths, stop_level=1)
+        assert len(result) == 1
+        # Should consolidate all the way up due to recursive consolidation
+        assert '/parent/*' in result[0] or '/*' in result[0]  # May consolidate further
+        
+        # With stop level 2, should prevent consolidation to /parent/* (depth 1)
+        result = consolidate_paths(paths, stop_level=2)
+        assert len(result) == 1
+        # Should have individual directory wildcards, not parent consolidation
+        assert '/parent/*' not in result[0]
+        # Should have consolidated individual directories though (depth 2 is allowed)
+        dir_wildcards = [p for p in result[0] if p.startswith('/parent/dir') and p.endswith('/*')]
+        assert len(dir_wildcards) == 12
+    
+    def test_mixed_depth_consolidation_with_stop_level(self):
+        """Test consolidation with paths at different depths and stop level."""
+        paths = [
+            # Depth 1 files (4 files, should consolidate if allowed)
+            '/dir1/file1.html', '/dir1/file2.html', '/dir1/file3.html', '/dir1/file4.html',
+            # Depth 2 files (4 files, should consolidate if allowed)
+            '/dir2/subdir/file1.html', '/dir2/subdir/file2.html', 
+            '/dir2/subdir/file3.html', '/dir2/subdir/file4.html',
+            # Depth 3 files (4 files, should consolidate if allowed)
+            '/dir3/sub1/sub2/file1.html', '/dir3/sub1/sub2/file2.html',
+            '/dir3/sub1/sub2/file3.html', '/dir3/sub1/sub2/file4.html'
+        ]
+        
+        # With stop level 2, should prevent depth 1 consolidation but allow depth 2+
+        result = consolidate_paths(paths, stop_level=2)
+        assert len(result) == 1
+        
+        # Depth 1 should not consolidate
+        assert '/dir1/*' not in result[0]
+        assert '/dir1/file1.html' in result[0]
+        
+        # Depth 2 and 3 should consolidate
+        assert '/dir2/subdir/*' in result[0]
+        assert '/dir3/sub1/sub2/*' in result[0]
+
+
+class TestInvalidStopLevelHandling:
+    """Test handling of invalid stop level values."""
+    
+    def test_negative_stop_level(self):
+        """Test that negative stop level falls back to default."""
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        
+        # Should fall back to default behavior (stop level 1)
+        result = consolidate_paths(paths, stop_level=-1)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]  # Should consolidate normally with default stop level
+    
+    def test_very_large_stop_level(self):
+        """Test that very large stop level falls back to default."""
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        
+        # Should fall back to default behavior (stop level 1)
+        result = consolidate_paths(paths, stop_level=100)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]  # Should consolidate normally with default stop level
+    
+    def test_none_stop_level(self):
+        """Test that None stop level uses default."""
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        
+        # Should use default stop level from constants
+        result = consolidate_paths(paths, stop_level=None)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]  # Should consolidate normally with default stop level
+
+
+class TestBackwardCompatibility:
+    """Test backward compatibility with existing behavior."""
+    
+    def test_default_stop_level_behavior(self):
+        """Test that default stop level maintains existing behavior."""
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        
+        # Default behavior should consolidate normally
+        result = consolidate_paths(paths)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]
+    
+    def test_stop_level_one_maintains_compatibility(self):
+        """Test that explicit stop level 1 maintains existing behavior."""
+        paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
+        
+        # Explicit stop level 1 should behave the same as default
+        result_default = consolidate_paths(paths)
+        result_explicit = consolidate_paths(paths, stop_level=1)
+        
+        assert result_default == result_explicit
+    
+    def test_index_file_backward_compatibility(self):
+        """Test that index file consolidation maintains backward compatibility."""
+        paths = ['/dir/index.html', '/dir/about.html']
+        
+        # Should consolidate index file to directory wildcard
+        # The /dir/* wildcard covers both files, so about.html is not separate
+        result = consolidate_paths(paths)
+        assert len(result) == 1
+        assert '/dir/*' in result[0]
+        # The wildcard covers all files in the directory
+        assert len(result[0]) == 1  # Only the wildcard should remain
+    
+    def test_complex_scenario_backward_compatibility(self):
+        """Test complex consolidation scenario maintains backward compatibility."""
+        # Create scenario that would consolidate to root in old system
+        paths = []
+        for i in range(12):  # More than 10 siblings
+            for j in range(5):  # More than 3 files per directory
+                paths.append(f'/root/dir{i}/file{j}.html')
+        
+        # Should still consolidate to root with default stop level
+        result = consolidate_paths(paths)
+        assert len(result) == 1
+        # Should consolidate all the way up (may be /* or specific pattern)
+        assert len(result[0]) <= 12  # Should be consolidated significantly

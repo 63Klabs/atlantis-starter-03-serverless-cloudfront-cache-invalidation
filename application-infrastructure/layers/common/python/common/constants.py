@@ -1,16 +1,49 @@
 """Shared constants for the invalidation service."""
 
 import os
+import logging
+
+# Set up logger for constants module
+logger = logging.getLogger(__name__)
 
 def _get_validated_int_env(env_var: str, default: int, min_val: int, max_val: int) -> int:
-    """Get and validate integer environment variable with fallback to default."""
+    """Get and validate integer environment variable with fallback to default.
+    
+    Logs warnings when invalid values are encountered and fallback is used.
+    """
+    raw_value = os.environ.get(env_var, str(default))
+    
     try:
-        value = int(os.environ.get(env_var, str(default)))
+        value = int(raw_value)
         if min_val <= value <= max_val:
             return value
         else:
+            # Log warning for out-of-range values
+            logger.warning(
+                f"Invalid {env_var} value: {value} is outside valid range [{min_val}, {max_val}]. Using default value {default}.",
+                extra={
+                    'environment_variable': env_var,
+                    'invalid_value': value,
+                    'valid_range_min': min_val,
+                    'valid_range_max': max_val,
+                    'fallback_value': default,
+                    'fallback_reason': 'out_of_range'
+                }
+            )
             return default
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
+        # Log warning for non-numeric values
+        logger.warning(
+            f"Invalid {env_var} value: '{raw_value}' is not a valid integer. Using default value {default}.",
+            extra={
+                'environment_variable': env_var,
+                'invalid_value': raw_value,
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'fallback_value': default,
+                'fallback_reason': 'invalid_format'
+            }
+        )
         return default
 
 # Aggregation window configuration
