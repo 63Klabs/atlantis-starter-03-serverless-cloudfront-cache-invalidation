@@ -53,13 +53,11 @@ phases:
 
   build:
     commands:
-
-      - cd application-infrastructure
       
       # Activate virtual environment for build phase
       - source /tmp/build-venv/bin/activate
 
-      # Build Environment: Run post-deploy.sh if it exists
+      # Build Environment: Run post-deploy.sh
       - ./application-infrastructure/build-scripts/post-deploy.sh
 
       # list files in the artifacts
