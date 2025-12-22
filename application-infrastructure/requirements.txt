@@ -1,0 +1,8 @@
+# For local development, also install requirements-dev.txt
+
+boto3>=1.42.0
+
+# Core testing frameworks (safe)
+pytest==8.3.3
+pytest-mock==3.14.0
+hypothesis==6.112.1

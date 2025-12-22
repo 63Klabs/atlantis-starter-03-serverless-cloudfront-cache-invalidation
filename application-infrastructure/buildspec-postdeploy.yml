@@ -11,7 +11,7 @@ phases:
       nodejs: latest
       python: latest
     commands:
-      
+
       - ls -l -a
 
       # Build Environment information for debugging purposes
@@ -38,12 +38,9 @@ phases:
 
       # Build Environment: Install Python dependencies for Build Scripts if build-scripts/requirements.txt exists
       - |
-        if [ -f "application-infrastructure/build-scripts/requirements.txt" ]; then
-          echo "Installing Python dependencies for build scripts"
-          pip install -r application-infrastructure/build-scripts/requirements.txt
-          echo "Checking installed packages:"
-          pip list | grep boto3 || echo "boto3 not found in pip list"
-          python -c "import boto3; print(f'boto3 version: {boto3.__version__}')" || echo "boto3 import failed"
+        if [ -f "application-infrastructure/requirements.txt" ]; then
+          echo "Installing Python dependencies for build scripts and tests"
+          pip install -r application-infrastructure/requirements.txt
         else
           echo "No build-scripts/requirements.txt found, skipping pip install"
         fi
@@ -53,45 +50,18 @@ phases:
       
       # Activate virtual environment for pre_build phase
       - source /tmp/build-venv/bin/activate
-                  
+
   build:
     commands:
 
       - cd application-infrastructure
       
-      # Ensure virtual environment is activated for build phase
+      # Activate virtual environment for build phase
       - source /tmp/build-venv/bin/activate
-      - echo "Virtual environment activated in build phase"
-      - python --version
-      - which python
-      - pip list | grep boto3 || echo "boto3 not found in pip list"
-      
-      - echo "This is my Post Deploy Spec!"
-
-      - cd ..
 
       # Build Environment: Run post-deploy.sh if it exists
-      - |
-        if [ -f "application-infrastructure/build-scripts/post-deploy.sh" ]; then
-          echo "Running post-deploy.sh"
-          
-          # Ensure boto3 is available - install it directly if needed
-          echo "Ensuring boto3 is available..."
-          pip3 install boto3>=1.26.0 || echo "Failed to install boto3 with pip3"
-          
-          # Try to activate virtual environment, but continue if it fails
-          source /tmp/build-venv/bin/activate || echo "Virtual environment activation failed, using system Python"
-          
-          echo "Final environment check before running script:"
-          python --version
-          which python
-          python -c "import boto3; print(f'boto3 version: {boto3.__version__}')" || echo "boto3 still not available"
-          
-          ./application-infrastructure/build-scripts/post-deploy.sh
-        else
-          echo "No build-scripts/post-deploy.sh found, skipping"
-        fi
-      
+      - ./application-infrastructure/build-scripts/post-deploy.sh
+
       # list files in the artifacts
       - ls -l -a
 
