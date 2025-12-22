@@ -138,7 +138,7 @@ def test_property_20_index_and_default_file_directory_consolidation(file_path):
     
     For any object path ending with /index.* or /default.*, the consolidation
     algorithm should replace the file path with the parent directory path
-    followed by /*.
+    followed by /* if the stop level allows it.
     
     **Feature: multi-bucket-cloudfront-invalidation, Property 20: Index and default file directory consolidation**
     **Validates: Requirements 9.1**
@@ -146,8 +146,16 @@ def test_property_20_index_and_default_file_directory_consolidation(file_path):
     # Verify the path is indeed an index or default file
     assert is_index_or_default_file(file_path), f"Path {file_path} should be index/default file"
     
-    # Consolidate the path with stop_level=1 to allow all consolidation (backward compatible)
-    result = consolidate_paths([file_path], stop_level=1)
+    # Calculate the depth of the parent directory
+    parent = get_parent_directory(file_path)
+    from functions.processor.path_consolidator import calculate_path_depth
+    parent_depth = calculate_path_depth(parent, '/')
+    
+    # Use a stop level that allows consolidation at this depth
+    stop_level = max(parent_depth, 1)  # Ensure stop level allows this depth
+    
+    # Consolidate the path with the appropriate stop level
+    result = consolidate_paths([file_path], stop_level=stop_level)
     
     # Should return a single chunk
     assert len(result) == 1, "Should return single chunk for one path"
@@ -163,7 +171,6 @@ def test_property_20_index_and_default_file_directory_consolidation(file_path):
     assert consolidated_path.endswith('/*'), f"Consolidated path should end with /*, got {consolidated_path}"
     
     # The consolidated path should be the parent directory + /*
-    parent = get_parent_directory(file_path)
     if parent == '/':
         expected = '/*'
     else:
@@ -179,7 +186,7 @@ def test_property_21_directory_consolidation_threshold(directory_and_files):
     
     For any set of object paths where more than 3 paths share the same parent
     directory, the consolidation algorithm should replace those paths with a
-    single directory-level path <parent>/*.
+    single directory-level path <parent>/* if the stop level allows it.
     
     **Feature: multi-bucket-cloudfront-invalidation, Property 21: Directory consolidation threshold**
     **Validates: Requirements 9.2**
@@ -189,8 +196,15 @@ def test_property_21_directory_consolidation_threshold(directory_and_files):
     # Verify we have more than 3 files
     assert len(files) > 3, f"Should have more than 3 files, got {len(files)}"
     
-    # Consolidate the paths with stop_level=1 to allow all consolidation (backward compatible)
-    result = consolidate_paths(files, stop_level=1)
+    # Calculate the depth of the directory
+    from functions.processor.path_consolidator import calculate_path_depth
+    directory_depth = calculate_path_depth(directory, '/')
+    
+    # Use a stop level that allows consolidation at this depth
+    stop_level = max(directory_depth, 1)  # Ensure stop level allows this depth
+    
+    # Consolidate the paths with the appropriate stop level
+    result = consolidate_paths(files, stop_level=stop_level)
     
     # Should return a single chunk
     assert len(result) == 1, "Should return single chunk"
@@ -214,7 +228,7 @@ def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     
     For any set of directory-level paths where more than 10 sibling directories
     would be invalidated, the consolidation algorithm should replace them with
-    their parent directory path followed by /*.
+    their parent directory path followed by /* if the stop level allows it.
     
     **Feature: multi-bucket-cloudfront-invalidation, Property 22: Sibling directory consolidation**
     **Validates: Requirements 9.3**
@@ -224,8 +238,15 @@ def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     # Verify we have more than 10 sibling wildcards
     assert len(wildcards) > 10, f"Should have more than 10 siblings, got {len(wildcards)}"
     
-    # Consolidate the paths with stop_level=1 to allow all consolidation (backward compatible)
-    result = consolidate_paths(wildcards, stop_level=1)
+    # Calculate the depth of the parent directory
+    from functions.processor.path_consolidator import calculate_path_depth
+    parent_depth = calculate_path_depth(parent, '/')
+    
+    # Use a stop level that allows consolidation at this depth
+    stop_level = max(parent_depth, 1)  # Ensure stop level allows this depth
+    
+    # Consolidate the paths with the appropriate stop level
+    result = consolidate_paths(wildcards, stop_level=stop_level)
     
     # Should return a single chunk
     assert len(result) == 1, "Should return single chunk"
@@ -554,6 +575,8 @@ def test_property_3_stop_level_zero_logging(paths):
                     assert log_entry.get('stop_level') == 0, "Log should contain stop_level 0"
                     assert 'original_count' in log_entry, "Log should contain original_count"
                     assert log_entry['original_count'] == len(paths), f"Log should contain correct original count {len(paths)}"
+                    assert log_entry.get('consolidation_type') == 'stop_level_zero_override', "Log should contain consolidation_type"
+                    assert log_entry.get('bypassed_rules') == 'all_other_consolidation_logic', "Log should contain bypassed_rules"
                     break
             except json.JSONDecodeError:
                 continue
@@ -569,42 +592,50 @@ def test_property_3_stop_level_zero_logging(paths):
 
 @settings(max_examples=20)
 @given(st.integers(min_value=1, max_value=10),  # stop_level
-       st.integers(min_value=1, max_value=10))  # depth
+       st.integers(min_value=0, max_value=10))  # depth
 def test_property_4_consolidation_allowed_at_specified_depth(stop_level, depth):
     """Property 4: Consolidation allowed at specified depth.
     
     For any ConsolidationStopLevel N where N > 0, the system should allow 
-    consolidation to occur at depth N and deeper.
+    consolidation to occur at depth N and shallower.
     
     **Feature: consolidation-stop-level-fix, Property 4: Consolidation allowed at specified depth**
     **Validates: Requirements 2.1, 3.1**
     """
     result = is_consolidation_allowed_at_depth(depth, stop_level)
     
-    if depth >= stop_level:
+    if depth <= stop_level:
         assert result is True, f"Consolidation should be allowed at depth {depth} with stop level {stop_level}"
     else:
         assert result is False, f"Consolidation should be blocked at depth {depth} with stop level {stop_level}"
 
 
 @settings(max_examples=20)
-@given(st.integers(min_value=2, max_value=10),  # stop_level (> 1)
-       st.integers(min_value=0, max_value=5))   # shallow_depth (< stop_level)
-def test_property_5_consolidation_prevented_at_shallow_depths(stop_level, shallow_depth):
-    """Property 5: Consolidation prevented at shallow depths.
+@given(st.integers(min_value=1, max_value=8),   # stop_level
+       st.integers(min_value=1, max_value=5))   # extra_depth (> 0)
+def test_property_5_consolidation_prevented_at_deep_depths(stop_level, extra_depth):
+    """Property 5: Consolidation prevented at deep depths.
     
     For any ConsolidationStopLevel N where N > 0, the system should prevent 
-    consolidation at depths less than N.
+    consolidation at depths greater than N.
     
-    **Feature: consolidation-stop-level-fix, Property 5: Consolidation prevented at shallow depths**
-    **Validates: Requirements 3.5**
+    **Feature: consolidation-stop-level-fix, Property 5: Consolidation prevented at deep depths**
+    **Validates: Requirements 2.4, 3.5**
     """
-    # Only test when shallow_depth is actually less than stop_level
-    assume(shallow_depth < stop_level)
+    # Test that depths greater than stop_level are blocked
+    deep_depth = stop_level + extra_depth  # This will always be > stop_level
+    result_deep = is_consolidation_allowed_at_depth(deep_depth, stop_level)
+    assert result_deep is False, f"Consolidation should be prevented at deep depth {deep_depth} with stop level {stop_level}"
     
-    result = is_consolidation_allowed_at_depth(shallow_depth, stop_level)
+    # Also test that depths equal to stop_level are allowed
+    result_equal = is_consolidation_allowed_at_depth(stop_level, stop_level)
+    assert result_equal is True, f"Consolidation should be allowed at depth {stop_level} with stop level {stop_level}"
     
-    assert result is False, f"Consolidation should be prevented at shallow depth {shallow_depth} with stop level {stop_level}"
+    # And test that depths less than stop_level are allowed (if stop_level > 0)
+    if stop_level > 0:
+        shallow_depth = max(0, stop_level - 1)
+        result_shallow = is_consolidation_allowed_at_depth(shallow_depth, stop_level)
+        assert result_shallow is True, f"Consolidation should be allowed at shallow depth {shallow_depth} with stop level {stop_level}"
 
 
 # Logging Property Tests
@@ -642,21 +673,21 @@ def test_property_7_stop_level_prevention_logging(data):
     
     try:
         # Generate test data that will trigger stop level prevention
-        stop_level = data.draw(st.integers(min_value=2, max_value=5))
+        stop_level = data.draw(st.integers(min_value=1, max_value=3))
         
-        # Create paths that would consolidate at a depth less than stop_level
+        # Create paths that would consolidate at a depth GREATER than stop_level
         # This should trigger prevention logging
-        shallow_depth = data.draw(st.integers(min_value=0, max_value=stop_level - 1))
+        blocked_depth = data.draw(st.integers(min_value=stop_level + 1, max_value=stop_level + 3))
         
-        # Create directory structure at the shallow depth
+        # Create directory structure at the blocked depth
         path_segments = []
-        for i in range(shallow_depth):
+        for i in range(blocked_depth):
             segment = data.draw(st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
                                        min_size=1, max_size=8))
             path_segments.append(segment)
         
         # Create multiple files in the same directory to trigger threshold consolidation
-        base_path = '/' + '/'.join(path_segments) if path_segments else ''
+        base_path = '/' + '/'.join(path_segments)
         test_paths = []
         for i in range(5):  # More than threshold to trigger consolidation
             file_path = f"{base_path}/file{i}.html"
@@ -737,9 +768,9 @@ def test_property_8_stop_level_allowance_logging(data):
         # Generate test data that will trigger stop level allowance
         stop_level = data.draw(st.integers(min_value=1, max_value=3))
         
-        # Create paths that would consolidate at a depth >= stop_level
+        # Create paths that would consolidate at a depth <= stop_level
         # This should trigger allowance logging
-        allowed_depth = data.draw(st.integers(min_value=stop_level, max_value=stop_level + 2))
+        allowed_depth = data.draw(st.integers(min_value=1, max_value=stop_level))
         
         # Create directory structure at the allowed depth
         path_segments = []
@@ -856,6 +887,88 @@ def test_property_6_path_depth_calculation_accuracy(data):
         expected_dir_depth = depth - 1
         assert dir_depth == expected_dir_depth, \
             f"Expected directory depth {expected_dir_depth} for {dir_path}, got {dir_depth}"
+    
+    # Test case 6: Double slash normalization
+    if depth >= 2:
+        # Create path with double slashes
+        double_slash_path = '//' + '//'.join(path_segments)
+        normalized_depth = calculate_path_depth(double_slash_path, root_path)
+        assert normalized_depth == depth, f"Double slash path should normalize to depth {depth}, got {normalized_depth}"
+
+
+@settings(max_examples=20)
+@given(st.data())
+def test_property_6_specific_requirements_validation(data):
+    """Property 6: Path depth calculation - specific requirements validation.
+    
+    Validates the specific requirements 4.1-4.4 for path depth calculation accuracy.
+    
+    **Feature: consolidation-stop-level-fix, Property 6: Path depth calculation accuracy**
+    **Validates: Requirements 4.1, 4.2, 4.3, 4.4**
+    """
+    from functions.processor.path_consolidator import calculate_path_depth, get_parent_directory
+    
+    # Requirement 4.1: WHEN calculating path depth, THE system SHALL count directory levels from the root path
+    root_path = '/'
+    
+    # Generate test paths at various depths
+    for expected_depth in range(1, 6):
+        # Create path segments
+        path_segments = []
+        for i in range(expected_depth):
+            segment = data.draw(st.text(
+                alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+                min_size=1, max_size=8
+            ))
+            path_segments.append(segment)
+        
+        # Create file path
+        file_path = '/' + '/'.join(path_segments) + '/file.html'
+        
+        # Get parent directory
+        parent_dir = get_parent_directory(file_path)
+        
+        # Calculate depth of parent directory
+        calculated_depth = calculate_path_depth(parent_dir, root_path)
+        
+        # Should match expected depth
+        assert calculated_depth == expected_depth, \
+            f"Expected depth {expected_depth} for parent {parent_dir} of file {file_path}, got {calculated_depth}"
+    
+    # Requirement 4.2: WHEN a path is `/level1/file.html`, THE system SHALL calculate its parent directory `/level1` as depth 1
+    level1_file = '/level1/file.html'
+    level1_parent = get_parent_directory(level1_file)
+    level1_depth = calculate_path_depth(level1_parent, '/')
+    assert level1_depth == 1, f"Expected depth 1 for /level1, got {level1_depth}"
+    assert level1_parent == '/level1', f"Expected parent /level1, got {level1_parent}"
+    
+    # Requirement 4.3: WHEN a path is `/level1/level2/file.html`, THE system SHALL calculate its parent directory `/level1/level2` as depth 2
+    level2_file = '/level1/level2/file.html'
+    level2_parent = get_parent_directory(level2_file)
+    level2_depth = calculate_path_depth(level2_parent, '/')
+    assert level2_depth == 2, f"Expected depth 2 for /level1/level2, got {level2_depth}"
+    assert level2_parent == '/level1/level2', f"Expected parent /level1/level2, got {level2_parent}"
+    
+    # Requirement 4.4: WHEN a path is `/level1/level2/level3/file.html`, THE system SHALL calculate its parent directory `/level1/level2/level3` as depth 3
+    level3_file = '/level1/level2/level3/file.html'
+    level3_parent = get_parent_directory(level3_file)
+    level3_depth = calculate_path_depth(level3_parent, '/')
+    assert level3_depth == 3, f"Expected depth 3 for /level1/level2/level3, got {level3_depth}"
+    assert level3_parent == '/level1/level2/level3', f"Expected parent /level1/level2/level3, got {level3_parent}"
+    
+    # Requirement 4.5: WHEN the root path is `/`, THE system SHALL use absolute depth counting from the filesystem root
+    # Test with various root paths
+    test_cases = [
+        ('/file.html', '/', 1),
+        ('/dir/file.html', '/', 2),
+        ('/dir/subdir/file.html', '/', 3),
+        ('/prod/public/file.html', '/prod/public', 1),
+        ('/prod/public/dir/file.html', '/prod/public', 2),
+    ]
+    
+    for path, root, expected in test_cases:
+        actual = calculate_path_depth(path, root)
+        assert actual == expected, f"Expected depth {expected} for path {path} with root {root}, got {actual}"
 
 
 @settings(max_examples=10)
@@ -1059,11 +1172,11 @@ def test_property_11_index_file_consolidation_stop_level_compliance(data):
     **Feature: consolidation-stop-level-fix, Property 11: Index file consolidation stop level compliance**
     **Validates: Requirements 6.1**
     """
-    # Generate a stop level that will prevent consolidation at shallow depths
-    stop_level = data.draw(st.integers(min_value=2, max_value=5))
+    # Generate a stop level that will prevent consolidation at deep depths
+    stop_level = data.draw(st.integers(min_value=1, max_value=3))
     
-    # Generate an index/default file at a depth less than stop_level (should be blocked)
-    blocked_depth = data.draw(st.integers(min_value=0, max_value=stop_level - 1))
+    # Generate an index/default file at a depth GREATER than stop_level (should be blocked)
+    blocked_depth = data.draw(st.integers(min_value=stop_level + 1, max_value=stop_level + 3))
     
     # Create path segments for the blocked depth
     path_segments = []
@@ -1091,8 +1204,8 @@ def test_property_11_index_file_consolidation_stop_level_compliance(data):
     parent_wildcard = '/*' if parent == '/' else f"{parent}/*"
     assert parent_wildcard not in result, f"Parent wildcard {parent_wildcard} should not be present when consolidation is blocked"
     
-    # Now test with an allowed depth (>= stop_level)
-    allowed_depth = data.draw(st.integers(min_value=stop_level, max_value=stop_level + 2))
+    # Now test with an allowed depth (<= stop_level)
+    allowed_depth = data.draw(st.integers(min_value=0, max_value=stop_level))
     
     # Create path segments for the allowed depth
     allowed_path_segments = []
@@ -1104,7 +1217,7 @@ def test_property_11_index_file_consolidation_stop_level_compliance(data):
         allowed_path_segments.append(segment)
     
     # Create index/default file path at allowed depth
-    allowed_base_path = '/' + '/'.join(allowed_path_segments)
+    allowed_base_path = '/' + '/'.join(allowed_path_segments) if allowed_path_segments else ''
     allowed_index_file = f"{allowed_base_path}/{file_type}.{extension}"
     
     # Test consolidation at allowed depth
@@ -1128,11 +1241,11 @@ def test_property_12_directory_threshold_consolidation_stop_level_compliance(dat
     **Feature: consolidation-stop-level-fix, Property 12: Directory threshold consolidation stop level compliance**
     **Validates: Requirements 6.2**
     """
-    # Generate a stop level that will prevent consolidation at shallow depths
-    stop_level = data.draw(st.integers(min_value=2, max_value=5))
+    # Generate a stop level that will prevent consolidation at deep depths
+    stop_level = data.draw(st.integers(min_value=1, max_value=3))
     
-    # Generate a directory at a depth less than stop_level (should be blocked)
-    blocked_depth = data.draw(st.integers(min_value=0, max_value=stop_level - 1))
+    # Generate a directory at a depth GREATER than stop_level (should be blocked)
+    blocked_depth = data.draw(st.integers(min_value=stop_level + 1, max_value=stop_level + 3))
     
     # Create path segments for the blocked depth
     path_segments = []
@@ -1144,7 +1257,7 @@ def test_property_12_directory_threshold_consolidation_stop_level_compliance(dat
         path_segments.append(segment)
     
     # Create directory path
-    base_path = '/' + '/'.join(path_segments) if path_segments else ''
+    base_path = '/' + '/'.join(path_segments)
     
     # Create multiple files in the directory (more than threshold to trigger consolidation)
     num_files = data.draw(st.integers(min_value=5, max_value=8))  # Above threshold of 3
@@ -1162,11 +1275,11 @@ def test_property_12_directory_threshold_consolidation_stop_level_compliance(dat
         assert file_path in result, f"File {file_path} should not be consolidated at depth {blocked_depth} with stop level {stop_level}"
     
     # Should not contain the directory wildcard
-    directory_wildcard = '/*' if base_path == '' else f"{base_path}/*"
+    directory_wildcard = f"{base_path}/*"
     assert directory_wildcard not in result, f"Directory wildcard {directory_wildcard} should not be present when consolidation is blocked"
     
-    # Now test with an allowed depth (>= stop_level)
-    allowed_depth = data.draw(st.integers(min_value=stop_level, max_value=stop_level + 2))
+    # Now test with an allowed depth (<= stop_level)
+    allowed_depth = data.draw(st.integers(min_value=0, max_value=stop_level))
     
     # Create path segments for the allowed depth
     allowed_path_segments = []
@@ -1178,7 +1291,7 @@ def test_property_12_directory_threshold_consolidation_stop_level_compliance(dat
         allowed_path_segments.append(segment)
     
     # Create directory path at allowed depth
-    allowed_base_path = '/' + '/'.join(allowed_path_segments)
+    allowed_base_path = '/' + '/'.join(allowed_path_segments) if allowed_path_segments else ''
     
     # Create multiple files in the allowed directory
     allowed_test_paths = set()
@@ -1191,7 +1304,7 @@ def test_property_12_directory_threshold_consolidation_stop_level_compliance(dat
     allowed_result = consolidate_by_directory_threshold(allowed_test_paths, stop_level=stop_level)
     
     # The files SHOULD be consolidated at allowed depth
-    allowed_directory_wildcard = f"{allowed_base_path}/*"
+    allowed_directory_wildcard = '/*' if allowed_base_path == '' else f"{allowed_base_path}/*"
     assert allowed_directory_wildcard in allowed_result, f"Files should be consolidated to {allowed_directory_wildcard} at depth {allowed_depth} with stop level {stop_level}"
     
     # Original files should not be present (replaced by wildcard)
@@ -1210,11 +1323,11 @@ def test_property_13_sibling_directory_consolidation_stop_level_compliance(data)
     **Feature: consolidation-stop-level-fix, Property 13: Sibling directory consolidation stop level compliance**
     **Validates: Requirements 6.3**
     """
-    # Generate a stop level that will prevent consolidation at shallow depths
-    stop_level = data.draw(st.integers(min_value=2, max_value=5))
+    # Generate a stop level that will prevent consolidation at deep depths
+    stop_level = data.draw(st.integers(min_value=1, max_value=3))
     
-    # Generate a parent directory at a depth less than stop_level (should be blocked)
-    blocked_depth = data.draw(st.integers(min_value=0, max_value=stop_level - 1))
+    # Generate a parent directory at a depth GREATER than stop_level (should be blocked)
+    blocked_depth = data.draw(st.integers(min_value=stop_level + 1, max_value=stop_level + 3))
     
     # Create path segments for the blocked depth
     path_segments = []
@@ -1226,13 +1339,13 @@ def test_property_13_sibling_directory_consolidation_stop_level_compliance(data)
         path_segments.append(segment)
     
     # Create parent directory path
-    parent_path = '/' + '/'.join(path_segments) if path_segments else ''
+    parent_path = '/' + '/'.join(path_segments)
     
     # Create multiple sibling directory wildcards (more than threshold of 10 to trigger consolidation)
     num_siblings = data.draw(st.integers(min_value=12, max_value=15))  # Above threshold of 10
     test_paths = set()
     for i in range(num_siblings):
-        sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+        sibling_wildcard = f"{parent_path}/dir{i}/*"
         test_paths.add(sibling_wildcard)
     
     # Test with consolidate_sibling_directories directly
@@ -1243,11 +1356,11 @@ def test_property_13_sibling_directory_consolidation_stop_level_compliance(data)
         assert sibling_wildcard in result, f"Sibling wildcard {sibling_wildcard} should not be consolidated at depth {blocked_depth} with stop level {stop_level}"
     
     # Should not contain the parent directory wildcard
-    parent_wildcard = '/*' if parent_path == '' else f"{parent_path}/*"
+    parent_wildcard = f"{parent_path}/*"
     assert parent_wildcard not in result, f"Parent wildcard {parent_wildcard} should not be present when consolidation is blocked"
     
-    # Now test with an allowed depth (>= stop_level)
-    allowed_depth = data.draw(st.integers(min_value=stop_level, max_value=stop_level + 2))
+    # Now test with an allowed depth (<= stop_level)
+    allowed_depth = data.draw(st.integers(min_value=0, max_value=stop_level))
     
     # Create path segments for the allowed depth
     allowed_path_segments = []
@@ -1259,19 +1372,19 @@ def test_property_13_sibling_directory_consolidation_stop_level_compliance(data)
         allowed_path_segments.append(segment)
     
     # Create parent directory path at allowed depth
-    allowed_parent_path = '/' + '/'.join(allowed_path_segments)
+    allowed_parent_path = '/' + '/'.join(allowed_path_segments) if allowed_path_segments else ''
     
     # Create multiple sibling directory wildcards at allowed depth
     allowed_test_paths = set()
     for i in range(num_siblings):
-        sibling_wildcard = f"{allowed_parent_path}/dir{i}/*"
+        sibling_wildcard = f"{allowed_parent_path}/dir{i}/*" if allowed_parent_path else f"/dir{i}/*"
         allowed_test_paths.add(sibling_wildcard)
     
     # Test consolidation at allowed depth
     allowed_result = consolidate_sibling_directories(allowed_test_paths, stop_level=stop_level)
     
     # The sibling wildcards SHOULD be consolidated at allowed depth
-    allowed_parent_wildcard = f"{allowed_parent_path}/*"
+    allowed_parent_wildcard = '/*' if allowed_parent_path == '' else f"{allowed_parent_path}/*"
     assert allowed_parent_wildcard in allowed_result, f"Sibling directories should be consolidated to {allowed_parent_wildcard} at depth {allowed_depth} with stop level {stop_level}"
     
     # Original sibling wildcards should not be present (replaced by parent wildcard)
@@ -1291,9 +1404,9 @@ def test_property_14_consolidation_type_permission_at_allowed_depths(data):
     **Feature: consolidation-stop-level-fix, Property 14: Consolidation type permission at allowed depths**
     **Validates: Requirements 6.4**
     """
-    # Generate a stop level and an allowed depth (>= stop_level)
+    # Generate a stop level and an allowed depth (<= stop_level)
     stop_level = data.draw(st.integers(min_value=1, max_value=4))
-    allowed_depth = data.draw(st.integers(min_value=stop_level, max_value=stop_level + 2))
+    allowed_depth = data.draw(st.integers(min_value=0, max_value=stop_level))
     
     # Create path segments for the allowed depth
     path_segments = []
@@ -1304,7 +1417,7 @@ def test_property_14_consolidation_type_permission_at_allowed_depths(data):
         ))
         path_segments.append(segment)
     
-    base_path = '/' + '/'.join(path_segments)
+    base_path = '/' + '/'.join(path_segments) if path_segments else ''
     
     # Test 1: Index file consolidation should be allowed
     file_type = data.draw(st.sampled_from(['index', 'default']))
@@ -1312,7 +1425,7 @@ def test_property_14_consolidation_type_permission_at_allowed_depths(data):
     index_file = f"{base_path}/{file_type}.{extension}"
     
     index_result = consolidate_index_and_default_files({index_file}, stop_level=stop_level)
-    parent_wildcard = f"{base_path}/*"
+    parent_wildcard = '/*' if base_path == '' else f"{base_path}/*"
     assert parent_wildcard in index_result, f"Index file consolidation should be allowed at depth {allowed_depth} with stop level {stop_level}"
     assert index_file not in index_result, f"Original index file should be replaced by wildcard"
     
@@ -1358,10 +1471,10 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
     **Validates: Requirements 6.5**
     """
     # Generate a stop level that will create conflicts with other rules
-    stop_level = data.draw(st.integers(min_value=2, max_value=4))
+    stop_level = data.draw(st.integers(min_value=1, max_value=3))
     
     # Create a scenario where consolidation would normally happen but stop level prevents it
-    blocked_depth = data.draw(st.integers(min_value=0, max_value=stop_level - 1))
+    blocked_depth = data.draw(st.integers(min_value=stop_level + 1, max_value=stop_level + 3))
     
     # Create path segments for the blocked depth
     path_segments = []
@@ -1372,7 +1485,7 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
         ))
         path_segments.append(segment)
     
-    base_path = '/' + '/'.join(path_segments) if path_segments else ''
+    base_path = '/' + '/'.join(path_segments)
     
     # Create a mixed scenario with multiple consolidation triggers that should all be blocked
     test_paths = []
@@ -1403,11 +1516,11 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
         assert original_path in consolidated, f"Stop level should prevent consolidation, but {original_path} was consolidated"
     
     # The directory wildcard should NOT be present
-    directory_wildcard = '/*' if base_path == '' else f"{base_path}/*"
+    directory_wildcard = f"{base_path}/*"
     assert directory_wildcard not in consolidated, f"Directory wildcard {directory_wildcard} should not be present due to stop level precedence"
     
     # Now test the same scenario at an allowed depth to verify normal consolidation works
-    allowed_depth = data.draw(st.integers(min_value=stop_level, max_value=stop_level + 2))
+    allowed_depth = data.draw(st.integers(min_value=0, max_value=stop_level))
     
     # Create path segments for the allowed depth
     allowed_path_segments = []
@@ -1418,7 +1531,7 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
         ))
         allowed_path_segments.append(segment)
     
-    allowed_base_path = '/' + '/'.join(allowed_path_segments)
+    allowed_base_path = '/' + '/'.join(allowed_path_segments) if allowed_path_segments else ''
     
     # Create similar paths at allowed depth
     allowed_test_paths = []
@@ -1441,7 +1554,7 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
     allowed_consolidated = allowed_result[0]
     
     # At allowed depth, consolidation SHOULD occur
-    allowed_directory_wildcard = f"{allowed_base_path}/*"
+    allowed_directory_wildcard = '/*' if allowed_base_path == '' else f"{allowed_base_path}/*"
     assert allowed_directory_wildcard in allowed_consolidated, f"Consolidation should occur at allowed depth {allowed_depth} with stop level {stop_level}"
     
     # Original paths should be replaced by wildcard (except possibly some edge cases)

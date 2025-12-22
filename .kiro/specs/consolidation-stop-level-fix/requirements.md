@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This feature fixes the ConsolidationStopLevel functionality in the Multi-Bucket CloudFront Invalidation Service. The current implementation has incorrect behavior for ConsolidationStopLevel values greater than 0. The fix ensures that the stop level correctly corresponds to directory depth levels, where level 1 allows consolidation at `/level1/*`, level 2 allows consolidation at `/level1/level2/*`, and so on.
+This feature fixes the ConsolidationStopLevel functionality in the Multi-Bucket CloudFront Invalidation Service. The current implementation has the depth comparison logic backwards - it prevents consolidation at shallow depths when it should allow it. The fix ensures that the stop level correctly corresponds to directory depth levels, where ConsolidationStopLevel=1 allows consolidation up to depth 1 (`/level1/*`), ConsolidationStopLevel=2 allows consolidation up to depth 2 (`/level1/level2/*`), and so on. The current logic `depth >= stop_level` should be changed to `depth <= stop_level` with special handling for stop_level=0.
 
 ## Glossary
 
@@ -27,27 +27,27 @@ This feature fixes the ConsolidationStopLevel functionality in the Multi-Bucket 
 
 ### Requirement 2
 
-**User Story:** As a platform administrator, I want ConsolidationStopLevel=1 to allow consolidation at the first directory level, so that paths like `/test.html`, `/test2.html`, `/level1/*` can be consolidated appropriately.
+**User Story:** As a platform administrator, I want ConsolidationStopLevel=1 to allow consolidation up to the first directory level, so that paths can be consolidated appropriately at depth 1 and shallower.
 
 #### Acceptance Criteria
 
-1. WHEN ConsolidationStopLevel is set to 1, THE system SHALL allow consolidation to occur at depth 1 (e.g., `/level1/*`)
+1. WHEN ConsolidationStopLevel is set to 1, THE system SHALL allow consolidation to occur at depth 1 and shallower (e.g., `/level1/*`, `/*`)
 2. WHEN ConsolidationStopLevel is 1 and threshold is met, THE system SHALL consolidate paths like `/test.html`, `/test2.html`, `/other.html` to `/*`
 3. WHEN ConsolidationStopLevel is 1 and threshold is met, THE system SHALL consolidate paths like `/level1/file1.html`, `/level1/file2.html` to `/level1/*`
-4. WHEN ConsolidationStopLevel is 1, THE system SHALL prevent consolidation at depth 0 (root level) only when it would bypass normal threshold logic
+4. WHEN ConsolidationStopLevel is 1, THE system SHALL prevent consolidation at depth 2 and deeper (e.g., `/level1/level2/*`)
 5. WHEN ConsolidationStopLevel is 1, THE system SHALL maintain the current default behavior for backward compatibility
 
 ### Requirement 3
 
-**User Story:** As a platform administrator, I want ConsolidationStopLevel values greater than 1 to allow consolidation at the corresponding directory depth level, so that I can control exactly where consolidation occurs.
+**User Story:** As a platform administrator, I want ConsolidationStopLevel values greater than 1 to allow consolidation up to the corresponding directory depth level, so that I can control exactly where consolidation stops.
 
 #### Acceptance Criteria
 
-1. WHEN ConsolidationStopLevel is set to N (where N > 1), THE system SHALL allow consolidation to occur at depth N and deeper
+1. WHEN ConsolidationStopLevel is set to N (where N > 1), THE system SHALL allow consolidation to occur at depth N and shallower
 2. WHEN ConsolidationStopLevel is 2, THE system SHALL allow consolidation like `/level1/level2/file1.html`, `/level1/level2/file2.html` to `/level1/level2/*`
-3. WHEN ConsolidationStopLevel is 2, THE system SHALL allow consolidation like `/level1/level2/*`, `/level1/level3/*` to `/level1/*`
+3. WHEN ConsolidationStopLevel is 2, THE system SHALL allow consolidation like `/level1/file1.html`, `/level1/file2.html` to `/level1/*`
 4. WHEN ConsolidationStopLevel is 3, THE system SHALL allow consolidation like `/level1/level2/level3/file1.html` to `/level1/level2/level3/*`
-5. WHEN ConsolidationStopLevel is N, THE system SHALL prevent consolidation at depths less than N
+5. WHEN ConsolidationStopLevel is N, THE system SHALL prevent consolidation at depths greater than N
 
 ### Requirement 4
 

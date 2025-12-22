@@ -691,9 +691,16 @@ def calculate_path_depth(path: str, root_path: str = '/') -> int:
         )
         return 0
     
-    # Normalize paths - remove trailing slashes except for root
-    path_normalized = path.rstrip('/') if path != '/' else '/'
-    root_normalized = root_path.rstrip('/') if root_path != '/' else '/'
+    # Normalize paths - clean up double slashes and remove trailing slashes except for root
+    path_normalized = path
+    while '//' in path_normalized:
+        path_normalized = path_normalized.replace('//', '/')
+    path_normalized = path_normalized.rstrip('/') if path_normalized != '/' else '/'
+    
+    root_normalized = root_path
+    while '//' in root_normalized:
+        root_normalized = root_normalized.replace('//', '/')
+    root_normalized = root_normalized.rstrip('/') if root_normalized != '/' else '/'
     
     # If path is the same as root, depth is 0
     if path_normalized == root_normalized:
@@ -806,22 +813,24 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
     Returns:
         True if consolidation is allowed, False otherwise
         
-    Fixed Logic:
+    Logic:
         - stop_level=0: Allow all consolidation (special case for root)
-        - stop_level=N: Allow consolidation at depth N and deeper
+        - stop_level=N (N>0): Allow consolidation at depth <= stop_level, prevent at depth > stop_level
         
     Examples:
         is_consolidation_allowed_at_depth(1, 0) -> True  (special case)
-        is_consolidation_allowed_at_depth(1, 1) -> True  (depth 1 >= stop level 1)
-        is_consolidation_allowed_at_depth(0, 1) -> False (depth 0 < stop level 1)
-        is_consolidation_allowed_at_depth(2, 1) -> True  (depth 2 >= stop level 1)
-        is_consolidation_allowed_at_depth(1, 2) -> False (depth 1 < stop level 2)
-        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 >= stop level 2)
+        is_consolidation_allowed_at_depth(0, 1) -> True  (depth 0 <= stop level 1)
+        is_consolidation_allowed_at_depth(1, 1) -> True  (depth 1 <= stop level 1)
+        is_consolidation_allowed_at_depth(2, 1) -> False (depth 2 > stop level 1)
+        is_consolidation_allowed_at_depth(1, 2) -> True  (depth 1 <= stop level 2)
+        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 <= stop level 2)
+        is_consolidation_allowed_at_depth(3, 2) -> False (depth 3 > stop level 2)
     """
     if stop_level == 0:
         # Stop level 0 means allow all consolidation (special case for root)
         return True
-    return depth >= stop_level
+    # For stop_level > 0, allow consolidation at depth <= stop_level
+    return depth <= stop_level
 
 
 def apply_stop_level_constraints(paths: Set[str], stop_level: int, root_path: str = '/') -> Set[str]:
@@ -988,10 +997,12 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     # Handle special case: stop level 0 means consolidate everything to root
     if stop_level == 0:
         logger.info(
-            f"Stop level 0: consolidating all paths to root wildcard",
+            "Stop level 0: consolidating all paths to root wildcard",
             extra={'extra_fields': {
                 'stop_level': stop_level,
-                'original_count': len(cleaned_paths)
+                'original_count': len(cleaned_paths),
+                'consolidation_type': 'stop_level_zero_override',
+                'bypassed_rules': 'all_other_consolidation_logic'
             }}
         )
         return [['/*']]

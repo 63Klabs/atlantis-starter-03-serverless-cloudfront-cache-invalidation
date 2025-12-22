@@ -2,9 +2,9 @@
 
 - [x] 1. Fix the core stop level logic function
   - Modify `is_consolidation_allowed_at_depth()` function in `path_consolidator.py` to use correct logic
-  - Remove the special case for `stop_level <= 1` and replace with `stop_level == 0`
+  - Change the comparison from `depth >= stop_level` to `depth <= stop_level`
   - Ensure stop level 0 continues to allow all consolidation (special case)
-  - Ensure stop level N > 0 allows consolidation at depth N and deeper
+  - Ensure stop level N > 0 allows consolidation at depth N and shallower
   - _Requirements: 1.1, 1.2, 2.1, 3.1, 3.5_
 
 - [x] 1.1 Write property test for stop level zero behavior
@@ -16,12 +16,12 @@
   - **Validates: Requirements 1.2**
 
 - [x] 1.3 Write property test for depth-based consolidation allowance
-  - **Property 4: Consolidation allowed at specified depth**
+  - **Property 4: Consolidation allowed up to specified depth**
   - **Validates: Requirements 2.1, 3.1**
 
-- [x] 1.4 Write property test for shallow depth prevention
-  - **Property 5: Consolidation prevented at shallow depths**
-  - **Validates: Requirements 3.5**
+- [x] 1.4 Write property test for deep depth prevention
+  - **Property 5: Consolidation prevented at deep depths**
+  - **Validates: Requirements 2.4, 3.5**
 
 - [x] 2. Enhance logging throughout consolidation functions
   - Add detailed logging to `consolidate_index_and_default_files()` for stop level decisions
