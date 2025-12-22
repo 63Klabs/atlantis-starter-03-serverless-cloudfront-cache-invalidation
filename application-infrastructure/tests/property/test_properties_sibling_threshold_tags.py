@@ -153,8 +153,12 @@ def test_property_5_valid_tag_value_usage(bucket_name, sibling_threshold_value):
         'invalidator:SiblingDirectoryConsolidationThreshold': sibling_threshold_value
     }
     
+    # Use a default value that's guaranteed to be different from any valid tag value
+    # by using a value outside the valid range (1-1000)
+    mock_default = 9999
+    
     with patch('functions.processor.tag_validator.get_bucket_tags') as mock_get_tags, \
-         patch('functions.processor.tag_validator.SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD', 999):
+         patch('functions.processor.tag_validator.SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD', mock_default):
         
         mock_get_tags.return_value = tags
         
@@ -164,8 +168,8 @@ def test_property_5_valid_tag_value_usage(bucket_name, sibling_threshold_value):
         expected_threshold = int(sibling_threshold_value)
         assert config['sibling_directory_threshold'] == expected_threshold, \
             f"Expected sibling threshold {expected_threshold}, got {config['sibling_directory_threshold']}"
-        assert config['sibling_directory_threshold'] != 999, \
-            "Should not use global constant when valid tag is present"
+        assert config['sibling_directory_threshold'] != mock_default, \
+            f"Should not use global constant {mock_default} when valid tag is present"
         assert config['sibling_directory_threshold_source'] == 'tag', \
             "Should use tag source when valid tag is present"
 
