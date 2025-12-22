@@ -37,6 +37,52 @@ from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 logger = setup_logger(__name__)
 
 
+def validate_stop_level(stop_level: int) -> int:
+    """Validate and sanitize stop level value.
+    
+    Args:
+        stop_level: The stop level value to validate
+        
+    Returns:
+        Validated stop level value (defaults to 1 if invalid)
+        
+    Logs warnings when invalid values are encountered.
+    """
+    # Check if stop level is None
+    if stop_level is None:
+        from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
+        return CONSOLIDATION_STOP_LEVEL
+    
+    # Check if stop level is a valid integer
+    if not isinstance(stop_level, int):
+        logger.warning(
+            f"Invalid ConsolidationStopLevel type: {type(stop_level).__name__}. Using default value 1.",
+            extra={'extra_fields': {
+                'invalid_stop_level': str(stop_level),
+                'invalid_type': type(stop_level).__name__,
+                'fallback_value': 1,
+                'fallback_reason': 'invalid_type'
+            }}
+        )
+        return 1
+    
+    # Check if stop level is within valid range (0-20)
+    if stop_level < 0 or stop_level > 20:
+        logger.warning(
+            f"Invalid ConsolidationStopLevel value: {stop_level} is outside valid range [0, 20]. Using default value 1.",
+            extra={'extra_fields': {
+                'invalid_stop_level': stop_level,
+                'valid_range_min': 0,
+                'valid_range_max': 20,
+                'fallback_value': 1,
+                'fallback_reason': 'out_of_range'
+            }}
+        )
+        return 1
+    
+    return stop_level
+
+
 def is_index_or_default_file(path: str) -> bool:
     """Check if a path represents an index or default file.
     
@@ -105,7 +151,22 @@ def consolidate_index_and_default_files(paths: Set[str], stop_level: int = None,
         from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
         stop_level = CONSOLIDATION_STOP_LEVEL
     
+    # Validate and sanitize stop level
+    stop_level = validate_stop_level(stop_level)
+    
+    logger.debug(
+        f"Starting index/default file consolidation with stop level {stop_level}",
+        extra={'extra_fields': {
+            'operation': 'consolidate_index_and_default_files',
+            'stop_level': stop_level,
+            'root_path': root_path,
+            'input_path_count': len(paths)
+        }}
+    )
+    
     consolidated = set()
+    consolidation_count = 0
+    blocked_count = 0
     
     for path in paths:
         if is_index_or_default_file(path):
@@ -114,25 +175,63 @@ def consolidate_index_and_default_files(paths: Set[str], stop_level: int = None,
             # Check if consolidation to parent is allowed by stop level
             parent_depth = calculate_path_depth(parent, root_path)
             
+            logger.debug(
+                f"Evaluating index/default file consolidation: {path}",
+                extra={'extra_fields': {
+                    'operation': 'consolidate_index_and_default_files',
+                    'original_path': path,
+                    'parent_directory': parent,
+                    'parent_depth': parent_depth,
+                    'stop_level': stop_level,
+                    'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
+                }}
+            )
+            
             if is_consolidation_allowed_at_depth(parent_depth, stop_level):
-                if parent == '/':
-                    consolidated.add('/*')
-                else:
-                    consolidated.add(f"{parent}/*")
+                consolidated_path = '/*' if parent == '/' else f"{parent}/*"
+                consolidated.add(consolidated_path)
+                consolidation_count += 1
+                
+                logger.debug(
+                    f"Stop level allows index/default consolidation at depth {parent_depth}: {path} -> {consolidated_path}",
+                    extra={'extra_fields': {
+                        'operation': 'consolidate_index_and_default_files',
+                        'stop_level': stop_level,
+                        'allowed_depth': parent_depth,
+                        'original_path': path,
+                        'consolidated_to': consolidated_path,
+                        'consolidation_type': 'index_default_file'
+                    }}
+                )
             else:
                 # Stop level prevents consolidation, keep original path
                 consolidated.add(path)
+                blocked_count += 1
+                
                 logger.debug(
                     f"Stop level {stop_level} prevents index/default consolidation at depth {parent_depth}: {path}",
                     extra={'extra_fields': {
+                        'operation': 'consolidate_index_and_default_files',
                         'stop_level': stop_level,
                         'blocked_depth': parent_depth,
                         'original_path': path,
-                        'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*'
+                        'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
+                        'consolidation_type': 'index_default_file'
                     }}
                 )
         else:
             consolidated.add(path)
+    
+    logger.debug(
+        f"Index/default file consolidation complete: {consolidation_count} consolidated, {blocked_count} blocked by stop level",
+        extra={'extra_fields': {
+            'operation': 'consolidate_index_and_default_files',
+            'stop_level': stop_level,
+            'consolidations_performed': consolidation_count,
+            'consolidations_blocked': blocked_count,
+            'output_path_count': len(consolidated)
+        }}
+    )
     
     return consolidated
 
@@ -158,6 +257,20 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
         from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
         stop_level = CONSOLIDATION_STOP_LEVEL
     
+    # Validate and sanitize stop level
+    stop_level = validate_stop_level(stop_level)
+    
+    logger.debug(
+        f"Starting directory threshold consolidation with threshold {directory_threshold}, stop level {stop_level}",
+        extra={'extra_fields': {
+            'operation': 'consolidate_by_directory_threshold',
+            'directory_threshold': directory_threshold,
+            'stop_level': stop_level,
+            'root_path': root_path,
+            'input_path_count': len(paths)
+        }}
+    )
+    
     # Group paths by parent directory
     directory_groups: Dict[str, List[str]] = defaultdict(list)
     directory_wildcards = set()
@@ -173,38 +286,62 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
     
     # Consolidate directories with more than threshold files
     consolidated = set()
+    consolidation_count = 0
+    blocked_count = 0
     
     for parent, files in directory_groups.items():
+        parent_depth = calculate_path_depth(parent, root_path)
+        
+        logger.debug(
+            f"Evaluating directory threshold consolidation for {parent}: {len(files)} files",
+            extra={'extra_fields': {
+                'operation': 'consolidate_by_directory_threshold',
+                'parent_directory': parent,
+                'parent_depth': parent_depth,
+                'file_count': len(files),
+                'directory_threshold': directory_threshold,
+                'stop_level': stop_level,
+                'exceeds_threshold': len(files) > directory_threshold,
+                'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
+            }}
+        )
+        
         if len(files) > directory_threshold:
             # Check if consolidation is allowed by stop level
-            parent_depth = calculate_path_depth(parent, root_path)
-            
             if is_consolidation_allowed_at_depth(parent_depth, stop_level):
                 # Consolidate to directory wildcard
-                if parent == '/':
-                    consolidated.add('/*')
-                else:
-                    consolidated.add(f"{parent}/*")
+                consolidated_path = '/*' if parent == '/' else f"{parent}/*"
+                consolidated.add(consolidated_path)
+                consolidation_count += 1
                 
                 logger.debug(
-                    f"Directory threshold consolidation: {len(files)} files in {parent} -> {parent}/*",
+                    f"Stop level allows directory threshold consolidation at depth {parent_depth}: {len(files)} files in {parent} -> {consolidated_path}",
                     extra={'extra_fields': {
+                        'operation': 'consolidate_by_directory_threshold',
+                        'stop_level': stop_level,
+                        'allowed_depth': parent_depth,
                         'directory_threshold': directory_threshold,
                         'file_count': len(files),
                         'parent_directory': parent,
-                        'consolidated_to': f"{parent}/*" if parent != '/' else '/*'
+                        'consolidated_to': consolidated_path,
+                        'consolidation_type': 'directory_threshold'
                     }}
                 )
             else:
                 # Stop level prevents consolidation, keep individual files
                 consolidated.update(files)
+                blocked_count += 1
+                
                 logger.debug(
-                    f"Stop level {stop_level} prevents directory consolidation at depth {parent_depth}: {parent}",
+                    f"Stop level {stop_level} prevents directory consolidation at depth {parent_depth}: {parent} ({len(files)} files)",
                     extra={'extra_fields': {
+                        'operation': 'consolidate_by_directory_threshold',
                         'stop_level': stop_level,
                         'blocked_depth': parent_depth,
                         'parent_directory': parent,
-                        'file_count': len(files)
+                        'file_count': len(files),
+                        'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
+                        'consolidation_type': 'directory_threshold'
                     }}
                 )
         else:
@@ -213,6 +350,18 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
     
     # Add back existing wildcards
     consolidated.update(directory_wildcards)
+    
+    logger.debug(
+        f"Directory threshold consolidation complete: {consolidation_count} directories consolidated, {blocked_count} blocked by stop level",
+        extra={'extra_fields': {
+            'operation': 'consolidate_by_directory_threshold',
+            'stop_level': stop_level,
+            'directory_threshold': directory_threshold,
+            'consolidations_performed': consolidation_count,
+            'consolidations_blocked': blocked_count,
+            'output_path_count': len(consolidated)
+        }}
+    )
     
     return consolidated
 
@@ -239,6 +388,20 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
         from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
         stop_level = CONSOLIDATION_STOP_LEVEL
     
+    # Validate and sanitize stop level
+    stop_level = validate_stop_level(stop_level)
+    
+    logger.debug(
+        f"Starting sibling directory consolidation with stop level {stop_level}",
+        extra={'extra_fields': {
+            'operation': 'consolidate_sibling_directories',
+            'stop_level': stop_level,
+            'root_path': root_path,
+            'input_path_count': len(paths),
+            'sibling_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD
+        }}
+    )
+    
     # Extract directory wildcards (paths ending with /*)
     wildcards = {p for p in paths if p.endswith('/*')}
     non_wildcards = paths - wildcards
@@ -254,37 +417,61 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
     
     # Consolidate parents with more than threshold siblings
     consolidated = set()
+    consolidation_count = 0
+    blocked_count = 0
     
     for parent, siblings in parent_groups.items():
+        parent_depth = calculate_path_depth(parent, root_path)
+        
+        logger.debug(
+            f"Evaluating sibling directory consolidation for {parent}: {len(siblings)} siblings",
+            extra={'extra_fields': {
+                'operation': 'consolidate_sibling_directories',
+                'parent_directory': parent,
+                'parent_depth': parent_depth,
+                'sibling_count': len(siblings),
+                'sibling_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
+                'stop_level': stop_level,
+                'exceeds_threshold': len(siblings) > SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
+                'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
+            }}
+        )
+        
         if len(siblings) > SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD:
             # Check if consolidation is allowed by stop level
-            parent_depth = calculate_path_depth(parent, root_path)
-            
             if is_consolidation_allowed_at_depth(parent_depth, stop_level):
                 # Consolidate to parent wildcard
-                if parent == '/':
-                    consolidated.add('/*')
-                else:
-                    consolidated.add(f"{parent}/*")
+                consolidated_path = '/*' if parent == '/' else f"{parent}/*"
+                consolidated.add(consolidated_path)
+                consolidation_count += 1
                 
                 logger.debug(
-                    f"Sibling directory consolidation: {len(siblings)} siblings in {parent} -> {parent}/*",
+                    f"Stop level allows sibling directory consolidation at depth {parent_depth}: {len(siblings)} siblings in {parent} -> {consolidated_path}",
                     extra={'extra_fields': {
+                        'operation': 'consolidate_sibling_directories',
+                        'stop_level': stop_level,
+                        'allowed_depth': parent_depth,
                         'sibling_count': len(siblings),
                         'parent_directory': parent,
-                        'consolidated_to': f"{parent}/*" if parent != '/' else '/*'
+                        'consolidated_to': consolidated_path,
+                        'consolidation_type': 'sibling_directory'
                     }}
                 )
             else:
                 # Stop level prevents consolidation, keep individual siblings
                 consolidated.update(siblings)
+                blocked_count += 1
+                
                 logger.debug(
-                    f"Stop level {stop_level} prevents sibling consolidation at depth {parent_depth}: {parent}",
+                    f"Stop level {stop_level} prevents sibling consolidation at depth {parent_depth}: {parent} ({len(siblings)} siblings)",
                     extra={'extra_fields': {
+                        'operation': 'consolidate_sibling_directories',
                         'stop_level': stop_level,
                         'blocked_depth': parent_depth,
                         'parent_directory': parent,
-                        'sibling_count': len(siblings)
+                        'sibling_count': len(siblings),
+                        'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
+                        'consolidation_type': 'sibling_directory'
                     }}
                 )
         else:
@@ -293,6 +480,17 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
     
     # Add back non-wildcard paths
     consolidated.update(non_wildcards)
+    
+    logger.debug(
+        f"Sibling directory consolidation complete: {consolidation_count} parent directories consolidated, {blocked_count} blocked by stop level",
+        extra={'extra_fields': {
+            'operation': 'consolidate_sibling_directories',
+            'stop_level': stop_level,
+            'consolidations_performed': consolidation_count,
+            'consolidations_blocked': blocked_count,
+            'output_path_count': len(consolidated)
+        }}
+    )
     
     return consolidated
 
@@ -481,6 +679,16 @@ def calculate_path_depth(path: str, root_path: str = '/') -> int:
         calculate_path_depth('/prod/public/dir/subdir/file.html', '/prod/public') -> 2
     """
     if not path or not root_path:
+        logger.debug(
+            f"Path depth calculation: empty path or root_path",
+            extra={'extra_fields': {
+                'operation': 'calculate_path_depth',
+                'path': path,
+                'root_path': root_path,
+                'calculated_depth': 0,
+                'reason': 'empty_input'
+            }}
+        )
         return 0
     
     # Normalize paths - remove trailing slashes except for root
@@ -489,26 +697,103 @@ def calculate_path_depth(path: str, root_path: str = '/') -> int:
     
     # If path is the same as root, depth is 0
     if path_normalized == root_normalized:
+        logger.debug(
+            f"Path depth calculation: path equals root",
+            extra={'extra_fields': {
+                'operation': 'calculate_path_depth',
+                'path': path,
+                'root_path': root_path,
+                'path_normalized': path_normalized,
+                'root_normalized': root_normalized,
+                'calculated_depth': 0,
+                'reason': 'path_equals_root'
+            }}
+        )
         return 0
     
     # If path doesn't start with root, it's not under the root
     if root_normalized == '/':
         # Special case for root - everything is under root
         if not path_normalized.startswith('/'):
+            logger.debug(
+                f"Path depth calculation: path doesn't start with /",
+                extra={'extra_fields': {
+                    'operation': 'calculate_path_depth',
+                    'path': path,
+                    'root_path': root_path,
+                    'path_normalized': path_normalized,
+                    'calculated_depth': 0,
+                    'reason': 'invalid_path_format'
+                }}
+            )
             return 0
         # Count segments after root
         segments = [s for s in path_normalized.split('/') if s]
-        return len(segments)
+        depth = len(segments)
+        
+        logger.debug(
+            f"Path depth calculation: root is /, counting segments",
+            extra={'extra_fields': {
+                'operation': 'calculate_path_depth',
+                'path': path,
+                'root_path': root_path,
+                'path_normalized': path_normalized,
+                'segments': segments,
+                'calculated_depth': depth,
+                'reason': 'root_is_filesystem_root'
+            }}
+        )
+        return depth
     else:
         # Check if path is under the root
         if not path_normalized.startswith(root_normalized + '/'):
+            logger.debug(
+                f"Path depth calculation: path not under root",
+                extra={'extra_fields': {
+                    'operation': 'calculate_path_depth',
+                    'path': path,
+                    'root_path': root_path,
+                    'path_normalized': path_normalized,
+                    'root_normalized': root_normalized,
+                    'calculated_depth': 0,
+                    'reason': 'path_not_under_root'
+                }}
+            )
             return 0
         # Get the relative part and count segments
         relative_part = path_normalized[len(root_normalized):].lstrip('/')
         if not relative_part:
+            logger.debug(
+                f"Path depth calculation: no relative part",
+                extra={'extra_fields': {
+                    'operation': 'calculate_path_depth',
+                    'path': path,
+                    'root_path': root_path,
+                    'path_normalized': path_normalized,
+                    'root_normalized': root_normalized,
+                    'calculated_depth': 0,
+                    'reason': 'no_relative_part'
+                }}
+            )
             return 0
         segments = [s for s in relative_part.split('/') if s]
-        return len(segments)
+        depth = len(segments)
+        
+        logger.debug(
+            f"Path depth calculation: relative to custom root",
+            extra={'extra_fields': {
+                'operation': 'calculate_path_depth',
+                'path': path,
+                'root_path': root_path,
+                'path_normalized': path_normalized,
+                'root_normalized': root_normalized,
+                'relative_part': relative_part,
+                'segments': segments,
+                'calculated_depth': depth,
+                'reason': 'relative_to_custom_root'
+            }}
+        )
+        return depth
 
 
 def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
@@ -521,15 +806,20 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
     Returns:
         True if consolidation is allowed, False otherwise
         
-    Example:
-        is_consolidation_allowed_at_depth(1, 2) -> False (depth 1 < stop level 2, so blocked)
-        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 >= stop level 2, so allowed)
+    Fixed Logic:
+        - stop_level=0: Allow all consolidation (special case for root)
+        - stop_level=N: Allow consolidation at depth N and deeper
         
-    Note: Stop level 1 means allow all consolidation (backward compatibility)
-          Stop level N prevents consolidation at depths 0 through N-1
+    Examples:
+        is_consolidation_allowed_at_depth(1, 0) -> True  (special case)
+        is_consolidation_allowed_at_depth(1, 1) -> True  (depth 1 >= stop level 1)
+        is_consolidation_allowed_at_depth(0, 1) -> False (depth 0 < stop level 1)
+        is_consolidation_allowed_at_depth(2, 1) -> True  (depth 2 >= stop level 1)
+        is_consolidation_allowed_at_depth(1, 2) -> False (depth 1 < stop level 2)
+        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 >= stop level 2)
     """
-    if stop_level <= 1:
-        # Stop level 1 or less means allow all consolidation (backward compatibility)
+    if stop_level == 0:
+        # Stop level 0 means allow all consolidation (special case for root)
         return True
     return depth >= stop_level
 
@@ -632,6 +922,9 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     if stop_level is None:
         from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
         stop_level = CONSOLIDATION_STOP_LEVEL
+    
+    # Validate and sanitize stop level
+    stop_level = validate_stop_level(stop_level)
     
     logger.info(
         f"Starting path consolidation with {len(paths)} paths",

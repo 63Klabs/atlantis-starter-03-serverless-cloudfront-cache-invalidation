@@ -1,3 +1,6 @@
-- [ ] Update AI Context to use virtual env
+- [x] Move up path consolidation
+- [ ] Increase num of tests in upload-test-files.py
+- [ ] Add Custom path for bucket
+- [ ] Boto3
 - [ ] Clean up debug output
 - [ ] Remove Kiro directory from .gitignore
