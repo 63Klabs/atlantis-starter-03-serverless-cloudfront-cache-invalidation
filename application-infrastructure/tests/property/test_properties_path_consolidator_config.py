@@ -167,8 +167,8 @@ def test_property_5_bucket_specific_threshold_application(directory_and_files_an
     directory_depth = calculate_path_depth(directory, '/')
     
     # Use stop_level that allows consolidation at this depth (depth >= stop_level)
-    # Subtract 1 to ensure consolidation is allowed at the directory depth
-    stop_level = max(directory_depth - 1, 0)  # Use low stop_level to allow consolidation
+    # Use a stop_level that's guaranteed to allow consolidation
+    stop_level = max(directory_depth - 1, 1)  # Ensure stop_level allows consolidation
     
     result = consolidate_paths(files, directory_threshold=custom_threshold, stop_level=stop_level)
     

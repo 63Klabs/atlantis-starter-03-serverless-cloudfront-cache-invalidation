@@ -107,4 +107,6 @@
   - _Requirements: 1.4, 2.5_
 
 - [x] 8. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
+  - All 169 unit tests passing
+  - All 87 property tests passing
+  - Fixed the remaining failing property test by correcting the test logic to generate allowed depths (>= stop_level) instead of blocked depths (< stop_level)
