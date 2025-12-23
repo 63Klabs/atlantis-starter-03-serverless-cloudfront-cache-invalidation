@@ -665,22 +665,28 @@ def split_paths_for_invalidation(paths: List[str]) -> List[List[str]]:
 
 
 def calculate_path_depth(path: str, root_path: str = '/') -> int:
-    """Calculate the depth of a path relative to the root directory.
+    """Calculate the depth of a path relative to the first 'public' directory found.
+    
+    The depth calculation is based on the position relative to the first occurrence 
+    of 'public' in the path, where 'public' is considered level 1.
     
     Args:
         path: The path to calculate depth for
-        root_path: The root directory to measure from (default: '/')
+        root_path: The root directory (used for logging, but depth is calculated from 'public')
         
     Returns:
-        The depth of the path relative to the root directory
+        The depth level where 'public' = level 1, 'public/dir' = level 2, etc.
+        Returns 0 if no 'public' directory is found or path is invalid.
         
-    Example:
-        calculate_path_depth('/prod/public/dir/file.html', '/prod/public') -> 1
-        calculate_path_depth('/prod/public/dir/subdir/file.html', '/prod/public') -> 2
+    Examples:
+        calculate_path_depth('/prod/public', '/prod/public') -> 1 (public itself)
+        calculate_path_depth('/prod/public/m', '/prod/public') -> 2 (m is level 2)
+        calculate_path_depth('/prod/public/m/n', '/prod/public') -> 3 (n is level 3)
+        calculate_path_depth('/site1/prod/public/scripts', '/site1/prod/public') -> 2 (scripts is level 2)
     """
-    if not path or not root_path:
+    if not path:
         logger.debug(
-            f"Path depth calculation: empty path or root_path",
+            f"Path depth calculation: empty path",
             extra={'extra_fields': {
                 'operation': 'calculate_path_depth',
                 'path': path,
@@ -691,116 +697,62 @@ def calculate_path_depth(path: str, root_path: str = '/') -> int:
         )
         return 0
     
-    # Normalize paths - clean up double slashes and remove trailing slashes except for root
+    # Normalize path - clean up double slashes and remove trailing slashes except for root
     path_normalized = path
     while '//' in path_normalized:
         path_normalized = path_normalized.replace('//', '/')
     path_normalized = path_normalized.rstrip('/') if path_normalized != '/' else '/'
     
-    root_normalized = root_path
-    while '//' in root_normalized:
-        root_normalized = root_normalized.replace('//', '/')
-    root_normalized = root_normalized.rstrip('/') if root_normalized != '/' else '/'
+    # Split path into segments
+    segments = [s for s in path_normalized.split('/') if s]
     
-    # If path is the same as root, depth is 0
-    if path_normalized == root_normalized:
-        logger.debug(
-            f"Path depth calculation: path equals root",
-            extra={'extra_fields': {
-                'operation': 'calculate_path_depth',
-                'path': path,
-                'root_path': root_path,
-                'path_normalized': path_normalized,
-                'root_normalized': root_normalized,
-                'calculated_depth': 0,
-                'reason': 'path_equals_root'
-            }}
-        )
-        return 0
+    # Find the first occurrence of 'public'
+    public_index = -1
+    for i, segment in enumerate(segments):
+        if segment == 'public':
+            public_index = i
+            break
     
-    # If path doesn't start with root, it's not under the root
-    if root_normalized == '/':
-        # Special case for root - everything is under root
-        if not path_normalized.startswith('/'):
-            logger.debug(
-                f"Path depth calculation: path doesn't start with /",
-                extra={'extra_fields': {
-                    'operation': 'calculate_path_depth',
-                    'path': path,
-                    'root_path': root_path,
-                    'path_normalized': path_normalized,
-                    'calculated_depth': 0,
-                    'reason': 'invalid_path_format'
-                }}
-            )
-            return 0
-        # Count segments after root
-        segments = [s for s in path_normalized.split('/') if s]
-        depth = len(segments)
-        
+    if public_index == -1:
+        # No 'public' directory found - fallback to simple depth calculation
         logger.debug(
-            f"Path depth calculation: root is /, counting segments",
+            f"Path depth calculation: no 'public' directory found, using simple depth",
             extra={'extra_fields': {
                 'operation': 'calculate_path_depth',
                 'path': path,
                 'root_path': root_path,
                 'path_normalized': path_normalized,
                 'segments': segments,
-                'calculated_depth': depth,
-                'reason': 'root_is_filesystem_root'
+                'calculated_depth': len(segments),
+                'reason': 'no_public_directory_fallback'
             }}
         )
-        return depth
-    else:
-        # Check if path is under the root
-        if not path_normalized.startswith(root_normalized + '/'):
-            logger.debug(
-                f"Path depth calculation: path not under root",
-                extra={'extra_fields': {
-                    'operation': 'calculate_path_depth',
-                    'path': path,
-                    'root_path': root_path,
-                    'path_normalized': path_normalized,
-                    'root_normalized': root_normalized,
-                    'calculated_depth': 0,
-                    'reason': 'path_not_under_root'
-                }}
-            )
-            return 0
-        # Get the relative part and count segments
-        relative_part = path_normalized[len(root_normalized):].lstrip('/')
-        if not relative_part:
-            logger.debug(
-                f"Path depth calculation: no relative part",
-                extra={'extra_fields': {
-                    'operation': 'calculate_path_depth',
-                    'path': path,
-                    'root_path': root_path,
-                    'path_normalized': path_normalized,
-                    'root_normalized': root_normalized,
-                    'calculated_depth': 0,
-                    'reason': 'no_relative_part'
-                }}
-            )
-            return 0
-        segments = [s for s in relative_part.split('/') if s]
-        depth = len(segments)
-        
-        logger.debug(
-            f"Path depth calculation: relative to custom root",
-            extra={'extra_fields': {
-                'operation': 'calculate_path_depth',
-                'path': path,
-                'root_path': root_path,
-                'path_normalized': path_normalized,
-                'root_normalized': root_normalized,
-                'relative_part': relative_part,
-                'segments': segments,
-                'calculated_depth': depth,
-                'reason': 'relative_to_custom_root'
-            }}
-        )
-        return depth
+        return len(segments)
+    
+    # Calculate depth relative to 'public' directory
+    # 'public' itself is level 1, directories under it are level 2, 3, etc.
+    depth = public_index + 1 + (len(segments) - public_index - 1)
+    # Simplified: depth = len(segments) where public is included in the count
+    # But we want public to be level 1, so:
+    depth_from_public = len(segments) - public_index
+    
+    logger.debug(
+        f"Path depth calculation: calculated from 'public' directory",
+        extra={'extra_fields': {
+            'operation': 'calculate_path_depth',
+            'path': path,
+            'root_path': root_path,
+            'path_normalized': path_normalized,
+            'segments': segments,
+            'public_index': public_index,
+            'public_segment': segments[public_index] if public_index >= 0 else None,
+            'segments_after_public': segments[public_index+1:] if public_index >= 0 else [],
+            'calculated_depth': depth_from_public,
+            'reason': 'calculated_from_public_directory'
+        }}
+    )
+    
+    return depth_from_public
 
 
 def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
@@ -815,22 +767,23 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
         
     Logic:
         - stop_level=0: Allow all consolidation (special case for root)
-        - stop_level=N (N>0): Allow consolidation at depth <= stop_level, prevent at depth > stop_level
+        - stop_level=N (N>0): Allow consolidation at depth >= stop_level, prevent at depth < stop_level
         
     Examples:
         is_consolidation_allowed_at_depth(1, 0) -> True  (special case)
-        is_consolidation_allowed_at_depth(0, 1) -> True  (depth 0 <= stop level 1)
-        is_consolidation_allowed_at_depth(1, 1) -> True  (depth 1 <= stop level 1)
-        is_consolidation_allowed_at_depth(2, 1) -> False (depth 2 > stop level 1)
-        is_consolidation_allowed_at_depth(1, 2) -> True  (depth 1 <= stop level 2)
-        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 <= stop level 2)
-        is_consolidation_allowed_at_depth(3, 2) -> False (depth 3 > stop level 2)
+        is_consolidation_allowed_at_depth(1, 1) -> True  (depth 1 >= stop level 1)
+        is_consolidation_allowed_at_depth(2, 1) -> True  (depth 2 >= stop level 1)
+        is_consolidation_allowed_at_depth(0, 1) -> False (depth 0 < stop level 1)
+        is_consolidation_allowed_at_depth(1, 2) -> False (depth 1 < stop level 2)
+        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 >= stop level 2)
+        is_consolidation_allowed_at_depth(3, 2) -> True  (depth 3 >= stop level 2)
     """
     if stop_level == 0:
         # Stop level 0 means allow all consolidation (special case for root)
         return True
-    # For stop_level > 0, allow consolidation at depth <= stop_level
-    return depth <= stop_level
+    # For stop_level > 0, allow consolidation at depth >= stop_level (deeper or equal)
+    # Prevent consolidation at depth < stop_level (shallower than stop level)
+    return depth >= stop_level
 
 
 def apply_stop_level_constraints(paths: Set[str], stop_level: int, root_path: str = '/') -> Set[str]:
@@ -980,19 +933,9 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     # Convert to set for efficient operations
     path_set = set(cleaned_paths)
     
-    # Determine root path for depth calculations (assume first path gives us the root structure)
+    # For depth calculations, we now use the 'public' directory as the reference point
+    # The root_path parameter is kept for logging compatibility but depth is calculated from 'public'
     root_path = '/'
-    if cleaned_paths:
-        # Try to find a common root path pattern like /stage/public
-        first_path = cleaned_paths[0]
-        parts = first_path.split('/')
-        if len(parts) >= 3 and parts[2] == 'public':
-            # Pattern like /stage/public/... - use /stage/public as root
-            root_path = f"/{parts[1]}/public"
-        else:
-            # For simple paths like /dir/file.html, use root /
-            # But adjust stop level logic to be more permissive
-            root_path = '/'
     
     # Handle special case: stop level 0 means consolidate everything to root
     if stop_level == 0:

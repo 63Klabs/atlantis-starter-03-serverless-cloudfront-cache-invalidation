@@ -2,14 +2,14 @@
 
 ## Introduction
 
-This feature fixes the ConsolidationStopLevel functionality in the Multi-Bucket CloudFront Invalidation Service. The current implementation has the depth comparison logic backwards - it prevents consolidation at shallow depths when it should allow it. The fix ensures that the stop level correctly corresponds to directory depth levels, where ConsolidationStopLevel=1 allows consolidation up to depth 1 (`/level1/*`), ConsolidationStopLevel=2 allows consolidation up to depth 2 (`/level1/level2/*`), and so on. The current logic `depth >= stop_level` should be changed to `depth <= stop_level` with special handling for stop_level=0.
+This feature fixes the ConsolidationStopLevel functionality in the Multi-Bucket CloudFront Invalidation Service. The current implementation has the depth comparison logic backwards - it prevents consolidation at deep depths when it should prevent consolidation at shallow depths (closer to root). The fix ensures that the stop level correctly corresponds to directory depth levels, where ConsolidationStopLevel=1 prevents consolidation shallower than level 1, ConsolidationStopLevel=2 prevents consolidation shallower than level 2, and so on. The current logic `depth >= stop_level` should be maintained, but the depth calculation needs to be corrected to use the first 'public' directory as the reference point.
 
 ## Glossary
 
-- **ConsolidationStopLevel**: Directory depth level where consolidation is allowed to occur
-- **Directory_Depth**: The number of directory levels from the root path
+- **ConsolidationStopLevel**: Directory depth level where consolidation is prevented for shallower depths
+- **Directory_Depth**: The number of directory levels from the first 'public' directory found in the path
 - **Path_Consolidation**: The process of replacing multiple individual paths with directory wildcards
-- **Root_Path**: The base directory path from which depth is measured (typically `/`)
+- **Root_Path**: The first 'public' directory found in the path, which serves as level 1
 - **Processor_Function**: Lambda function that processes invalidation events and applies consolidation
 
 ## Requirements
@@ -27,39 +27,39 @@ This feature fixes the ConsolidationStopLevel functionality in the Multi-Bucket 
 
 ### Requirement 2
 
-**User Story:** As a platform administrator, I want ConsolidationStopLevel=1 to allow consolidation up to the first directory level, so that paths can be consolidated appropriately at depth 1 and shallower.
+**User Story:** As a platform administrator, I want ConsolidationStopLevel=1 to prevent consolidation shallower than level 1, so that consolidation only occurs at level 1 and deeper.
 
 #### Acceptance Criteria
 
-1. WHEN ConsolidationStopLevel is set to 1, THE system SHALL allow consolidation to occur at depth 1 and shallower (e.g., `/level1/*`, `/*`)
-2. WHEN ConsolidationStopLevel is 1 and threshold is met, THE system SHALL consolidate paths like `/test.html`, `/test2.html`, `/other.html` to `/*`
-3. WHEN ConsolidationStopLevel is 1 and threshold is met, THE system SHALL consolidate paths like `/level1/file1.html`, `/level1/file2.html` to `/level1/*`
-4. WHEN ConsolidationStopLevel is 1, THE system SHALL prevent consolidation at depth 2 and deeper (e.g., `/level1/level2/*`)
+1. WHEN ConsolidationStopLevel is set to 1, THE system SHALL allow consolidation to occur at depth 1 and deeper (e.g., `/prod/public/*`, `/prod/public/m/*`)
+2. WHEN ConsolidationStopLevel is 1 and threshold is met, THE system SHALL prevent consolidation at depth 0 (root level shallower than public)
+3. WHEN ConsolidationStopLevel is 1 and threshold is met, THE system SHALL consolidate paths like `/prod/public/file1.html`, `/prod/public/file2.html` to `/prod/public/*`
+4. WHEN ConsolidationStopLevel is 1 and threshold is met, THE system SHALL consolidate paths like `/prod/public/m/file1.html`, `/prod/public/m/file2.html` to `/prod/public/m/*`
 5. WHEN ConsolidationStopLevel is 1, THE system SHALL maintain the current default behavior for backward compatibility
 
 ### Requirement 3
 
-**User Story:** As a platform administrator, I want ConsolidationStopLevel values greater than 1 to allow consolidation up to the corresponding directory depth level, so that I can control exactly where consolidation stops.
+**User Story:** As a platform administrator, I want ConsolidationStopLevel values greater than 1 to prevent consolidation shallower than the corresponding directory depth level, so that I can control exactly where consolidation stops.
 
 #### Acceptance Criteria
 
-1. WHEN ConsolidationStopLevel is set to N (where N > 1), THE system SHALL allow consolidation to occur at depth N and shallower
-2. WHEN ConsolidationStopLevel is 2, THE system SHALL allow consolidation like `/level1/level2/file1.html`, `/level1/level2/file2.html` to `/level1/level2/*`
-3. WHEN ConsolidationStopLevel is 2, THE system SHALL allow consolidation like `/level1/file1.html`, `/level1/file2.html` to `/level1/*`
-4. WHEN ConsolidationStopLevel is 3, THE system SHALL allow consolidation like `/level1/level2/level3/file1.html` to `/level1/level2/level3/*`
-5. WHEN ConsolidationStopLevel is N, THE system SHALL prevent consolidation at depths greater than N
+1. WHEN ConsolidationStopLevel is set to N (where N > 1), THE system SHALL allow consolidation to occur at depth N and deeper
+2. WHEN ConsolidationStopLevel is 2, THE system SHALL allow consolidation like `/prod/public/m/file1.html`, `/prod/public/m/file2.html` to `/prod/public/m/*`
+3. WHEN ConsolidationStopLevel is 2, THE system SHALL prevent consolidation like `/prod/public/*` (depth 1 < stop level 2)
+4. WHEN ConsolidationStopLevel is 3, THE system SHALL allow consolidation like `/prod/public/m/n/file1.html` to `/prod/public/m/n/*`
+5. WHEN ConsolidationStopLevel is N, THE system SHALL prevent consolidation at depths less than N
 
 ### Requirement 4
 
-**User Story:** As a platform administrator, I want the depth calculation to be consistent and predictable, so that ConsolidationStopLevel values correspond to actual directory structure levels.
+**User Story:** As a platform administrator, I want the depth calculation to be consistent and predictable based on the first 'public' directory, so that ConsolidationStopLevel values correspond to actual directory structure levels.
 
 #### Acceptance Criteria
 
-1. WHEN calculating path depth, THE system SHALL count directory levels from the root path
-2. WHEN a path is `/level1/file.html`, THE system SHALL calculate its parent directory `/level1` as depth 1
-3. WHEN a path is `/level1/level2/file.html`, THE system SHALL calculate its parent directory `/level1/level2` as depth 2
-4. WHEN a path is `/level1/level2/level3/file.html`, THE system SHALL calculate its parent directory `/level1/level2/level3` as depth 3
-5. WHEN the root path is `/`, THE system SHALL use absolute depth counting from the filesystem root
+1. WHEN calculating path depth, THE system SHALL count directory levels from the first 'public' directory found in the path
+2. WHEN a path is `/prod/public/m/file.html`, THE system SHALL calculate its parent directory `/prod/public/m` as depth 2
+3. WHEN a path is `/prod/public/m/n/file.html`, THE system SHALL calculate its parent directory `/prod/public/m/n` as depth 3
+4. WHEN a path is `/site1/prod/public/scripts/file.html`, THE system SHALL calculate its parent directory `/site1/prod/public/scripts` as depth 2
+5. WHEN the first 'public' directory is found, THE system SHALL treat it as level 1 for depth calculations
 
 ### Requirement 5
 

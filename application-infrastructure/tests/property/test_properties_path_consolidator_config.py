@@ -166,9 +166,9 @@ def test_property_5_bucket_specific_threshold_application(directory_and_files_an
     from functions.processor.path_consolidator import calculate_path_depth
     directory_depth = calculate_path_depth(directory, '/')
     
-    # Use stop_level that allows consolidation at this depth (depth <= stop_level)
-    # Add 1 to ensure consolidation is allowed at the directory depth
-    stop_level = max(directory_depth + 1, 10)  # Use high stop_level to allow consolidation
+    # Use stop_level that allows consolidation at this depth (depth >= stop_level)
+    # Subtract 1 to ensure consolidation is allowed at the directory depth
+    stop_level = max(directory_depth - 1, 0)  # Use low stop_level to allow consolidation
     
     result = consolidate_paths(files, directory_threshold=custom_threshold, stop_level=stop_level)
     
@@ -235,8 +235,8 @@ def test_property_10_stop_level_consolidation_prevention(paths_at_depth, stop_le
     parent_dir = '/'.join(first_path.split('/')[:-1])  # Remove filename
     parent_depth = calculate_path_depth(parent_dir, '/')
     
-    if parent_depth > stop_level:
-        # Stop level prevents consolidation at this depth (depth > stop_level), should keep individual files
+    if parent_depth < stop_level:
+        # Stop level prevents consolidation at this depth (depth < stop_level), should keep individual files
         assert len(consolidated) == len(paths_at_depth), \
             f"Stop level {stop_level} should prevent consolidation at depth {parent_depth}, got {len(consolidated)} paths instead of {len(paths_at_depth)}"
         
@@ -245,10 +245,10 @@ def test_property_10_stop_level_consolidation_prevention(paths_at_depth, stop_le
             if path.endswith('/*'):
                 wildcard_dir = path[:-2] if path != '/*' else '/'
                 wildcard_depth = calculate_path_depth(wildcard_dir, '/')
-                assert wildcard_depth <= stop_level, \
-                    f"Should not consolidate at depth {wildcard_depth} > {stop_level}, but found {path}"
+                assert wildcard_depth >= stop_level, \
+                    f"Should not consolidate at depth {wildcard_depth} < {stop_level}, but found {path}"
     else:
-        # Stop level allows consolidation at this depth (depth <= stop_level)
+        # Stop level allows consolidation at this depth (depth >= stop_level)
         # Should consolidate since we have > 3 files in same directory
         directory_wildcards = [p for p in consolidated if p.endswith('/*')]
         assert len(directory_wildcards) > 0, \
@@ -279,8 +279,8 @@ def test_property_11_index_file_stop_level_interaction(index_file_path, stop_lev
     assert len(result) == 1, "Should return single chunk"
     consolidated = result[0]
     
-    if parent_depth > stop_level:
-        # Stop level should prevent consolidation (depth > stop_level)
+    if parent_depth < stop_level:
+        # Stop level should prevent consolidation (depth < stop_level)
         assert index_file_path in consolidated, \
             f"Stop level {stop_level} should prevent consolidation at depth {parent_depth}, keeping original file"
         
@@ -289,7 +289,7 @@ def test_property_11_index_file_stop_level_interaction(index_file_path, stop_lev
         assert parent_wildcard not in consolidated, \
             f"Should not create {parent_wildcard} when stop level prevents it"
     else:
-        # Consolidation should be allowed (depth <= stop_level)
+        # Consolidation should be allowed (depth >= stop_level)
         expected_wildcard = f"{parent_path}/*" if parent_path != '/' else '/*'
         assert expected_wildcard in consolidated, \
             f"Should consolidate index file to {expected_wildcard} when stop level {stop_level} allows depth {parent_depth}"
@@ -319,8 +319,8 @@ def test_property_12_sibling_directory_stop_level_interaction(parent_and_wildcar
     assert len(result) == 1, "Should return single chunk"
     consolidated = result[0]
     
-    if parent_depth > stop_level:
-        # Stop level should prevent consolidation - should keep individual siblings (depth > stop_level)
+    if parent_depth < stop_level:
+        # Stop level should prevent consolidation - should keep individual siblings (depth < stop_level)
         assert len(consolidated) == len(wildcards), \
             f"Stop level {stop_level} should prevent consolidation at depth {parent_depth}, keeping {len(wildcards)} siblings"
         
@@ -329,7 +329,7 @@ def test_property_12_sibling_directory_stop_level_interaction(parent_and_wildcar
         assert parent_wildcard not in consolidated, \
             f"Should not create {parent_wildcard} when stop level prevents it"
     else:
-        # Consolidation should be allowed - should consolidate to parent (depth <= stop_level)
+        # Consolidation should be allowed - should consolidate to parent (depth >= stop_level)
         expected_parent_wildcard = f"{parent_path}/*" if parent_path != '/' else '/*'
         assert expected_parent_wildcard in consolidated, \
             f"Should consolidate siblings to {expected_parent_wildcard} when stop level {stop_level} allows depth {parent_depth}"

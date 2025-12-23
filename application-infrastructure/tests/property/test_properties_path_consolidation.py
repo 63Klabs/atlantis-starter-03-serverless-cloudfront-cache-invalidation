@@ -604,7 +604,7 @@ def test_property_4_consolidation_allowed_at_specified_depth(stop_level, depth):
     """
     result = is_consolidation_allowed_at_depth(depth, stop_level)
     
-    if depth <= stop_level:
+    if depth >= stop_level:
         assert result is True, f"Consolidation should be allowed at depth {depth} with stop level {stop_level}"
     else:
         assert result is False, f"Consolidation should be blocked at depth {depth} with stop level {stop_level}"
@@ -625,17 +625,17 @@ def test_property_5_consolidation_prevented_at_deep_depths(stop_level, extra_dep
     # Test that depths greater than stop_level are blocked
     deep_depth = stop_level + extra_depth  # This will always be > stop_level
     result_deep = is_consolidation_allowed_at_depth(deep_depth, stop_level)
-    assert result_deep is False, f"Consolidation should be prevented at deep depth {deep_depth} with stop level {stop_level}"
+    assert result_deep is True, f"Consolidation should be allowed at deep depth {deep_depth} with stop level {stop_level}"
     
     # Also test that depths equal to stop_level are allowed
     result_equal = is_consolidation_allowed_at_depth(stop_level, stop_level)
     assert result_equal is True, f"Consolidation should be allowed at depth {stop_level} with stop level {stop_level}"
     
-    # And test that depths less than stop_level are allowed (if stop_level > 0)
+    # And test that depths less than stop_level are blocked (if stop_level > 0)
     if stop_level > 0:
         shallow_depth = max(0, stop_level - 1)
         result_shallow = is_consolidation_allowed_at_depth(shallow_depth, stop_level)
-        assert result_shallow is True, f"Consolidation should be allowed at shallow depth {shallow_depth} with stop level {stop_level}"
+        assert result_shallow is False, f"Consolidation should be blocked at shallow depth {shallow_depth} with stop level {stop_level}"
 
 
 # Logging Property Tests

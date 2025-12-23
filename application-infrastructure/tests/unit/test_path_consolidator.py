@@ -272,39 +272,45 @@ class TestPathDepthCalculation:
         assert calculate_path_depth('/dir/subdir/file.html', '/') == 3
     
     def test_calculate_depth_from_custom_root(self):
-        """Test depth calculation from custom root directory."""
-        assert calculate_path_depth('/prod/public/file.html', '/prod/public') == 1
-        assert calculate_path_depth('/prod/public/dir/file.html', '/prod/public') == 2
-        assert calculate_path_depth('/prod/public/dir/subdir/file.html', '/prod/public') == 3
+        """Test depth calculation with 'public' directory as reference."""
+        # public directory itself is level 1
+        assert calculate_path_depth('/prod/public', '/prod/public') == 1
+        # files/dirs under public are level 2+
+        assert calculate_path_depth('/prod/public/file.html', '/prod/public') == 2
+        assert calculate_path_depth('/prod/public/dir/file.html', '/prod/public') == 3
+        assert calculate_path_depth('/prod/public/dir/subdir/file.html', '/prod/public') == 4
     
     def test_calculate_depth_same_as_root(self):
-        """Test depth calculation when path equals root."""
-        assert calculate_path_depth('/prod/public', '/prod/public') == 0
+        """Test depth calculation when path equals public directory."""
+        # public directory itself is level 1 (not 0)
+        assert calculate_path_depth('/prod/public', '/prod/public') == 1
+        # filesystem root is still 0 when no public directory
         assert calculate_path_depth('/', '/') == 0
     
     def test_calculate_depth_not_under_root(self):
-        """Test depth calculation when path is not under root."""
-        assert calculate_path_depth('/other/file.html', '/prod/public') == 0
-        assert calculate_path_depth('/prod/file.html', '/prod/public') == 0
+        """Test depth calculation when no 'public' directory exists (fallback)."""
+        # Should fall back to simple segment counting when no 'public' found
+        assert calculate_path_depth('/other/file.html', '/prod/public') == 2
+        assert calculate_path_depth('/prod/file.html', '/prod/public') == 2
     
     def test_calculate_depth_with_trailing_slashes(self):
         """Test depth calculation with trailing slashes."""
-        assert calculate_path_depth('/prod/public/dir/', '/prod/public') == 1
-        assert calculate_path_depth('/prod/public/dir/', '/prod/public/') == 1
+        # dir under public is level 2
+        assert calculate_path_depth('/prod/public/dir/', '/prod/public') == 2
+        assert calculate_path_depth('/prod/public/dir/', '/prod/public/') == 2
 
 
 class TestConsolidationAllowed:
     """Test consolidation allowed at depth functionality."""
     
     def test_stop_level_one_allows_shallow_depths(self):
-        """Test that stop level 1 allows consolidation at depth 0 and 1."""
-        # Stop level 1 should allow consolidation at depth 0 (root)
-        assert is_consolidation_allowed_at_depth(0, 1) is True
-        # And should allow at depth 1
+        """Test that stop level 1 prevents consolidation at depth 0 but allows depth 1 and deeper."""
+        # Stop level 1 should prevent consolidation at depth 0 (shallower than stop level)
+        assert is_consolidation_allowed_at_depth(0, 1) is False
+        # But should allow at depth 1 and deeper
         assert is_consolidation_allowed_at_depth(1, 1) is True
-        # But should block at depth 2 and deeper
-        assert is_consolidation_allowed_at_depth(2, 1) is False
-        assert is_consolidation_allowed_at_depth(5, 1) is False
+        assert is_consolidation_allowed_at_depth(2, 1) is True
+        assert is_consolidation_allowed_at_depth(5, 1) is True
     
     def test_stop_level_zero_allows_all(self):
         """Test that stop level 0 allows consolidation at all depths."""
@@ -313,23 +319,23 @@ class TestConsolidationAllowed:
         assert is_consolidation_allowed_at_depth(5, 0) is True
     
     def test_stop_level_allows_shallow_depths(self):
-        """Test that stop level allows consolidation at shallow depths up to the stop level."""
-        # Stop level 3 allows depths 0, 1, 2, 3
-        assert is_consolidation_allowed_at_depth(0, 3) is True
-        assert is_consolidation_allowed_at_depth(1, 3) is True
-        assert is_consolidation_allowed_at_depth(2, 3) is True
+        """Test that stop level allows consolidation at the stop level and deeper, prevents shallower."""
+        # Stop level 3 prevents depths 0, 1, 2 (shallower than stop level)
+        assert is_consolidation_allowed_at_depth(0, 3) is False
+        assert is_consolidation_allowed_at_depth(1, 3) is False
+        assert is_consolidation_allowed_at_depth(2, 3) is False
+        # But allows depth 3 and deeper
         assert is_consolidation_allowed_at_depth(3, 3) is True
-        # But blocks depth 4 and deeper
-        assert is_consolidation_allowed_at_depth(4, 3) is False
+        assert is_consolidation_allowed_at_depth(4, 3) is True
     
     def test_stop_level_boundary_conditions(self):
         """Test stop level boundary conditions."""
-        # Stop level 2 allows depth 0, 1, and 2
-        assert is_consolidation_allowed_at_depth(0, 2) is True
-        assert is_consolidation_allowed_at_depth(1, 2) is True
+        # Stop level 2 prevents depth 0 and 1 (shallower than stop level)
+        assert is_consolidation_allowed_at_depth(0, 2) is False
+        assert is_consolidation_allowed_at_depth(1, 2) is False
+        # But allows depth 2 and deeper
         assert is_consolidation_allowed_at_depth(2, 2) is True
-        # But blocks depth 3 and deeper
-        assert is_consolidation_allowed_at_depth(3, 2) is False
+        assert is_consolidation_allowed_at_depth(3, 2) is True
 
 
 class TestStopLevelConstraints:

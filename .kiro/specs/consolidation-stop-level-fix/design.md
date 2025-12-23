@@ -2,12 +2,13 @@
 
 ## Overview
 
-The ConsolidationStopLevel Fix addresses incorrect behavior in the current implementation where the depth comparison logic is backwards. The current logic `depth >= stop_level` prevents consolidation at shallow depths when it should allow consolidation up to and including the specified depth level. The intended behavior is to allow consolidation at depths up to and including the stop level while preventing consolidation at deeper levels.
+The ConsolidationStopLevel Fix addresses incorrect behavior in the current implementation where the depth calculation logic was using the wrong reference point. The intended behavior is to prevent consolidation at depths shallower than the stop level while allowing consolidation at the stop level and deeper levels.
 
-This fix modifies the depth comparison logic to ensure that:
+This fix modifies the depth calculation logic to ensure that:
 - ConsolidationStopLevel=0 continues to work as before (immediate root consolidation)
-- ConsolidationStopLevel=1 allows consolidation up to depth 1 (e.g., `/level1/*`, `/*`)
-- ConsolidationStopLevel=N allows consolidation up to depth N and shallower
+- ConsolidationStopLevel=1 prevents consolidation shallower than level 1 (allows `/prod/public/*`, `/prod/public/m/*`)
+- ConsolidationStopLevel=2 prevents consolidation shallower than level 2 (allows `/prod/public/m/*`, prevents `/prod/public/*`)
+- ConsolidationStopLevel=N prevents consolidation shallower than level N
 
 The fix is backward compatible and maintains existing behavior for the default value of 1.
 
@@ -20,7 +21,7 @@ The fix is backward compatible and maintains existing behavior for the default v
 is_consolidation_allowed_at_depth(depth, stop_level):
     if stop_level == 0:
         return True  # Special case: consolidate everything to root
-    return depth >= stop_level  # WRONG: Prevents shallow consolidation
+    return depth <= stop_level  # WRONG: Used wrong depth calculation reference
 ```
 
 **Fixed Logic:**
@@ -28,7 +29,7 @@ is_consolidation_allowed_at_depth(depth, stop_level):
 is_consolidation_allowed_at_depth(depth, stop_level):
     if stop_level == 0:
         return True  # Special case: consolidate everything to root
-    return depth <= stop_level  # CORRECT: Allow consolidation up to stop level
+    return depth >= stop_level  # CORRECT: Allow consolidation at stop level and deeper
 ```
 
 ### Component Changes
@@ -65,16 +66,16 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
         
     Fixed Logic:
         - stop_level=0: Allow all consolidation (special case for root)
-        - stop_level=N: Allow consolidation at depth N and shallower
+        - stop_level=N: Allow consolidation at depth >= stop_level (at stop level and deeper)
         
     Examples:
         is_consolidation_allowed_at_depth(1, 0) -> True  (special case)
-        is_consolidation_allowed_at_depth(1, 1) -> True  (depth 1 <= stop level 1)
-        is_consolidation_allowed_at_depth(0, 1) -> True  (depth 0 <= stop level 1)
-        is_consolidation_allowed_at_depth(2, 1) -> False (depth 2 > stop level 1)
-        is_consolidation_allowed_at_depth(1, 2) -> True  (depth 1 <= stop level 2)
-        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 <= stop level 2)
-        is_consolidation_allowed_at_depth(3, 2) -> False (depth 3 > stop level 2)
+        is_consolidation_allowed_at_depth(1, 1) -> True  (depth 1 >= stop level 1)
+        is_consolidation_allowed_at_depth(2, 1) -> True  (depth 2 >= stop level 1)
+        is_consolidation_allowed_at_depth(0, 1) -> False (depth 0 < stop level 1)
+        is_consolidation_allowed_at_depth(1, 2) -> False (depth 1 < stop level 2)
+        is_consolidation_allowed_at_depth(2, 2) -> True  (depth 2 >= stop level 2)
+        is_consolidation_allowed_at_depth(3, 2) -> True  (depth 3 >= stop level 2)
     """
 ```
 
@@ -149,18 +150,18 @@ Property 3: Stop level zero logging
 
 ### Stop Level Depth Properties
 
-Property 4: Consolidation allowed up to specified depth
-*For any* ConsolidationStopLevel N where N > 0, the system should allow consolidation to occur at depth N and shallower
+Property 4: Consolidation allowed at specified depth and deeper
+*For any* ConsolidationStopLevel N where N > 0, the system should allow consolidation to occur at depth N and deeper
 **Validates: Requirements 2.1, 3.1**
 
-Property 5: Consolidation prevented at deep depths
-*For any* ConsolidationStopLevel N where N > 0, the system should prevent consolidation at depths greater than N
+Property 5: Consolidation prevented at shallow depths
+*For any* ConsolidationStopLevel N where N > 0, the system should prevent consolidation at depths less than N
 **Validates: Requirements 2.4, 3.5**
 
 ### Depth Calculation Properties
 
 Property 6: Path depth calculation accuracy
-*For any* path, the system should calculate directory depth correctly by counting directory levels from the root path
+*For any* path, the system should calculate directory depth correctly by counting directory levels from the first 'public' directory found in the path
 **Validates: Requirements 4.1**
 
 ### Logging Properties
