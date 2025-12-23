@@ -1568,3 +1568,637 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
     # Original paths should be replaced by wildcard (except possibly some edge cases)
     # The key point is that we should have fewer paths than we started with
     assert len(allowed_consolidated) < len(allowed_test_paths), f"Should have consolidated paths at allowed depth, got {len(allowed_consolidated)} from {len(allowed_test_paths)}"
+
+
+@settings(max_examples=20)
+@given(st.data())
+def test_property_1_sibling_threshold_parameter_usage(data):
+    """Property 1: Sibling threshold parameter usage.
+    
+    For any set of sibling directory wildcards and custom sibling threshold,
+    when the number of siblings exceeds the custom threshold and stop level allows,
+    the system should consolidate them to the parent directory wildcard.
+    
+    **Feature: consolidation-stop-level-depth-fix, Property 1: Sibling threshold parameter usage**
+    **Validates: Requirements 1.1, 1.2**
+    """
+    # Generate a custom sibling threshold (different from default of 10)
+    custom_threshold = data.draw(st.integers(min_value=2, max_value=8))
+    
+    # Generate a number of siblings that exceeds the custom threshold
+    num_siblings = data.draw(st.integers(min_value=custom_threshold + 1, max_value=custom_threshold + 5))
+    
+    # Generate a parent directory at a depth that allows consolidation
+    depth = data.draw(st.integers(min_value=1, max_value=3))
+    path_segments = []
+    for i in range(depth):
+        segment = data.draw(st.text(
+            alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+            min_size=1, max_size=8
+        ))
+        path_segments.append(segment)
+    
+    parent_path = '/' + '/'.join(path_segments) if path_segments else ''
+    
+    # Create sibling directory wildcards that exceed the custom threshold
+    sibling_wildcards = []
+    for i in range(num_siblings):
+        sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+        sibling_wildcards.append(sibling_wildcard)
+    
+    # Use a stop level that allows consolidation at this depth
+    stop_level = max(depth, 1)  # Ensure stop level allows consolidation at this depth
+    
+    # Test with the custom sibling threshold
+    result = consolidate_paths(sibling_wildcards, stop_level=stop_level, sibling_threshold=custom_threshold)
+    
+    # Should return a single chunk
+    assert len(result) == 1, "Should return single chunk"
+    
+    consolidated = result[0]
+    
+    # Should consolidate to parent wildcard since siblings exceed custom threshold
+    parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
+    assert parent_wildcard in consolidated, f"Should consolidate to {parent_wildcard} with {num_siblings} siblings exceeding threshold {custom_threshold}"
+    
+    # Original sibling wildcards should not be present (replaced by parent wildcard)
+    for sibling_wildcard in sibling_wildcards:
+        assert sibling_wildcard not in consolidated, f"Original sibling wildcard {sibling_wildcard} should be replaced by parent wildcard"
+    
+    # Test with a threshold that would NOT be exceeded
+    high_threshold = num_siblings + 2  # Set threshold higher than number of siblings
+    
+    result_no_consolidation = consolidate_paths(sibling_wildcards, stop_level=stop_level, sibling_threshold=high_threshold)
+    
+    # Should return a single chunk
+    assert len(result_no_consolidation) == 1, "Should return single chunk"
+    
+    consolidated_no_consolidation = result_no_consolidation[0]
+    
+    # Should NOT consolidate since siblings don't exceed the high threshold
+    assert parent_wildcard not in consolidated_no_consolidation, f"Should not consolidate to {parent_wildcard} with {num_siblings} siblings not exceeding threshold {high_threshold}"
+    
+    # All original sibling wildcards should be present
+    for sibling_wildcard in sibling_wildcards:
+        assert sibling_wildcard in consolidated_no_consolidation, f"Original sibling wildcard {sibling_wildcard} should be preserved when threshold not exceeded"
+    
+    # Verify we have the expected number of paths (all original siblings)
+    assert len(consolidated_no_consolidation) == num_siblings, f"Should have {num_siblings} paths when threshold not exceeded, got {len(consolidated_no_consolidation)}"
+
+
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.data())
+def test_property_2_bucket_specific_sibling_threshold_usage(data):
+    """Property 2: Bucket-specific sibling threshold usage.
+    
+    For any bucket configuration with a custom sibling directory threshold,
+    when the handler processes paths that exceed that threshold,
+    the system should use the bucket-specific threshold for consolidation.
+    
+    **Feature: consolidation-stop-level-depth-fix, Property 2: Bucket-specific sibling threshold usage**
+    **Validates: Requirements 2.1, 2.4**
+    """
+    from unittest.mock import patch, Mock
+    import os
+    
+    # Generate a custom sibling threshold (different from default)
+    custom_threshold = data.draw(st.integers(min_value=2, max_value=6))
+    
+    # Generate a number of paths that would create siblings exceeding the custom threshold
+    num_siblings = data.draw(st.integers(min_value=custom_threshold + 1, max_value=custom_threshold + 3))
+    
+    # Create bucket configuration with custom sibling threshold
+    bucket_config = {
+        'directory_threshold': 3,
+        'stop_level': 1,
+        'sibling_directory_threshold': custom_threshold,
+        'directory_threshold_source': 'tag',
+        'stop_level_source': 'tag',
+        'sibling_directory_threshold_source': 'tag'
+    }
+    
+    # Create messages that will result in sibling directories exceeding the threshold
+    messages = []
+    for i in range(num_siblings):
+        message = {
+            'MessageId': f'msg{i}',
+            'ReceiptHandle': f'handle{i}',
+            'parsed_body': {
+                'bucketName': 'test-bucket',
+                'originPath': '/prod/public',
+                'objectKey': f'/prod/public/dir{i}/file.js',  # Each in different directory
+                'stageId': 'prod'
+            }
+        }
+        messages.append(message)
+    
+    # Mock all the dependencies
+    with patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}):
+        with patch('functions.processor.handler.receive_messages_batch') as mock_receive:
+            with patch('functions.processor.handler.validate_bucket_tags') as mock_validate_bucket:
+                with patch('functions.processor.handler.get_bucket_tags') as mock_get_tags:
+                    with patch('functions.processor.handler.get_bucket_consolidation_config') as mock_get_config:
+                        with patch('functions.processor.handler.find_matching_distributions') as mock_find_dist:
+                            with patch('functions.processor.handler.validate_distribution_tags') as mock_validate_dist:
+                                with patch('functions.processor.handler.consolidate_paths') as mock_consolidate:
+                                    with patch('functions.processor.handler.create_invalidation') as mock_invalidate:
+                                        with patch('functions.processor.handler.delete_messages_batch') as mock_delete:
+                                            with patch('functions.processor.handler.close_window') as mock_close_window:
+                                                
+                                                # Set up mocks
+                                                mock_receive.side_effect = [messages, []]  # First call returns messages, second returns empty
+                                                mock_validate_bucket.return_value = True
+                                                mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+                                                mock_get_config.return_value = bucket_config
+                                                mock_find_dist.return_value = ['DIST123']
+                                                mock_validate_dist.return_value = True
+                                                mock_consolidate.return_value = [['/prod/public/*']]  # Simulated consolidation result
+                                                mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+                                                mock_delete.return_value = {'successful': [f'handle{i}' for i in range(num_siblings)], 'failed': []}
+                                                
+                                                # Import and call the handler
+                                                from functions.processor.handler import handler
+                                                
+                                                context = Mock()
+                                                context.aws_request_id = 'test-request-id'
+                                                
+                                                # Act
+                                                result = handler({}, context)
+                                                
+                                                # Assert
+                                                assert result['statusCode'] == 200, f"Handler should succeed, got {result}"
+                                                
+                                                # Verify that get_bucket_consolidation_config was called
+                                                mock_get_config.assert_called_once_with('test-bucket')
+                                                
+                                                # Verify that consolidate_paths was called with the bucket-specific sibling threshold
+                                                mock_consolidate.assert_called_once()
+                                                call_args = mock_consolidate.call_args
+                                                
+                                                # Check that the sibling_threshold parameter was passed correctly
+                                                assert 'sibling_threshold' in call_args[1], "sibling_threshold parameter should be passed to consolidate_paths"
+                                                assert call_args[1]['sibling_threshold'] == custom_threshold, f"Expected sibling_threshold {custom_threshold}, got {call_args[1]['sibling_threshold']}"
+                                                
+                                                # Also verify other parameters are passed correctly
+                                                assert call_args[1]['directory_threshold'] == bucket_config['directory_threshold'], "directory_threshold should match bucket config"
+                                                assert call_args[1]['stop_level'] == bucket_config['stop_level'], "stop_level should match bucket config"
+
+@settings(max_examples=20)
+@given(st.data())
+def test_property_3_sibling_threshold_boundary_conditions(data):
+    """Property 3: Sibling threshold boundary conditions.
+    
+    For any sibling threshold value, the system should consolidate siblings only when
+    the count strictly exceeds the threshold (count > threshold), not when equal.
+    
+    **Feature: consolidation-stop-level-depth-fix, Property 3: Sibling threshold boundary conditions**
+    **Validates: Requirements 2.1, 2.2**
+    """
+    # Generate a custom sibling threshold
+    threshold = data.draw(st.integers(min_value=2, max_value=8))
+    
+    # Generate a parent directory at a depth that allows consolidation
+    depth = data.draw(st.integers(min_value=1, max_value=3))
+    path_segments = []
+    for i in range(depth):
+        segment = data.draw(st.text(
+            alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+            min_size=1, max_size=8
+        ))
+        path_segments.append(segment)
+    
+    parent_path = '/' + '/'.join(path_segments) if path_segments else ''
+    
+    # Use a stop level that allows consolidation at this depth
+    stop_level = max(depth, 1)
+    
+    # Test Case 1: Exactly at threshold (should NOT consolidate)
+    sibling_wildcards_at_threshold = []
+    for i in range(threshold):
+        sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+        sibling_wildcards_at_threshold.append(sibling_wildcard)
+    
+    result_at_threshold = consolidate_paths(sibling_wildcards_at_threshold, 
+                                          stop_level=stop_level, 
+                                          sibling_threshold=threshold)
+    
+    assert len(result_at_threshold) == 1, "Should return single chunk"
+    consolidated_at_threshold = result_at_threshold[0]
+    
+    # Should NOT consolidate (count == threshold, need count > threshold)
+    parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
+    assert parent_wildcard not in consolidated_at_threshold, \
+        f"Should NOT consolidate {threshold} siblings with threshold {threshold} (need > threshold)"
+    
+    # All original sibling wildcards should remain
+    for sibling in sibling_wildcards_at_threshold:
+        assert sibling in consolidated_at_threshold, \
+            f"Sibling {sibling} should remain when count equals threshold"
+    
+    # Test Case 2: Just above threshold (should consolidate)
+    sibling_wildcards_above_threshold = []
+    for i in range(threshold + 1):
+        sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+        sibling_wildcards_above_threshold.append(sibling_wildcard)
+    
+    result_above_threshold = consolidate_paths(sibling_wildcards_above_threshold, 
+                                             stop_level=stop_level, 
+                                             sibling_threshold=threshold)
+    
+    assert len(result_above_threshold) == 1, "Should return single chunk"
+    consolidated_above_threshold = result_above_threshold[0]
+    
+    # Should consolidate (count > threshold)
+    assert parent_wildcard in consolidated_above_threshold, \
+        f"Should consolidate {threshold + 1} siblings with threshold {threshold} (count > threshold)"
+    
+    # Original sibling wildcards should be replaced
+    for sibling in sibling_wildcards_above_threshold:
+        assert sibling not in consolidated_above_threshold, \
+            f"Sibling {sibling} should be replaced by parent wildcard when count exceeds threshold"
+    
+    # Test Case 3: Just below threshold (should NOT consolidate)
+    if threshold > 1:  # Only test if threshold allows for below-threshold case
+        sibling_wildcards_below_threshold = []
+        for i in range(threshold - 1):
+            sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+            sibling_wildcards_below_threshold.append(sibling_wildcard)
+        
+        result_below_threshold = consolidate_paths(sibling_wildcards_below_threshold, 
+                                                 stop_level=stop_level, 
+                                                 sibling_threshold=threshold)
+        
+        assert len(result_below_threshold) == 1, "Should return single chunk"
+        consolidated_below_threshold = result_below_threshold[0]
+        
+        # Should NOT consolidate (count < threshold)
+        assert parent_wildcard not in consolidated_below_threshold, \
+            f"Should NOT consolidate {threshold - 1} siblings with threshold {threshold} (count < threshold)"
+        
+        # All original sibling wildcards should remain
+        for sibling in sibling_wildcards_below_threshold:
+            assert sibling in consolidated_below_threshold, \
+                f"Sibling {sibling} should remain when count is below threshold"
+
+@settings(max_examples=20)
+@given(st.data())
+def test_property_4_backward_compatibility_with_missing_parameter(data):
+    """Property 4: Backward compatibility with missing parameter.
+    
+    For any consolidation operation where sibling_threshold parameter is not provided,
+    the system should use the global constant as fallback and produce identical results
+    to explicit None parameter usage.
+    
+    **Feature: consolidation-stop-level-depth-fix, Property 4: Backward compatibility with missing parameter**
+    **Validates: Requirements 1.3, 3.3**
+    """
+    # Generate test data that will trigger sibling consolidation
+    # Use the default threshold (10) to create predictable behavior
+    num_siblings = data.draw(st.integers(min_value=11, max_value=15))  # Above default threshold of 10
+    
+    # Generate a parent directory at a depth that allows consolidation
+    depth = data.draw(st.integers(min_value=1, max_value=3))
+    path_segments = []
+    for i in range(depth):
+        segment = data.draw(st.text(
+            alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+            min_size=1, max_size=8
+        ))
+        path_segments.append(segment)
+    
+    parent_path = '/' + '/'.join(path_segments) if path_segments else ''
+    
+    # Create sibling directory wildcards that exceed the default threshold
+    sibling_wildcards = []
+    for i in range(num_siblings):
+        sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+        sibling_wildcards.append(sibling_wildcard)
+    
+    # Use a stop level that allows consolidation at this depth
+    stop_level = max(depth, 1)  # Ensure stop level allows consolidation at this depth
+    
+    # Test 1: Call without sibling_threshold parameter (backward compatibility)
+    result_without_param = consolidate_paths(sibling_wildcards, stop_level=stop_level)
+    
+    # Test 2: Call with explicit None for sibling_threshold
+    result_with_none = consolidate_paths(sibling_wildcards, stop_level=stop_level, sibling_threshold=None)
+    
+    # Test 3: Call with only other parameters specified
+    result_other_params = consolidate_paths(sibling_wildcards, directory_threshold=3, stop_level=stop_level)
+    
+    # All three approaches should produce identical results
+    assert result_without_param == result_with_none, "Missing parameter should behave same as explicit None"
+    assert result_without_param == result_other_params, "Missing parameter should behave same when other params specified"
+    
+    # Verify the consolidation actually happened (should consolidate to parent wildcard)
+    assert len(result_without_param) == 1, "Should return single chunk"
+    consolidated = result_without_param[0]
+    
+    parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
+    assert parent_wildcard in consolidated, f"Should consolidate to {parent_wildcard} with {num_siblings} siblings exceeding default threshold"
+    
+    # Original sibling wildcards should not be present (replaced by parent wildcard)
+    for sibling_wildcard in sibling_wildcards:
+        assert sibling_wildcard not in consolidated, f"Original sibling wildcard {sibling_wildcard} should be replaced by parent wildcard"
+    
+    # Test boundary condition: exactly at default threshold (should NOT consolidate)
+    boundary_siblings = []
+    for i in range(10):  # Exactly at default threshold of 10
+        sibling_wildcard = f"{parent_path}/boundary{i}/*" if parent_path else f"/boundary{i}/*"
+        boundary_siblings.append(sibling_wildcard)
+    
+    # Test without parameter
+    boundary_result_without = consolidate_paths(boundary_siblings, stop_level=stop_level)
+    
+    # Test with explicit None
+    boundary_result_with_none = consolidate_paths(boundary_siblings, stop_level=stop_level, sibling_threshold=None)
+    
+    # Should produce identical results (no consolidation since 10 is not > 10)
+    assert boundary_result_without == boundary_result_with_none, "Boundary condition should behave identically"
+    
+    # Should NOT consolidate at boundary
+    assert len(boundary_result_without) == 1, "Should return single chunk"
+    boundary_consolidated = boundary_result_without[0]
+    assert len(boundary_consolidated) == 10, f"Should have 10 individual wildcards at boundary, got {len(boundary_consolidated)}"
+    
+    # All original sibling wildcards should be present (not consolidated)
+    for sibling_wildcard in boundary_siblings:
+        assert sibling_wildcard in boundary_consolidated, f"Boundary sibling wildcard {sibling_wildcard} should not be consolidated"
+    
+    # Parent wildcard should NOT be present at boundary
+    assert parent_wildcard not in boundary_consolidated, f"Parent wildcard {parent_wildcard} should not be present at boundary condition"
+
+
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.data())
+def test_property_5_comprehensive_sibling_threshold_behavior(data):
+    """Property 5: Comprehensive sibling threshold behavior.
+    
+    For any sibling threshold value and sibling count, the system should consolidate
+    siblings if and only if the count strictly exceeds the threshold and stop level allows.
+    
+    **Feature: consolidation-stop-level-depth-fix, Property 5: Comprehensive sibling threshold behavior**
+    **Validates: Requirements 4.1, 4.2, 4.3**
+    """
+    # Generate a custom sibling threshold
+    threshold = data.draw(st.integers(min_value=1, max_value=8))
+    
+    # Generate test cases around the threshold boundary
+    test_cases = [
+        threshold - 1,  # Below threshold (should not consolidate)
+        threshold,      # At threshold (should not consolidate)
+        threshold + 1,  # Above threshold (should consolidate)
+        threshold + 2   # Well above threshold (should consolidate)
+    ]
+    
+    # Filter out invalid cases
+    test_cases = [count for count in test_cases if count > 0]
+    
+    for sibling_count in test_cases:
+        # Generate a parent directory at a depth that allows consolidation
+        depth = data.draw(st.integers(min_value=1, max_value=3))
+        path_segments = []
+        for i in range(depth):
+            segment = data.draw(st.text(
+                alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+                min_size=1, max_size=8
+            ))
+            path_segments.append(segment)
+        
+        parent_path = '/' + '/'.join(path_segments) if path_segments else ''
+        
+        # Create sibling directory wildcards
+        sibling_wildcards = []
+        for i in range(sibling_count):
+            sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+            sibling_wildcards.append(sibling_wildcard)
+        
+        # Use a stop level that allows consolidation at this depth
+        stop_level = max(depth, 1)
+        
+        # Test consolidation
+        result = consolidate_paths(sibling_wildcards, stop_level=stop_level, sibling_threshold=threshold)
+        
+        # Should return a single chunk
+        assert len(result) == 1, f"Should return single chunk for {sibling_count} siblings with threshold {threshold}"
+        
+        consolidated = result[0]
+        parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
+        
+        # Verify consolidation behavior based on threshold
+        if sibling_count > threshold:
+            # Should consolidate (count > threshold)
+            assert parent_wildcard in consolidated, \
+                f"Should consolidate {sibling_count} siblings with threshold {threshold} (count > threshold)"
+            
+            # Original sibling wildcards should be replaced
+            for sibling_wildcard in sibling_wildcards:
+                assert sibling_wildcard not in consolidated, \
+                    f"Original sibling {sibling_wildcard} should be replaced when {sibling_count} > {threshold}"
+            
+            # Should have exactly one path (the parent wildcard)
+            assert len(consolidated) == 1, \
+                f"Should have exactly one consolidated path when {sibling_count} > {threshold}, got {len(consolidated)}"
+        else:
+            # Should NOT consolidate (count <= threshold)
+            assert parent_wildcard not in consolidated, \
+                f"Should not consolidate {sibling_count} siblings with threshold {threshold} (count <= threshold)"
+            
+            # All original sibling wildcards should remain
+            assert len(consolidated) == sibling_count, \
+                f"Should have {sibling_count} individual wildcards when not consolidating, got {len(consolidated)}"
+            
+            for sibling_wildcard in sibling_wildcards:
+                assert sibling_wildcard in consolidated, \
+                    f"Original sibling {sibling_wildcard} should remain when {sibling_count} <= {threshold}"
+        
+        # Test with stop level that prevents consolidation
+        blocking_stop_level = depth + 1  # Set stop level higher than depth to block consolidation
+        
+        result_blocked = consolidate_paths(sibling_wildcards, stop_level=blocking_stop_level, sibling_threshold=threshold)
+        
+        assert len(result_blocked) == 1, "Should return single chunk when blocked by stop level"
+        consolidated_blocked = result_blocked[0]
+        
+        # Should NOT consolidate regardless of threshold due to stop level
+        assert parent_wildcard not in consolidated_blocked, \
+            f"Should not consolidate due to stop level {blocking_stop_level} at depth {depth}"
+        
+        # All original sibling wildcards should remain
+        assert len(consolidated_blocked) == sibling_count, \
+            f"Should have {sibling_count} individual wildcards when blocked by stop level"
+        
+        for sibling_wildcard in sibling_wildcards:
+            assert sibling_wildcard in consolidated_blocked, \
+                f"Original sibling {sibling_wildcard} should remain when blocked by stop level"
+
+
+@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@given(st.data())
+def test_property_5_sibling_threshold_interaction_with_directory_threshold(data):
+    """Property 5: Sibling threshold interaction with directory threshold.
+    
+    For any scenario involving both directory threshold and sibling threshold,
+    the system should apply both consolidation rules correctly in sequence.
+    
+    **Feature: consolidation-stop-level-depth-fix, Property 5: Comprehensive sibling threshold behavior**
+    **Validates: Requirements 4.1, 4.2, 4.3**
+    """
+    # Generate custom thresholds
+    directory_threshold = data.draw(st.integers(min_value=2, max_value=4))
+    sibling_threshold = data.draw(st.integers(min_value=2, max_value=4))
+    
+    # Generate a parent directory
+    depth = data.draw(st.integers(min_value=1, max_value=2))
+    path_segments = []
+    for i in range(depth):
+        segment = data.draw(st.text(
+            alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+            min_size=1, max_size=8
+        ))
+        path_segments.append(segment)
+    
+    parent_path = '/' + '/'.join(path_segments) if path_segments else ''
+    
+    # Create multiple sibling directories, each with files exceeding directory threshold
+    num_siblings = sibling_threshold + 1  # Ensure we exceed sibling threshold
+    num_files_per_dir = directory_threshold + 1  # Ensure we exceed directory threshold
+    
+    all_paths = []
+    for i in range(num_siblings):
+        for j in range(num_files_per_dir):
+            file_path = f"{parent_path}/dir{i}/file{j}.html" if parent_path else f"/dir{i}/file{j}.html"
+            all_paths.append(file_path)
+    
+    # Use stop level that allows consolidation
+    stop_level = max(depth, 1)
+    
+    # Test multi-stage consolidation
+    result = consolidate_paths(all_paths, 
+                             directory_threshold=directory_threshold,
+                             sibling_threshold=sibling_threshold, 
+                             stop_level=stop_level)
+    
+    assert len(result) == 1, "Should return single chunk"
+    consolidated = result[0]
+    
+    # Should consolidate all the way to parent wildcard
+    # Stage 1: Files -> Directory wildcards (due to directory threshold)
+    # Stage 2: Directory wildcards -> Parent wildcard (due to sibling threshold)
+    parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
+    assert parent_wildcard in consolidated, \
+        f"Should consolidate to {parent_wildcard} through multi-stage consolidation"
+    
+    # Should have exactly one path (the parent wildcard)
+    assert len(consolidated) == 1, \
+        f"Should have exactly one consolidated path after multi-stage consolidation, got {len(consolidated)}"
+    
+    # None of the original files should remain
+    for file_path in all_paths:
+        assert file_path not in consolidated, \
+            f"Original file {file_path} should be replaced by parent wildcard"
+
+
+@settings(max_examples=10)  # Minimal iterations per testing guidelines  
+@given(st.data())
+def test_property_5_sibling_threshold_parameter_precedence(data):
+    """Property 5: Sibling threshold parameter precedence over global constant.
+    
+    For any consolidation with explicit sibling_threshold parameter,
+    the system should use the parameter value instead of the global constant.
+    
+    **Feature: consolidation-stop-level-depth-fix, Property 5: Comprehensive sibling threshold behavior**
+    **Validates: Requirements 4.1, 4.2, 4.3**
+    """
+    # Import the global constant
+    from functions.processor.path_consolidator import SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD
+    
+    # Generate a custom threshold different from the global constant
+    custom_threshold = data.draw(st.integers(min_value=2, max_value=6))
+    # Ensure it's different from global constant
+    if custom_threshold == SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD:
+        custom_threshold = SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD + 1
+    
+    # Generate sibling count that would behave differently with custom vs global threshold
+    # Choose count that exceeds custom but not global (or vice versa)
+    if custom_threshold < SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD:
+        # Custom threshold is lower - use count that exceeds custom but not global
+        sibling_count = custom_threshold + 1
+        if sibling_count > SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD:
+            sibling_count = custom_threshold - 1  # Fall back to below custom threshold
+    else:
+        # Custom threshold is higher - use count that exceeds global but not custom
+        sibling_count = SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD + 1
+        if sibling_count > custom_threshold:
+            sibling_count = min(custom_threshold - 1, SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD - 1)
+    
+    # Ensure we have a valid test case
+    if sibling_count <= 0:
+        sibling_count = 3  # Safe fallback
+    
+    # Generate parent directory
+    depth = data.draw(st.integers(min_value=1, max_value=2))
+    path_segments = []
+    for i in range(depth):
+        segment = data.draw(st.text(
+            alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd')), 
+            min_size=1, max_size=8
+        ))
+        path_segments.append(segment)
+    
+    parent_path = '/' + '/'.join(path_segments) if path_segments else ''
+    
+    # Create sibling directory wildcards
+    sibling_wildcards = []
+    for i in range(sibling_count):
+        sibling_wildcard = f"{parent_path}/dir{i}/*" if parent_path else f"/dir{i}/*"
+        sibling_wildcards.append(sibling_wildcard)
+    
+    # Use stop level that allows consolidation
+    stop_level = max(depth, 1)
+    
+    # Test with custom threshold parameter
+    result_custom = consolidate_paths(sibling_wildcards, 
+                                    stop_level=stop_level, 
+                                    sibling_threshold=custom_threshold)
+    
+    # Test without parameter (should use global constant)
+    result_global = consolidate_paths(sibling_wildcards, stop_level=stop_level)
+    
+    # Test with explicit None (should use global constant)
+    result_none = consolidate_paths(sibling_wildcards, 
+                                  stop_level=stop_level, 
+                                  sibling_threshold=None)
+    
+    # Verify that global and None produce identical results
+    assert result_global == result_none, \
+        "Missing parameter should behave same as explicit None"
+    
+    # Verify behavior based on thresholds
+    assert len(result_custom) == 1, "Should return single chunk with custom threshold"
+    assert len(result_global) == 1, "Should return single chunk with global threshold"
+    
+    consolidated_custom = result_custom[0]
+    consolidated_global = result_global[0]
+    parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
+    
+    # Check custom threshold behavior
+    if sibling_count > custom_threshold:
+        assert parent_wildcard in consolidated_custom, \
+            f"Should consolidate {sibling_count} siblings with custom threshold {custom_threshold}"
+    else:
+        assert parent_wildcard not in consolidated_custom, \
+            f"Should not consolidate {sibling_count} siblings with custom threshold {custom_threshold}"
+    
+    # Check global threshold behavior
+    if sibling_count > SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD:
+        assert parent_wildcard in consolidated_global, \
+            f"Should consolidate {sibling_count} siblings with global threshold {SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD}"
+    else:
+        assert parent_wildcard not in consolidated_global, \
+            f"Should not consolidate {sibling_count} siblings with global threshold {SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD}"
+    
+    # If thresholds produce different behavior, results should be different
+    if ((sibling_count > custom_threshold) != (sibling_count > SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD)):
+        assert result_custom != result_global, \
+            f"Custom threshold {custom_threshold} should produce different result than global threshold {SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD} for {sibling_count} siblings"

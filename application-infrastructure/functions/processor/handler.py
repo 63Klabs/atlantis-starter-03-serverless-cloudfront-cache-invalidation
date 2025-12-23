@@ -18,7 +18,7 @@ from typing import Dict, Any, List, Tuple
 # Import from Lambda layer
 from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 from common.window_tracker import close_window # pyright: ignore[reportMissingImports]
-from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
+from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_STOP_LEVEL, SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD # pyright: ignore[reportMissingImports]
 
 # Import function-specific modules (compatible with both Lambda and test environments)
 try:
@@ -708,8 +708,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 bucket_config = {
                     'directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
                     'stop_level': CONSOLIDATION_STOP_LEVEL,
+                    'sibling_directory_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
                     'directory_threshold_source': 'default_fallback',
-                    'stop_level_source': 'default_fallback'
+                    'stop_level_source': 'default_fallback',
+                    'sibling_directory_threshold_source': 'default_fallback'
                 }
             
             # Step 7: Extract and consolidate paths
@@ -784,7 +786,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             consolidated_path_chunks = consolidate_paths(
                 object_paths,
                 directory_threshold=bucket_config['directory_threshold'],
-                stop_level=bucket_config['stop_level']
+                stop_level=bucket_config['stop_level'],
+                sibling_threshold=bucket_config['sibling_directory_threshold']
             )
             
             # DEBUG: Log paths after consolidation

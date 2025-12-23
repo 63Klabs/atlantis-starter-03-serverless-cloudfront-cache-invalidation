@@ -478,8 +478,10 @@ class TestProcessorHandler:
         bucket_config = {
             'directory_threshold': 5,
             'stop_level': 2,
+            'sibling_directory_threshold': 10,  # Default value
             'directory_threshold_source': 'tag',
-            'stop_level_source': 'tag'
+            'stop_level_source': 'tag',
+            'sibling_directory_threshold_source': 'default'
         }
         
         mock_receive.side_effect = [messages, []]
@@ -548,8 +550,10 @@ class TestProcessorHandler:
         bucket_config = {
             'directory_threshold': 3,  # Default value
             'stop_level': 1,  # Default value
+            'sibling_directory_threshold': 10,  # Default value
             'directory_threshold_source': 'default',
-            'stop_level_source': 'default'
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
         }
         
         mock_receive.side_effect = [messages, []]
@@ -682,8 +686,10 @@ class TestProcessorHandler:
         bucket_config = {
             'directory_threshold': 5,
             'stop_level': 2,
+            'sibling_directory_threshold': 10,  # Default value
             'directory_threshold_source': 'tag',
-            'stop_level_source': 'tag'
+            'stop_level_source': 'tag',
+            'sibling_directory_threshold_source': 'default'
         }
         
         mock_receive.side_effect = [messages, []]
@@ -717,3 +723,76 @@ class TestProcessorHandler:
                 break
         
         assert config_logged, "Should log effective configuration being used for bucket"
+
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_sibling_threshold_parameter_passed_to_consolidate_paths(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test that sibling_directory_threshold from bucket config is passed to consolidate_paths.
+        
+        Requirements: 1.4, 2.1, 2.4
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': '/prod/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        # Configuration with custom sibling threshold
+        bucket_config = {
+            'directory_threshold': 5,
+            'stop_level': 2,
+            'sibling_directory_threshold': 7,  # Custom sibling threshold
+            'directory_threshold_source': 'tag',
+            'stop_level_source': 'tag',
+            'sibling_directory_threshold_source': 'tag'
+        }
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = bucket_config
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = [['/file1.js']]
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify configuration was retrieved for the bucket
+        mock_get_config.assert_called_once_with('test-bucket')
+        
+        # Verify consolidate_paths was called with bucket-specific sibling threshold
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args
+        assert call_args[1]['directory_threshold'] == 5
+        assert call_args[1]['stop_level'] == 2
+        assert call_args[1]['sibling_threshold'] == 7  # Verify sibling threshold is passed

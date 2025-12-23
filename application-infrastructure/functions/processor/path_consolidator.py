@@ -366,12 +366,11 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
     return consolidated
 
 
-def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, root_path: str = '/') -> Set[str]:
-    """Consolidate sibling directories when more than 10 would be invalidated.
+def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, root_path: str = '/', sibling_threshold: int = None) -> Set[str]:
+    """Consolidate sibling directories when more than sibling_threshold would be invalidated.
     
-    Rule: When more than SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD (10)
-    sibling directories would be invalidated, consolidate to their parent
-    unless stop level prevents it.
+    Rule: When more than sibling_threshold sibling directories would be invalidated, 
+    consolidate to their parent unless stop level prevents it.
     
     This function should be called iteratively until no more consolidation
     is possible.
@@ -380,25 +379,47 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
         paths: Set of paths (may include wildcards)
         stop_level: Consolidation stop level (default: use global constant)
         root_path: Root directory to measure depth from
+        sibling_threshold: Threshold for sibling consolidation (default: use global constant).
+                          When None, falls back to SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD (10).
+                          Consolidation occurs when sibling count > threshold (strict inequality).
         
     Returns:
         Set of paths with sibling directory consolidation applied
+        
+    Examples:
+        # With default threshold (10), 11 siblings consolidate to parent
+        paths = {'/parent/dir0/*', '/parent/dir1/*', ..., '/parent/dir10/*'}
+        result = consolidate_sibling_directories(paths)
+        # Returns: {'/parent/*'}
+        
+        # With custom threshold (2), 3 siblings consolidate to parent
+        paths = {'/parent/dir0/*', '/parent/dir1/*', '/parent/dir2/*'}
+        result = consolidate_sibling_directories(paths, sibling_threshold=2)
+        # Returns: {'/parent/*'}
+        
+        # At threshold boundary (not > threshold), no consolidation
+        paths = {'/parent/dir0/*', '/parent/dir1/*'}
+        result = consolidate_sibling_directories(paths, sibling_threshold=2)
+        # Returns: {'/parent/dir0/*', '/parent/dir1/*'}
     """
     if stop_level is None:
         from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
         stop_level = CONSOLIDATION_STOP_LEVEL
     
+    if sibling_threshold is None:
+        sibling_threshold = SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD
+    
     # Validate and sanitize stop level
     stop_level = validate_stop_level(stop_level)
     
     logger.debug(
-        f"Starting sibling directory consolidation with stop level {stop_level}",
+        f"Starting sibling directory consolidation with stop level {stop_level}, sibling threshold {sibling_threshold}",
         extra={'extra_fields': {
             'operation': 'consolidate_sibling_directories',
             'stop_level': stop_level,
             'root_path': root_path,
             'input_path_count': len(paths),
-            'sibling_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD
+            'sibling_threshold': sibling_threshold
         }}
     )
     
@@ -430,14 +451,14 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
                 'parent_directory': parent,
                 'parent_depth': parent_depth,
                 'sibling_count': len(siblings),
-                'sibling_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
+                'sibling_threshold': sibling_threshold,
                 'stop_level': stop_level,
-                'exceeds_threshold': len(siblings) > SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
+                'exceeds_threshold': len(siblings) > sibling_threshold,
                 'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
             }}
         )
         
-        if len(siblings) > SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD:
+        if len(siblings) > sibling_threshold:
             # Check if consolidation is allowed by stop level
             if is_consolidation_allowed_at_depth(parent_depth, stop_level):
                 # Consolidate to parent wildcard
@@ -601,7 +622,7 @@ def is_path_covered_by_wildcard(path: str, wildcard_dir: str) -> bool:
             path_normalized == wildcard_normalized)
 
 
-def consolidate_paths_recursive(paths: Set[str], directory_threshold: int = None, stop_level: int = None, root_path: str = '/') -> Set[str]:
+def consolidate_paths_recursive(paths: Set[str], directory_threshold: int = None, stop_level: int = None, root_path: str = '/', sibling_threshold: int = None) -> Set[str]:
     """Recursively apply consolidation rules until no more consolidation is possible.
     
     This function applies directory threshold consolidation, sibling directory
@@ -613,6 +634,9 @@ def consolidate_paths_recursive(paths: Set[str], directory_threshold: int = None
         directory_threshold: Threshold for directory consolidation
         stop_level: Consolidation stop level
         root_path: Root directory to measure depth from
+        sibling_threshold: Threshold for sibling directory consolidation (default: use global constant).
+                          When None, falls back to SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD.
+                          This parameter is passed through to consolidate_sibling_directories.
         
     Returns:
         Fully consolidated set of paths
@@ -624,7 +648,7 @@ def consolidate_paths_recursive(paths: Set[str], directory_threshold: int = None
         paths = consolidate_by_directory_threshold(paths, directory_threshold, stop_level, root_path)
         
         # Apply sibling directory consolidation
-        paths = consolidate_sibling_directories(paths, stop_level, root_path)
+        paths = consolidate_sibling_directories(paths, stop_level, root_path, sibling_threshold)
         
         # Remove redundant subdirectories
         paths = remove_redundant_subdirectories(paths)
@@ -848,7 +872,7 @@ def apply_stop_level_constraints(paths: Set[str], stop_level: int, root_path: st
     return result
 
 
-def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_level: int = None) -> List[List[str]]:
+def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_level: int = None, sibling_threshold: int = None) -> List[List[str]]:
     """Consolidate invalidation paths using threshold-based algorithm.
     
     This is the main entry point for path consolidation. It applies all
@@ -857,7 +881,7 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     1. Filter and clean input paths
     2. Consolidate index.* and default.* files to parent directories
     3. Consolidate directories with more than threshold files
-    4. Consolidate sibling directories (more than 10)
+    4. Consolidate sibling directories (more than sibling_threshold)
     5. Recursively consolidate up to root if needed (respecting stop level)
     6. Split into multiple requests if exceeding 1000 paths
     
@@ -865,15 +889,34 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
         paths: List of object paths to invalidate (e.g., ['/prod/public/file.js'])
         directory_threshold: Override for DIRECTORY_CONSOLIDATION_THRESHOLD (default: use global constant)
         stop_level: Consolidation stop level - depth from root where consolidation stops (default: use global constant)
+        sibling_threshold: Override for SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD (default: use global constant).
+                          When None, falls back to global constant (10). Consolidation occurs when 
+                          sibling count > threshold (strict inequality). This parameter allows 
+                          bucket-specific configuration via bucket tags.
         
     Returns:
         List of path lists, where each inner list contains at most 1000
         consolidated paths ready for CloudFront invalidation
         
-    Example:
+    Examples:
+        # Basic consolidation with default thresholds
         Input: ['/prod/public/index.html', '/prod/public/about.html',
                 '/prod/public/contact.html', '/prod/public/services.html']
         Output: [['/prod/public/*']]
+        
+        # Custom sibling threshold for bucket-specific configuration
+        paths = ['/prod/public/m/*', '/prod/public/k/*', '/prod/public/w/*', '/prod/public/x/*']
+        result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
+        # Output: [['/prod/public/*']] (4 siblings > threshold 2)
+        
+        # Backward compatibility - missing parameter uses global constant
+        result1 = consolidate_paths(paths)  # Uses global constant (10)
+        result2 = consolidate_paths(paths, sibling_threshold=None)  # Same behavior
+        
+    Parameter Behavior and Fallback Logic:
+        - sibling_threshold=None: Uses SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD (10)
+        - sibling_threshold=5: Custom threshold, consolidates when siblings > 5
+        - Missing parameter: Same as sibling_threshold=None (backward compatible)
     """
     if not paths:
         return [[]]
@@ -960,7 +1003,7 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     )
     
     # Step 2: Recursively apply directory and sibling consolidation
-    path_set = consolidate_paths_recursive(path_set, directory_threshold, stop_level, root_path)
+    path_set = consolidate_paths_recursive(path_set, directory_threshold, stop_level, root_path, sibling_threshold)
     logger.debug(
         f"After recursive consolidation: {len(path_set)} paths",
         extra={'extra_fields': {
