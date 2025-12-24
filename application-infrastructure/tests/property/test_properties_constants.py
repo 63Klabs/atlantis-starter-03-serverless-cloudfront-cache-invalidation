@@ -103,7 +103,7 @@ def test_property_16_environment_variable_fallback(_):
     st.one_of(
         st.integers(min_value=-100, max_value=-1),  # Below valid range
         st.integers(min_value=21, max_value=100),   # Above valid range (updated max is 20)
-        st.text(min_size=1, max_size=20).filter(lambda x: not x.isdigit()),  # Non-numeric
+        st.text(min_size=1, max_size=20, alphabet=st.characters(blacklist_characters='\x00')).filter(lambda x: not x.isdigit()),  # Non-numeric, no null bytes
         st.just('')  # Empty string
     )
 )
