@@ -1,6 +1,6 @@
 # Configuration Troubleshooting Guide
 
-This guide provides detailed troubleshooting steps for the Dynamic Bucket Consolidation Configuration feature of the Multi-Bucket CloudFront Invalidation Service.
+This guide provides detailed troubleshooting steps for the Multi-Bucket CloudFront Invalidation Service.
 
 ## Table of Contents
 
@@ -17,7 +17,9 @@ The system supports three levels of configuration:
 
 1. **Hardcoded Defaults** (fallback)
    - DirectoryConsolidationThreshold: 3
+   - SiblingDirectoryConsolidationThreshold: 10
    - ConsolidationStopLevel: 1
+   - AggregationWindowSeconds: 300
 
 2. **CloudFormation Parameters** (system-wide defaults)
    - DirectoryConsolidationThreshold: 1-1000
@@ -162,18 +164,9 @@ The system supports three levels of configuration:
      --query 'Environment.Variables'
    ```
 
-3. **Compare parameter values with environment variables**:
-   ```bash
-   # Should match CloudFormation parameters
-   echo "DIRECTORY_CONSOLIDATION_THRESHOLD: $DIRECTORY_CONSOLIDATION_THRESHOLD"
-   echo "CONSOLIDATION_STOP_LEVEL: $CONSOLIDATION_STOP_LEVEL"
-   echo "AGGREGATION_WINDOW_SECONDS: $AGGREGATION_WINDOW_SECONDS"
-   ```
-
 **Solutions**:
-- Update CloudFormation stack with correct parameter values
+- Update `application-infrastructure/template-configuration.json` with correct parameter values
 - Verify template.yml has correct environment variable mappings
-- Restart Lambda functions if environment variables are cached
 
 ### Issue 4: Consolidation Stop Level Not Working
 
@@ -205,10 +198,12 @@ The system supports three levels of configuration:
    | sort @timestamp desc
    ```
 
-**Common Issues**:
+**Intended Behavior**:
 - Stop level 0 consolidates everything to root `/*`
 - Stop level 1 allows normal consolidation (default behavior)
 - Stop level 2+ prevents consolidation at that depth or shallower
+
+**Common Issues**
 - Path depth calculated incorrectly due to malformed paths
 
 **Solutions**:
@@ -229,10 +224,11 @@ The system supports three levels of configuration:
    - Changes take effect on next processing cycle (within 5 minutes)
    - Check tag update timestamp vs. last processing time
    - Verify tags were actually updated (not just attempted)
+   - Ensure tags are spelled and formatted correctly
 
 2. **For CloudFormation parameter changes**:
    - Requires CloudFormation stack update
-   - Lambda functions must restart to pick up new environment variables
+   - Lambda functions must redeploy to pick up new environment variables
    - Check stack update status and Lambda function last modified time
 
 3. **Check configuration resolution logs**:
@@ -271,7 +267,7 @@ aws lambda get-function-configuration \
 
 ```bash
 # Upload test file to trigger processing
-aws s3 cp test.html s3://your-bucket/prod/public/test/test.html
+aws s3 cp test.html s3://your-bucket/prod/public/mytest/test.html
 
 # Monitor logs for configuration decisions
 aws logs tail /aws/lambda/your-processor-function-name --follow
@@ -445,7 +441,6 @@ fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
 2. **Use Bucket Tags for Exceptions**:
    - Only override defaults when necessary
    - Document why specific buckets need different settings
-   - Use consistent naming conventions for tag values
 
 3. **Monitor Configuration Usage**:
    - Set up CloudWatch dashboards for configuration metrics

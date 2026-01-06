@@ -1,10 +1,10 @@
 {
   "Parameters": {
-    "IngestorMemoryInMB": "512",
+    "IngestorMemoryInMB": "1024",
     "ProcessorMemoryInMB": "1024"
   },
   "Tags": {
-    "Name": "CloudFront Cache Invalidator $PREFIX$-$PROJECT_ID$",
+    "Name": "CloudFront Cache Invalidator Service $PREFIX$-$PROJECT_ID$",
     "CostCenter": "1234-X",
     "Creator": "nowhere@example",
     "Owner": "nowhere@example",
