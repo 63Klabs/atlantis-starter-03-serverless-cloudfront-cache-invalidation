@@ -35,29 +35,29 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
     logger = setup_logger(__name__)
     
     # DEBUG: Log extraction attempt
-    logger.info(
-        "Extracting event metadata DEBUG",
-        extra={'extra_fields': {
-            'recordType': type(record).__name__,
-            'recordKeys': list(record.keys()) if isinstance(record, dict) else 'not_dict',
-            'hasS3Key': 's3' in record if isinstance(record, dict) else False,
-            'hasEventTime': 'eventTime' in record if isinstance(record, dict) else False,
-            'hasEventName': 'eventName' in record if isinstance(record, dict) else False
-        }}
-    )
+    # logger.info(
+    #     "Extracting event metadata DEBUG",
+    #     extra={'extra_fields': {
+    #         'recordType': type(record).__name__,
+    #         'recordKeys': list(record.keys()) if isinstance(record, dict) else 'not_dict',
+    #         'hasS3Key': 's3' in record if isinstance(record, dict) else False,
+    #         'hasEventTime': 'eventTime' in record if isinstance(record, dict) else False,
+    #         'hasEventName': 'eventName' in record if isinstance(record, dict) else False
+    #     }}
+    # )
     
     try:
         # DEBUG: Log S3 section analysis
         s3_section = record.get('s3', {})
-        logger.info(
-            "S3 section analysis DEBUG",
-            extra={'extra_fields': {
-                's3Section': s3_section,
-                's3Keys': list(s3_section.keys()) if isinstance(s3_section, dict) else 'not_dict',
-                'hasBucket': 'bucket' in s3_section if isinstance(s3_section, dict) else False,
-                'hasObject': 'object' in s3_section if isinstance(s3_section, dict) else False
-            }}
-        )
+        # logger.info(
+        #     "S3 section analysis DEBUG",
+        #     extra={'extra_fields': {
+        #         's3Section': s3_section,
+        #         's3Keys': list(s3_section.keys()) if isinstance(s3_section, dict) else 'not_dict',
+        #         'hasBucket': 'bucket' in s3_section if isinstance(s3_section, dict) else False,
+        #         'hasObject': 'object' in s3_section if isinstance(s3_section, dict) else False
+        #     }}
+        # )
         
         bucket_name = record['s3']['bucket']['name']
         object_key = record['s3']['object']['key']
@@ -65,24 +65,24 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
         event_type = record['eventName']
         
         # DEBUG: Log extracted values
-        logger.info(
-            "Raw extraction results DEBUG",
-            extra={'extra_fields': {
-                'bucketName': bucket_name,
-                'objectKey': object_key,
-                'eventTime': event_time,
-                'eventType': event_type,
-                'bucketNameType': type(bucket_name).__name__,
-                'objectKeyType': type(object_key).__name__,
-                'eventTimeType': type(event_time).__name__,
-                'eventTypeType': type(event_type).__name__
-            }}
-        )
+        # logger.info(
+        #     "Raw extraction results DEBUG",
+        #     extra={'extra_fields': {
+        #         'bucketName': bucket_name,
+        #         'objectKey': object_key,
+        #         'eventTime': event_time,
+        #         'eventType': event_type,
+        #         'bucketNameType': type(bucket_name).__name__,
+        #         'objectKeyType': type(object_key).__name__,
+        #         'eventTimeType': type(event_time).__name__,
+        #         'eventTypeType': type(event_type).__name__
+        #     }}
+        # )
         
         # Validate that all fields are non-empty strings
         if not all([bucket_name, object_key, event_time, event_type]):
             logger.error(
-                "Validation failed - empty fields DEBUG",
+                "Validation failed - empty fields",
                 extra={'extra_fields': {
                     'bucketNameEmpty': not bucket_name,
                     'objectKeyEmpty': not object_key,
@@ -100,18 +100,18 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
         }
         
         # DEBUG: Log final result
-        logger.info(
-            "Event metadata extraction successful DEBUG",
-            extra={'extra_fields': {
-                'extractedMetadata': result
-            }}
-        )
+        # logger.info(
+        #     "Event metadata extraction successful DEBUG",
+        #     extra={'extra_fields': {
+        #         'extractedMetadata': result
+        #     }}
+        # )
         
         return result
         
     except KeyError as e:
         logger.error(
-            "KeyError during extraction DEBUG",
+            "KeyError during extraction",
             extra={'extra_fields': {
                 'missingKey': str(e),
                 'recordStructure': record
@@ -120,7 +120,7 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
         raise S3EventParseError(f"Missing required field in S3 event: {e}")
     except TypeError as e:
         logger.error(
-            "TypeError during extraction DEBUG",
+            "TypeError during extraction",
             extra={'extra_fields': {
                 'typeError': str(e),
                 'recordType': type(record).__name__
@@ -146,57 +146,57 @@ def extract_stage_id(object_key: str) -> Optional[str]:
     logger = setup_logger(__name__)
     
     # DEBUG: Log StageId extraction
-    logger.info(
-        "Extracting StageId DEBUG",
-        extra={'extra_fields': {
-            'objectKey': object_key,
-            'objectKeyType': type(object_key).__name__,
-            'objectKeyLength': len(object_key) if object_key else 0
-        }}
-    )
+    # logger.info(
+    #     "Extracting StageId DEBUG",
+    #     extra={'extra_fields': {
+    #         'objectKey': object_key,
+    #         'objectKeyType': type(object_key).__name__,
+    #         'objectKeyLength': len(object_key) if object_key else 0
+    #     }}
+    # )
     
     if not object_key:
-        logger.info("StageId extraction: empty object key DEBUG")
+        logger.info("StageId extraction: empty object key")
         return None
     
     # Remove leading slash and split by '/'
     path_segments = object_key.lstrip('/').split('/')
     
     # DEBUG: Log path analysis
-    logger.info(
-        "Path segments analysis DEBUG",
-        extra={'extra_fields': {
-            'originalKey': object_key,
-            'afterLstrip': object_key.lstrip('/'),
-            'pathSegments': path_segments,
-            'segmentCount': len(path_segments)
-        }}
-    )
+    # logger.info(
+    #     "Path segments analysis DEBUG",
+    #     extra={'extra_fields': {
+    #         'originalKey': object_key,
+    #         'afterLstrip': object_key.lstrip('/'),
+    #         'pathSegments': path_segments,
+    #         'segmentCount': len(path_segments)
+    #     }}
+    # )
     
     # Filter out empty segments and return the first one
     non_empty_segments = [seg for seg in path_segments if seg]
     
     # DEBUG: Log filtering results
-    logger.info(
-        "Segment filtering results DEBUG",
-        extra={'extra_fields': {
-            'nonEmptySegments': non_empty_segments,
-            'nonEmptyCount': len(non_empty_segments),
-            'firstSegment': non_empty_segments[0] if non_empty_segments else None
-        }}
-    )
+    # logger.info(
+    #     "Segment filtering results DEBUG",
+    #     extra={'extra_fields': {
+    #         'nonEmptySegments': non_empty_segments,
+    #         'nonEmptyCount': len(non_empty_segments),
+    #         'firstSegment': non_empty_segments[0] if non_empty_segments else None
+    #     }}
+    # )
     
     if not non_empty_segments:
-        logger.info("StageId extraction: no non-empty segments DEBUG")
+        # logger.info("StageId extraction: no non-empty segments")
         return None
     
     result = non_empty_segments[0]
-    logger.info(
-        "StageId extraction result DEBUG",
-        extra={'extra_fields': {
-            'extractedStageId': result
-        }}
-    )
+    # logger.info(
+    #     "StageId extraction result",
+    #     extra={'extra_fields': {
+    #         'extractedStageId': result
+    #     }}
+    # )
     
     return result
 

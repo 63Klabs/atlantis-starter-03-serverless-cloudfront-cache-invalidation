@@ -49,13 +49,13 @@ def list_distributions() -> List[Dict]:
     """
     try:
         # DEBUG: Log CloudFront API call
-        logger.info(
-            "Listing CloudFront distributions DEBUG",
-            extra={'extra_fields': {
-                'cloudfrontClientRegion': cloudfront_client.meta.region_name if hasattr(cloudfront_client, 'meta') else 'unknown',
-                'aboutToCallListDistributions': True
-            }}
-        )
+        # logger.info(
+        #     "Listing CloudFront distributions DEBUG",
+        #     extra={'extra_fields': {
+        #         'cloudfrontClientRegion': cloudfront_client.meta.region_name if hasattr(cloudfront_client, 'meta') else 'unknown',
+        #         'aboutToCallListDistributions': True
+        #     }}
+        # )
         
         distributions = []
         paginator = cloudfront_client.get_paginator('list_distributions')
@@ -66,43 +66,43 @@ def list_distributions() -> List[Dict]:
             page_count += 1
             
             # DEBUG: Log each page
-            logger.info(
-                f"Processing distributions page {page_count} DEBUG",
-                extra={'extra_fields': {
-                    'pageNumber': page_count,
-                    'pageKeys': list(page.keys()) if isinstance(page, dict) else 'not_dict',
-                    'hasDistributionList': 'DistributionList' in page if isinstance(page, dict) else False
-                }}
-            )
+            # logger.info(
+            #     f"Processing distributions page {page_count} DEBUG",
+            #     extra={'extra_fields': {
+            #         'pageNumber': page_count,
+            #         'pageKeys': list(page.keys()) if isinstance(page, dict) else 'not_dict',
+            #         'hasDistributionList': 'DistributionList' in page if isinstance(page, dict) else False
+            #     }}
+            # )
             
             distribution_list = page.get('DistributionList', {})
             items = distribution_list.get('Items', [])
             
             # DEBUG: Log page details
-            logger.info(
-                f"Page {page_count} distribution details DEBUG",
-                extra={'extra_fields': {
-                    'pageNumber': page_count,
-                    'distributionList': distribution_list,
-                    'distributionListKeys': list(distribution_list.keys()) if isinstance(distribution_list, dict) else 'not_dict',
-                    'itemsCount': len(items),
-                    'itemsType': type(items).__name__,
-                    'distributionIds': [item.get('Id', 'no_id') for item in items[:5]] if items else []  # First 5 IDs
-                }}
-            )
+            # logger.info(
+            #     f"Page {page_count} distribution details DEBUG",
+            #     extra={'extra_fields': {
+            #         'pageNumber': page_count,
+            #         'distributionList': distribution_list,
+            #         'distributionListKeys': list(distribution_list.keys()) if isinstance(distribution_list, dict) else 'not_dict',
+            #         'itemsCount': len(items),
+            #         'itemsType': type(items).__name__,
+            #         'distributionIds': [item.get('Id', 'no_id') for item in items[:5]] if items else []  # First 5 IDs
+            #     }}
+            # )
             
             distributions.extend(items)
         
         # DEBUG: Log final results
-        logger.info(
-            f"CloudFront distribution listing complete DEBUG",
-            extra={'extra_fields': {
-                'totalPages': page_count,
-                'totalDistributions': len(distributions),
-                'allDistributionIds': [dist.get('Id', 'no_id') for dist in distributions],
-                'distributionSample': distributions[0] if distributions else None
-            }}
-        )
+        # logger.info(
+        #     f"CloudFront distribution listing complete DEBUG",
+        #     extra={'extra_fields': {
+        #         'totalPages': page_count,
+        #         'totalDistributions': len(distributions),
+        #         'allDistributionIds': [dist.get('Id', 'no_id') for dist in distributions],
+        #         'distributionSample': distributions[0] if distributions else None
+        #     }}
+        # )
         
         logger.info(
             f"Retrieved {len(distributions)} CloudFront distributions",
@@ -179,14 +179,14 @@ def _matches_bucket_origin(origin: Dict, bucket_name: str, origin_path: str) -> 
         True if the origin matches both bucket and path, False otherwise
     """
     # DEBUG: Log matching function entry
-    logger.info(
-        "Origin matching analysis DEBUG",
-        extra={'extra_fields': {
-            'origin': origin,
-            'bucketName': bucket_name,
-            'expectedOriginPath': origin_path
-        }}
-    )
+    # logger.info(
+    #     "Origin matching analysis DEBUG",
+    #     extra={'extra_fields': {
+    #         'origin': origin,
+    #         'bucketName': bucket_name,
+    #         'expectedOriginPath': origin_path
+    #     }}
+    # )
     
     # Get origin domain name
     domain_name = origin.get('DomainName', '')
@@ -195,15 +195,15 @@ def _matches_bucket_origin(origin: Dict, bucket_name: str, origin_path: str) -> 
     origin_origin_path = origin.get('OriginPath', '')
     
     # DEBUG: Log extracted values
-    logger.info(
-        "Origin values extraction DEBUG",
-        extra={'extra_fields': {
-            'extractedDomainName': domain_name,
-            'extractedOriginPath': origin_origin_path,
-            'bucketName': bucket_name,
-            'expectedOriginPath': origin_path
-        }}
-    )
+    # logger.info(
+    #     "Origin values extraction DEBUG",
+    #     extra={'extra_fields': {
+    #         'extractedDomainName': domain_name,
+    #         'extractedOriginPath': origin_origin_path,
+    #         'bucketName': bucket_name,
+    #         'expectedOriginPath': origin_path
+    #     }}
+    # )
     
     # Check if domain name matches the bucket
     # Handle both regional and global formats
@@ -215,50 +215,50 @@ def _matches_bucket_origin(origin: Dict, bucket_name: str, origin_path: str) -> 
     
     if domain_name == global_format:
         domain_matches = True
-        logger.info(
-            "Domain matches global format DEBUG",
-            extra={'extra_fields': {
-                'domainName': domain_name,
-                'globalFormat': global_format,
-                'matchType': 'global'
-            }}
-        )
+        # logger.info(
+        #     "Domain matches global format DEBUG",
+        #     extra={'extra_fields': {
+        #         'domainName': domain_name,
+        #         'globalFormat': global_format,
+        #         'matchType': 'global'
+        #     }}
+        # )
     # Check for regional format - must start with bucket name followed by .s3.
     elif domain_name.startswith(regional_prefix) and "amazonaws.com" in domain_name:
         domain_matches = True
-        logger.info(
-            "Domain matches regional format DEBUG",
-            extra={'extra_fields': {
-                'domainName': domain_name,
-                'regionalPrefix': regional_prefix,
-                'matchType': 'regional'
-            }}
-        )
-    else:
-        logger.info(
-            "Domain does not match DEBUG",
-            extra={'extra_fields': {
-                'domainName': domain_name,
-                'globalFormat': global_format,
-                'regionalPrefix': regional_prefix,
-                'startsWithRegional': domain_name.startswith(regional_prefix),
-                'containsAmazonaws': "amazonaws.com" in domain_name
-            }}
-        )
+        # logger.info(
+        #     "Domain matches regional format DEBUG",
+        #     extra={'extra_fields': {
+        #         'domainName': domain_name,
+        #         'regionalPrefix': regional_prefix,
+        #         'matchType': 'regional'
+        #     }}
+        # )
+    # else:
+    #     logger.info(
+    #         "Domain does not match DEBUG",
+    #         extra={'extra_fields': {
+    #             'domainName': domain_name,
+    #             'globalFormat': global_format,
+    #             'regionalPrefix': regional_prefix,
+    #             'startsWithRegional': domain_name.startswith(regional_prefix),
+    #             'containsAmazonaws': "amazonaws.com" in domain_name
+    #         }}
+    #     )
     
     # Check if origin path matches
     path_matches = origin_origin_path == origin_path
     
     # DEBUG: Log path matching
-    logger.info(
-        "Path matching analysis DEBUG",
-        extra={'extra_fields': {
-            'originOriginPath': origin_origin_path,
-            'expectedOriginPath': origin_path,
-            'pathMatches': path_matches,
-            'pathsEqual': origin_origin_path == origin_path
-        }}
-    )
+    # logger.info(
+    #     "Path matching analysis DEBUG",
+    #     extra={'extra_fields': {
+    #         'originOriginPath': origin_origin_path,
+    #         'expectedOriginPath': origin_path,
+    #         'pathMatches': path_matches,
+    #         'pathsEqual': origin_origin_path == origin_path
+    #     }}
+    # )
     
     if domain_matches and path_matches:
         logger.debug(
@@ -301,15 +301,15 @@ def find_matching_distributions(
     """
     try:
         # DEBUG: Log function entry
-        logger.info(
-            f"Starting distribution matching DEBUG",
-            extra={'extra_fields': {
-                'bucketName': bucket_name,
-                'originPath': origin_path,
-                'distributionsProvided': distributions is not None,
-                'distributionCount': len(distributions) if distributions else 0
-            }}
-        )
+        # logger.info(
+        #     f"Starting distribution matching DEBUG",
+        #     extra={'extra_fields': {
+        #         'bucketName': bucket_name,
+        #         'originPath': origin_path,
+        #         'distributionsProvided': distributions is not None,
+        #         'distributionCount': len(distributions) if distributions else 0
+        #     }}
+        # )
         
         logger.info(
             f"Finding distributions for bucket {bucket_name} with origin path {origin_path}",
@@ -322,18 +322,18 @@ def find_matching_distributions(
         # Fetch distributions if not provided
         if distributions is None:
             # DEBUG: Log distribution fetching
-            logger.info(
-                "Fetching distributions from CloudFront API DEBUG",
-                extra={'extra_fields': {
-                    'aboutToCallListDistributions': True
-                }}
-            )
+            # logger.info(
+            #     "Fetching distributions from CloudFront API DEBUG",
+            #     extra={'extra_fields': {
+            #         'aboutToCallListDistributions': True
+            #     }}
+            # )
             
             distributions = list_distributions()
             
             # DEBUG: Log fetching result
             logger.info(
-                "Distribution fetching complete DEBUG",
+                "Distribution fetching complete",
                 extra={'extra_fields': {
                     'fetchedDistributionCount': len(distributions),
                     'distributionIds': [dist.get('Id', 'no_id') for dist in distributions]
@@ -343,93 +343,93 @@ def find_matching_distributions(
         matching_distribution_ids = []
         
         # DEBUG: Log search start
-        logger.info(
-            "Starting distribution search DEBUG",
-            extra={'extra_fields': {
-                'totalDistributionsToSearch': len(distributions),
-                'bucketName': bucket_name,
-                'originPath': origin_path
-            }}
-        )
+        # logger.info(
+        #     "Starting distribution search DEBUG",
+        #     extra={'extra_fields': {
+        #         'totalDistributionsToSearch': len(distributions),
+        #         'bucketName': bucket_name,
+        #         'originPath': origin_path
+        #     }}
+        # )
         
         # Search through all distributions
         for i, distribution in enumerate(distributions):
             distribution_id = distribution.get('Id')
             
             # DEBUG: Log each distribution analysis
-            logger.info(
-                f"Analyzing distribution {i+1}/{len(distributions)} DEBUG",
-                extra={'extra_fields': {
-                    'distributionIndex': i,
-                    'distributionId': distribution_id,
-                    'distributionKeys': list(distribution.keys()) if isinstance(distribution, dict) else 'not_dict',
-                    'hasOrigins': 'Origins' in distribution if isinstance(distribution, dict) else False
-                }}
-            )
+            # logger.info(
+            #     f"Analyzing distribution {i+1}/{len(distributions)} DEBUG",
+            #     extra={'extra_fields': {
+            #         'distributionIndex': i,
+            #         'distributionId': distribution_id,
+            #         'distributionKeys': list(distribution.keys()) if isinstance(distribution, dict) else 'not_dict',
+            #         'hasOrigins': 'Origins' in distribution if isinstance(distribution, dict) else False
+            #     }}
+            # )
             
             # Get origins from distribution
             origins_section = distribution.get('Origins', {})
             origins = origins_section.get('Items', [])
             
             # DEBUG: Log origins analysis
-            logger.info(
-                f"Distribution {distribution_id} origins analysis DEBUG",
-                extra={'extra_fields': {
-                    'distributionId': distribution_id,
-                    'originsSection': origins_section,
-                    'originsSectionKeys': list(origins_section.keys()) if isinstance(origins_section, dict) else 'not_dict',
-                    'originsCount': len(origins),
-                    'originsType': type(origins).__name__,
-                    'originIds': [origin.get('Id', 'no_id') for origin in origins] if origins else []
-                }}
-            )
+            # logger.info(
+            #     f"Distribution {distribution_id} origins analysis DEBUG",
+            #     extra={'extra_fields': {
+            #         'distributionId': distribution_id,
+            #         'originsSection': origins_section,
+            #         'originsSectionKeys': list(origins_section.keys()) if isinstance(origins_section, dict) else 'not_dict',
+            #         'originsCount': len(origins),
+            #         'originsType': type(origins).__name__,
+            #         'originIds': [origin.get('Id', 'no_id') for origin in origins] if origins else []
+            #     }}
+            # )
             
             # Check each origin for a match
             for j, origin in enumerate(origins):
                 # DEBUG: Log origin matching attempt
-                logger.info(
-                    f"Checking origin {j+1}/{len(origins)} for distribution {distribution_id} DEBUG",
-                    extra={'extra_fields': {
-                        'distributionId': distribution_id,
-                        'originIndex': j,
-                        'origin': origin,
-                        'originKeys': list(origin.keys()) if isinstance(origin, dict) else 'not_dict',
-                        'originDomainName': origin.get('DomainName', 'no_domain'),
-                        'originPath': origin.get('OriginPath', 'no_path'),
-                        'aboutToCallMatchesBucketOrigin': True
-                    }}
-                )
+                # logger.info(
+                #     f"Checking origin {j+1}/{len(origins)} for distribution {distribution_id} DEBUG",
+                #     extra={'extra_fields': {
+                #         'distributionId': distribution_id,
+                #         'originIndex': j,
+                #         'origin': origin,
+                #         'originKeys': list(origin.keys()) if isinstance(origin, dict) else 'not_dict',
+                #         'originDomainName': origin.get('DomainName', 'no_domain'),
+                #         'originPath': origin.get('OriginPath', 'no_path'),
+                #         'aboutToCallMatchesBucketOrigin': True
+                #     }}
+                # )
                 
                 matches = _matches_bucket_origin(origin, bucket_name, origin_path)
                 
                 # DEBUG: Log matching result
-                logger.info(
-                    f"Origin matching result DEBUG",
-                    extra={'extra_fields': {
-                        'distributionId': distribution_id,
-                        'originIndex': j,
-                        'originId': origin.get('Id', 'no_id'),
-                        'originDomainName': origin.get('DomainName', 'no_domain'),
-                        'originPath': origin.get('OriginPath', 'no_path'),
-                        'bucketName': bucket_name,
-                        'expectedOriginPath': origin_path,
-                        'matches': matches
-                    }}
-                )
+                # logger.info(
+                #     f"Origin matching result DEBUG",
+                #     extra={'extra_fields': {
+                #         'distributionId': distribution_id,
+                #         'originIndex': j,
+                #         'originId': origin.get('Id', 'no_id'),
+                #         'originDomainName': origin.get('DomainName', 'no_domain'),
+                #         'originPath': origin.get('OriginPath', 'no_path'),
+                #         'bucketName': bucket_name,
+                #         'expectedOriginPath': origin_path,
+                #         'matches': matches
+                #     }}
+                # )
                 
                 if matches:
                     matching_distribution_ids.append(distribution_id)
                     
-                    logger.info(
-                        f"Found matching distribution: {distribution_id}",
-                        extra={'extra_fields': {
-                            'distribution_id': distribution_id,
-                            'bucket_name': bucket_name,
-                            'origin_path': origin_path,
-                            'origin_id': origin.get('Id'),
-                            'domain_name': origin.get('DomainName')
-                        }}
-                    )
+                    # logger.info(
+                    #     f"Found matching distribution: {distribution_id}",
+                    #     extra={'extra_fields': {
+                    #         'distribution_id': distribution_id,
+                    #         'bucket_name': bucket_name,
+                    #         'origin_path': origin_path,
+                    #         'origin_id': origin.get('Id'),
+                    #         'domain_name': origin.get('DomainName')
+                    #     }}
+                    # )
                     
                     # A distribution can only match once (one origin per bucket/path combo)
                     break

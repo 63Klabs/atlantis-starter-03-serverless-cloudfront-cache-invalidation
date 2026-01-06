@@ -64,7 +64,7 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
     """
     # DEBUG: Log grouping function entry
     logger.info(
-        "Starting message grouping DEBUG",
+        "Starting message grouping",
         extra={'extra_fields': {
             'totalMessages': len(messages),
             'messageTypes': [type(msg).__name__ for msg in messages[:5]],  # First 5 types
@@ -77,47 +77,47 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
     
     for i, message in enumerate(messages):
         # DEBUG: Log each message processing
-        logger.info(
-            f"Processing message {i+1}/{len(messages)} for grouping DEBUG",
-            extra={'extra_fields': {
-                'messageIndex': i,
-                'messageId': message.get('MessageId', 'no_id'),
-                'messageKeys': list(message.keys()) if isinstance(message, dict) else 'not_dict',
-                'hasParsedBody': 'parsed_body' in message if isinstance(message, dict) else False
-            }}
-        )
+        # logger.info(
+        #     f"Processing message {i+1}/{len(messages)} for grouping DEBUG",
+        #     extra={'extra_fields': {
+        #         'messageIndex': i,
+        #         'messageId': message.get('MessageId', 'no_id'),
+        #         'messageKeys': list(message.keys()) if isinstance(message, dict) else 'not_dict',
+        #         'hasParsedBody': 'parsed_body' in message if isinstance(message, dict) else False
+        #     }}
+        # )
         
         # Extract parsed body
         parsed_body = message.get('parsed_body', {})
         
         # DEBUG: Log parsed body analysis
-        logger.info(
-            f"Message {i+1} parsed body analysis DEBUG",
-            extra={'extra_fields': {
-                'messageIndex': i,
-                'parsedBody': parsed_body,
-                'parsedBodyType': type(parsed_body).__name__,
-                'parsedBodyKeys': list(parsed_body.keys()) if isinstance(parsed_body, dict) else 'not_dict'
-            }}
-        )
+        # logger.info(
+        #     f"Message {i+1} parsed body analysis DEBUG",
+        #     extra={'extra_fields': {
+        #         'messageIndex': i,
+        #         'parsedBody': parsed_body,
+        #         'parsedBodyType': type(parsed_body).__name__,
+        #         'parsedBodyKeys': list(parsed_body.keys()) if isinstance(parsed_body, dict) else 'not_dict'
+        #     }}
+        # )
         
         # Get grouping keys
         bucket_name = parsed_body.get('bucketName')
         origin_path = parsed_body.get('originPath')
         
         # DEBUG: Log grouping key extraction
-        logger.info(
-            f"Message {i+1} grouping keys DEBUG",
-            extra={'extra_fields': {
-                'messageIndex': i,
-                'bucketName': bucket_name,
-                'originPath': origin_path,
-                'bucketNameType': type(bucket_name).__name__,
-                'originPathType': type(origin_path).__name__,
-                'hasBucket': bool(bucket_name),
-                'hasOrigin': bool(origin_path)
-            }}
-        )
+        # logger.info(
+        #     f"Message {i+1} grouping keys DEBUG",
+        #     extra={'extra_fields': {
+        #         'messageIndex': i,
+        #         'bucketName': bucket_name,
+        #         'originPath': origin_path,
+        #         'bucketNameType': type(bucket_name).__name__,
+        #         'originPathType': type(origin_path).__name__,
+        #         'hasBucket': bool(bucket_name),
+        #         'hasOrigin': bool(origin_path)
+        #     }}
+        # )
         
         # Skip messages with missing required fields
         if not bucket_name or not origin_path:
@@ -131,7 +131,7 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
             skipped_messages.append(skip_info)
             
             logger.warning(
-                f"Skipping message {i+1} with missing bucketName or originPath DEBUG",
+                f"Skipping message {i+1} with missing bucketName or originPath",
                 extra={'extra_fields': skip_info}
             )
             continue
@@ -140,15 +140,15 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
         group_key = (bucket_name, origin_path)
         
         # DEBUG: Log group assignment
-        logger.info(
-            f"Message {i+1} group assignment DEBUG",
-            extra={'extra_fields': {
-                'messageIndex': i,
-                'groupKey': group_key,
-                'groupExists': group_key in grouped,
-                'currentGroupSize': len(grouped.get(group_key, []))
-            }}
-        )
+        # logger.info(
+        #     f"Message {i+1} group assignment DEBUG",
+        #     extra={'extra_fields': {
+        #         'messageIndex': i,
+        #         'groupKey': group_key,
+        #         'groupExists': group_key in grouped,
+        #         'currentGroupSize': len(grouped.get(group_key, []))
+        #     }}
+        # )
         
         # Add message to group
         if group_key not in grouped:
@@ -157,41 +157,41 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
         grouped[group_key].append(message)
     
     # DEBUG: Log final grouping results
-    logger.info(
-        f"Message grouping complete DEBUG",
-        extra={'extra_fields': {
-            'total_messages': len(messages),
-            'messages_grouped': len(messages) - len(skipped_messages),
-            'messages_skipped': len(skipped_messages),
-            'skipped_details': skipped_messages,
-            'group_count': len(grouped),
-            'groups_detailed': [
-                {
-                    'bucket': bucket,
-                    'origin': origin,
-                    'message_count': len(msgs),
-                    'message_ids': [msg.get('MessageId', 'no_id') for msg in msgs]
-                }
-                for (bucket, origin), msgs in grouped.items()
-            ]
-        }}
-    )
+    # logger.info(
+    #     f"Message grouping complete DEBUG",
+    #     extra={'extra_fields': {
+    #         'total_messages': len(messages),
+    #         'messages_grouped': len(messages) - len(skipped_messages),
+    #         'messages_skipped': len(skipped_messages),
+    #         'skipped_details': skipped_messages,
+    #         'group_count': len(grouped),
+    #         'groups_detailed': [
+    #             {
+    #                 'bucket': bucket,
+    #                 'origin': origin,
+    #                 'message_count': len(msgs),
+    #                 'message_ids': [msg.get('MessageId', 'no_id') for msg in msgs]
+    #             }
+    #             for (bucket, origin), msgs in grouped.items()
+    #         ]
+    #     }}
+    # )
     
-    logger.info(
-        f"Grouped {len(messages)} messages into {len(grouped)} bucket/origin combinations",
-        extra={'extra_fields': {
-            'total_messages': len(messages),
-            'group_count': len(grouped),
-            'groups': [
-                {
-                    'bucket': bucket,
-                    'origin': origin,
-                    'message_count': len(msgs)
-                }
-                for (bucket, origin), msgs in grouped.items()
-            ]
-        }}
-    )
+    # logger.info(
+    #     f"Grouped {len(messages)} messages into {len(grouped)} bucket/origin combinations",
+    #     extra={'extra_fields': {
+    #         'total_messages': len(messages),
+    #         'group_count': len(grouped),
+    #         'groups': [
+    #             {
+    #                 'bucket': bucket,
+    #                 'origin': origin,
+    #                 'message_count': len(msgs)
+    #             }
+    #             for (bucket, origin), msgs in grouped.items()
+    #         ]
+    #     }}
+    # )
     
     return grouped
 
@@ -214,7 +214,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     # DEBUG: Log the complete incoming event and context
     logger.info(
-        "Processor Lambda invoked - FULL EVENT DEBUG",
+        "Processor Lambda invoked - FULL EVENT",
         extra={'extra_fields': {
             'requestId': context.aws_request_id if context else 'unknown',
             'fullEvent': event,
@@ -250,7 +250,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # DEBUG: Log configuration
         logger.info(
-            "Processor configuration DEBUG",
+            "Processor configuration",
             extra={'extra_fields': {
                 'queueUrl': queue_url,
                 'hasQueueUrl': bool(queue_url),
@@ -267,7 +267,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # DEBUG: Log batch retrieval start
         logger.info(
-            "Step 1: Starting SQS batch message retrieval DEBUG",
+            "Step 1: Starting SQS batch message retrieval",
             extra={'extra_fields': {
                 'queueUrl': queue_url,
                 'startingBatchRetrieval': True
@@ -279,20 +279,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             batch_count += 1
             
             # DEBUG: Log each batch attempt
-            logger.info(
-                f"Step 1: Batch {batch_count} retrieval attempt DEBUG",
-                extra={'extra_fields': {
-                    'batchNumber': batch_count,
-                    'currentMessageCount': len(all_messages),
-                    'aboutToCallReceiveMessagesBatch': True
-                }}
-            )
+            # logger.info(
+            #     f"Step 1: Batch {batch_count} retrieval attempt DEBUG",
+            #     extra={'extra_fields': {
+            #         'batchNumber': batch_count,
+            #         'currentMessageCount': len(all_messages),
+            #         'aboutToCallReceiveMessagesBatch': True
+            #     }}
+            # )
             
             messages = receive_messages_batch(queue_url)
             
             # DEBUG: Log batch result
             logger.info(
-                f"Step 1: Batch {batch_count} result DEBUG",
+                f"Step 1: Batch {batch_count} result",
                 extra={'extra_fields': {
                     'batchNumber': batch_count,
                     'messagesReceived': len(messages) if messages else 0,
@@ -305,7 +305,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if not messages:
                 # Queue is empty
                 logger.info(
-                    f"Step 1: Queue empty after {batch_count} batches DEBUG",
+                    f"Step 1: Queue empty after {batch_count} batches",
                     extra={'extra_fields': {
                         'totalBatches': batch_count,
                         'finalMessageCount': len(all_messages),
@@ -319,7 +319,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Safety limit to prevent infinite loops
             if len(all_messages) >= 1000:
                 logger.warning(
-                    "Reached message limit, stopping batch retrieval DEBUG",
+                    "Reached message limit, stopping batch retrieval",
                     extra={'extra_fields': {
                         'message_count': len(all_messages),
                         'batchCount': batch_count,
@@ -332,7 +332,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # DEBUG: Log message retrieval summary
         logger.info(
-            "Step 1: Message retrieval complete DEBUG",
+            "Step 1: Message retrieval complete",
             extra={'extra_fields': {
                 'totalMessages': len(all_messages),
                 'totalBatches': batch_count,
@@ -350,7 +350,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if not all_messages:
             logger.info(
-                "No messages to process - closing window DEBUG",
+                "No messages to process - closing window",
                 extra={'extra_fields': {
                     'noMessagesToProcess': True,
                     'aboutToCloseWindow': True
@@ -360,10 +360,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Close aggregation window even if no messages
             try:
                 close_window()
-                logger.info("Window closed successfully with no messages DEBUG")
+                logger.info("Window closed successfully with no messages")
             except Exception as e:
                 logger.error(
-                    f"Failed to close aggregation window: {str(e)} DEBUG",
+                    f"Failed to close aggregation window: {str(e)}",
                     extra={'extra_fields': {
                         'error': str(e),
                         'windowCloseFailed': True
@@ -376,7 +376,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         logger.info(
-            f"Retrieved {len(all_messages)} messages from queue - proceeding to grouping DEBUG",
+            f"Retrieved {len(all_messages)} messages from queue - proceeding to grouping",
             extra={'extra_fields': {
                 'message_count': len(all_messages),
                 'proceedingToGrouping': True
@@ -386,7 +386,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Step 2: Group messages by bucket and origin path
         # DEBUG: Log grouping start
         logger.info(
-            "Step 2: Starting message grouping DEBUG",
+            "Step 2: Starting message grouping",
             extra={'extra_fields': {
                 'totalMessagesToGroup': len(all_messages),
                 'aboutToCallGroupMessages': True
@@ -398,7 +398,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # DEBUG: Log grouping results
         logger.info(
-            "Step 2: Message grouping complete DEBUG",
+            "Step 2: Message grouping complete",
             extra={'extra_fields': {
                 'totalGroups': len(grouped_messages),
                 'groupDetails': [
@@ -423,7 +423,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # DEBUG: Log group processing start
             logger.info(
-                f"Step 3-8: Processing group {group_index}/{len(grouped_messages)} DEBUG",
+                f"Step 3-8: Processing group {group_index}/{len(grouped_messages)}",
                 extra={'extra_fields': {
                     'groupIndex': group_index,
                     'totalGroups': len(grouped_messages),
@@ -438,7 +438,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Step 3: Validate bucket tags
             # DEBUG: Log bucket validation start
             logger.info(
-                f"Step 3: Validating bucket tags for {bucket_name} DEBUG",
+                f"Step 3: Validating bucket tags for {bucket_name}",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'aboutToCallValidateBucketTags': True
@@ -449,7 +449,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # DEBUG: Log bucket validation result
             logger.info(
-                f"Step 3: Bucket validation result DEBUG",
+                f"Step 3: Bucket validation result",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'validationResult': bucket_validation_result,
@@ -459,7 +459,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             if not bucket_validation_result:
                 logger.warning(
-                    f"Bucket {bucket_name} failed tag validation, skipping DEBUG",
+                    f"Bucket {bucket_name} failed tag validation, skipping",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
                         'origin_path': origin_path,
@@ -475,41 +475,41 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             summary['buckets_validated'] += 1
             
             # DEBUG: Log bucket validation success
-            logger.info(
-                f"Step 3: Bucket {bucket_name} validation passed DEBUG",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'bucketValidationPassed': True
-                }}
-            )
+            # logger.info(
+            #     f"Step 3: Bucket {bucket_name} validation passed DEBUG",
+            #     extra={'extra_fields': {
+            #         'bucketName': bucket_name,
+            #         'bucketValidationPassed': True
+            #     }}
+            # )
             
             # Get bucket's Application tag for distribution validation
             # DEBUG: Log bucket tags retrieval
-            logger.info(
-                f"Step 3: Getting bucket tags for {bucket_name} DEBUG",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'aboutToCallGetBucketTags': True
-                }}
-            )
+            # logger.info(
+            #     f"Step 3: Getting bucket tags for {bucket_name} DEBUG",
+            #     extra={'extra_fields': {
+            #         'bucketName': bucket_name,
+            #         'aboutToCallGetBucketTags': True
+            #     }}
+            # )
             
             bucket_tags = get_bucket_tags(bucket_name)
             
             # DEBUG: Log bucket tags result
-            logger.info(
-                f"Step 3: Bucket tags retrieval result DEBUG",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'bucketTags': bucket_tags,
-                    'bucketTagsType': type(bucket_tags).__name__,
-                    'bucketTagsKeys': list(bucket_tags.keys()) if isinstance(bucket_tags, dict) else 'not_dict',
-                    'hasApplicationTag': 'atlantis:Application' in bucket_tags if isinstance(bucket_tags, dict) else False
-                }}
-            )
+            # logger.info(
+            #     f"Step 3: Bucket tags retrieval result DEBUG",
+            #     extra={'extra_fields': {
+            #         'bucketName': bucket_name,
+            #         'bucketTags': bucket_tags,
+            #         'bucketTagsType': type(bucket_tags).__name__,
+            #         'bucketTagsKeys': list(bucket_tags.keys()) if isinstance(bucket_tags, dict) else 'not_dict',
+            #         'hasApplicationTag': 'atlantis:Application' in bucket_tags if isinstance(bucket_tags, dict) else False
+            #     }}
+            # )
             
             if not bucket_tags:
                 logger.error(
-                    f"Failed to retrieve bucket tags for {bucket_name}, skipping DEBUG",
+                    f"Failed to retrieve bucket tags for {bucket_name}, skipping",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
                         'origin_path': origin_path,
@@ -522,18 +522,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             bucket_app_tag = bucket_tags.get('atlantis:Application', '')
             
             # DEBUG: Log application tag extraction
-            logger.info(
-                f"Step 3: Application tag extraction DEBUG",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'bucketAppTag': bucket_app_tag,
-                    'hasAppTag': bool(bucket_app_tag)
-                }}
-            )
+            # logger.info(
+            #     f"Step 3: Application tag extraction DEBUG",
+            #     extra={'extra_fields': {
+            #         'bucketName': bucket_name,
+            #         'bucketAppTag': bucket_app_tag,
+            #         'hasAppTag': bool(bucket_app_tag)
+            #     }}
+            # )
             
             if not bucket_app_tag:
                 logger.warning(
-                    f"Bucket {bucket_name} missing atlantis:Application tag, skipping DEBUG",
+                    f"Bucket {bucket_name} missing atlantis:Application tag, skipping",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
                         'origin_path': origin_path,
@@ -550,20 +550,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             parsed_body = first_message.get('parsed_body', {})
             stage_id = parsed_body.get('stageId', '')
             
-            logger.info(
-                f"Step 3: StageId extraction DEBUG",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'firstMessage': first_message,
-                    'parsedBody': parsed_body,
-                    'extractedStageId': stage_id,
-                    'hasStageId': bool(stage_id)
-                }}
-            )
+            # logger.info(
+            #     f"Step 3: StageId extraction DEBUG",
+            #     extra={'extra_fields': {
+            #         'bucketName': bucket_name,
+            #         'firstMessage': first_message,
+            #         'parsedBody': parsed_body,
+            #         'extractedStageId': stage_id,
+            #         'hasStageId': bool(stage_id)
+            #     }}
+            # )
             
             if not stage_id:
                 logger.error(
-                    f"Missing stageId in messages for bucket {bucket_name}, skipping DEBUG",
+                    f"Missing stageId in messages for bucket {bucket_name}, skipping",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
                         'origin_path': origin_path,
@@ -577,7 +577,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Step 4: Find matching CloudFront distributions
             # DEBUG: Log distribution search
             logger.info(
-                f"Step 4: Finding CloudFront distributions DEBUG",
+                f"Step 4: Finding CloudFront distributions",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'originPath': origin_path,
@@ -589,7 +589,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # DEBUG: Log distribution search results
             logger.info(
-                f"Step 4: Distribution search results DEBUG",
+                f"Step 4: Distribution search results",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'originPath': origin_path,
@@ -601,7 +601,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             if not distribution_ids:
                 logger.info(
-                    f"No distributions found for bucket {bucket_name} with origin {origin_path} DEBUG",
+                    f"No distributions found for bucket {bucket_name} with origin {origin_path}",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
                         'origin_path': origin_path,
@@ -617,7 +617,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # DEBUG: Log distributions found
             logger.info(
-                f"Step 4: Found {len(distribution_ids)} distributions DEBUG",
+                f"Step 4: Found {len(distribution_ids)} distributions",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'originPath': origin_path,
@@ -658,7 +658,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Step 6: Get bucket-specific consolidation configuration
             # DEBUG: Log configuration resolution start
             logger.info(
-                f"Step 6: Resolving consolidation configuration for bucket {bucket_name} DEBUG",
+                f"Step 6: Resolving consolidation configuration for bucket {bucket_name}",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'aboutToCallGetBucketConsolidationConfig': True
@@ -669,14 +669,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 bucket_config = get_bucket_consolidation_config(bucket_name)
                 
                 # DEBUG: Log configuration resolution result
-                logger.info(
-                    f"Step 6: Consolidation configuration resolved DEBUG",
-                    extra={'extra_fields': {
-                        'bucketName': bucket_name,
-                        'bucketConfig': bucket_config,
-                        'configResolutionSuccessful': True
-                    }}
-                )
+                # logger.info(
+                #     f"Step 6: Consolidation configuration resolved DEBUG",
+                #     extra={'extra_fields': {
+                #         'bucketName': bucket_name,
+                #         'bucketConfig': bucket_config,
+                #         'configResolutionSuccessful': True
+                #     }}
+                # )
                 
                 # Log effective configuration being used for this bucket
                 logger.info(
@@ -729,17 +729,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             relative_path = '/' + relative_path
                         
                         # DEBUG: Log path construction
-                        logger.debug(
-                            f"Constructed invalidation path DEBUG",
-                            extra={'extra_fields': {
-                                'bucket_name': bucket_name,
-                                'object_key': object_key,
-                                'origin_path': origin_path,
-                                'relative_path': relative_path,
-                                'object_key_starts_with_origin': object_key.startswith(origin_path),
-                                'relative_path_starts_with_slash': relative_path.startswith('/')
-                            }}
-                        )
+                        # logger.debug(
+                        #     f"Constructed invalidation path DEBUG",
+                        #     extra={'extra_fields': {
+                        #         'bucket_name': bucket_name,
+                        #         'object_key': object_key,
+                        #         'origin_path': origin_path,
+                        #         'relative_path': relative_path,
+                        #         'object_key_starts_with_origin': object_key.startswith(origin_path),
+                        #         'relative_path_starts_with_slash': relative_path.startswith('/')
+                        #     }}
+                        # )
                         
                         object_paths.append(relative_path)
                     else:
@@ -747,16 +747,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         fallback_path = object_key if object_key.startswith('/') else '/' + object_key
                         
                         # DEBUG: Log fallback path construction
-                        logger.debug(
-                            f"Using fallback path construction DEBUG",
-                            extra={'extra_fields': {
-                                'bucket_name': bucket_name,
-                                'object_key': object_key,
-                                'origin_path': origin_path,
-                                'fallback_path': fallback_path,
-                                'object_key_starts_with_origin': object_key.startswith(origin_path)
-                            }}
-                        )
+                        # logger.debug(
+                        #     f"Using fallback path construction DEBUG",
+                        #     extra={'extra_fields': {
+                        #         'bucket_name': bucket_name,
+                        #         'object_key': object_key,
+                        #         'origin_path': origin_path,
+                        #         'fallback_path': fallback_path,
+                        #         'object_key_starts_with_origin': object_key.startswith(origin_path)
+                        #     }}
+                        # )
                         
                         object_paths.append(fallback_path)
             
@@ -773,7 +773,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # DEBUG: Log paths before consolidation
             logger.info(
-                f"Paths before consolidation DEBUG",
+                f"Paths before consolidation",
                 extra={'extra_fields': {
                     'bucket_name': bucket_name,
                     'origin_path': origin_path,
@@ -792,7 +792,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # DEBUG: Log paths after consolidation
             logger.info(
-                f"Paths after consolidation DEBUG",
+                f"Paths after consolidation",
                 extra={'extra_fields': {
                     'bucket_name': bucket_name,
                     'origin_path': origin_path,

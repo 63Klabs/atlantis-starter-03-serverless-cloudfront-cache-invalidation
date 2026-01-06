@@ -48,34 +48,34 @@ def get_bucket_tags(bucket_name: str) -> Optional[Dict[str, str]]:
         )
         
         # DEBUG: Log S3 API call
-        logger.info(
-            f"Calling S3 get_bucket_tagging DEBUG",
-            extra={'extra_fields': {
-                'bucketName': bucket_name,
-                's3ClientRegion': s3_client.meta.region_name if hasattr(s3_client, 'meta') else 'unknown'
-            }}
-        )
+        # logger.info(
+        #     f"Calling S3 get_bucket_tagging DEBUG",
+        #     extra={'extra_fields': {
+        #         'bucketName': bucket_name,
+        #         's3ClientRegion': s3_client.meta.region_name if hasattr(s3_client, 'meta') else 'unknown'
+        #     }}
+        # )
         
         response = s3_client.get_bucket_tagging(Bucket=bucket_name)
         
         # DEBUG: Log S3 response
-        logger.info(
-            f"S3 get_bucket_tagging response DEBUG",
-            extra={'extra_fields': {
-                'bucketName': bucket_name,
-                'fullResponse': response,
-                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
-                'responseMetadata': response.get('ResponseMetadata', {}),
-                'hasTagSet': 'TagSet' in response
-            }}
-        )
+        # logger.info(
+        #     f"S3 get_bucket_tagging response DEBUG",
+        #     extra={'extra_fields': {
+        #         'bucketName': bucket_name,
+        #         'fullResponse': response,
+        #         'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+        #         'responseMetadata': response.get('ResponseMetadata', {}),
+        #         'hasTagSet': 'TagSet' in response
+        #     }}
+        # )
         
         # Convert tag list to dictionary
         tag_set = response.get('TagSet', [])
         
         # DEBUG: Log tag conversion
         logger.info(
-            f"S3 tag conversion DEBUG",
+            f"S3 tag conversion",
             extra={'extra_fields': {
                 'bucketName': bucket_name,
                 'tagSet': tag_set,
@@ -150,29 +150,29 @@ def validate_bucket_tags(bucket_name: str) -> bool:
     **Validates: Requirements 6.1, 6.2, 6.3, 6.4**
     """
     # DEBUG: Log validation start
-    logger.info(
-        f"Starting bucket tag validation DEBUG",
-        extra={'extra_fields': {
-            'bucketName': bucket_name,
-            'aboutToCallGetBucketTags': True
-        }}
-    )
+    # logger.info(
+    #     f"Starting bucket tag validation DEBUG",
+    #     extra={'extra_fields': {
+    #         'bucketName': bucket_name,
+    #         'aboutToCallGetBucketTags': True
+    #     }}
+    # )
     
     # Retrieve bucket tags
     tags = get_bucket_tags(bucket_name)
     
     # DEBUG: Log tag retrieval result
-    logger.info(
-        f"Bucket tag retrieval result DEBUG",
-        extra={'extra_fields': {
-            'bucketName': bucket_name,
-            'tags': tags,
-            'tagsType': type(tags).__name__,
-            'tagsRetrieved': tags is not None,
-            'tagCount': len(tags) if isinstance(tags, dict) else 0,
-            'hasAllowInvalidationEvents': 'AllowInvalidationEvents' in tags if isinstance(tags, dict) else False
-        }}
-    )
+    # logger.info(
+    #     f"Bucket tag retrieval result DEBUG",
+    #     extra={'extra_fields': {
+    #         'bucketName': bucket_name,
+    #         'tags': tags,
+    #         'tagsType': type(tags).__name__,
+    #         'tagsRetrieved': tags is not None,
+    #         'tagCount': len(tags) if isinstance(tags, dict) else 0,
+    #         'hasAllowInvalidationEvents': 'AllowInvalidationEvents' in tags if isinstance(tags, dict) else False
+    #     }}
+    # )
     
     # If tags could not be retrieved, fail validation
     if tags is None:
@@ -190,16 +190,16 @@ def validate_bucket_tags(bucket_name: str) -> bool:
     allow_invalidation = tags.get('AllowInvalidationEvents', '')
     
     # DEBUG: Log tag validation logic
-    logger.info(
-        f"Bucket tag validation logic DEBUG",
-        extra={'extra_fields': {
-            'bucketName': bucket_name,
-            'allowInvalidationValue': allow_invalidation,
-            'allowInvalidationType': type(allow_invalidation).__name__,
-            'expectedValue': 'true',
-            'exactMatch': allow_invalidation == 'true'
-        }}
-    )
+    # logger.info(
+    #     f"Bucket tag validation logic DEBUG",
+    #     extra={'extra_fields': {
+    #         'bucketName': bucket_name,
+    #         'allowInvalidationValue': allow_invalidation,
+    #         'allowInvalidationType': type(allow_invalidation).__name__,
+    #         'expectedValue': 'true',
+    #         'exactMatch': allow_invalidation == 'true'
+    #     }}
+    # )
     
     # Validate tag value (must be exactly "true")
     is_valid = allow_invalidation == 'true'
@@ -463,13 +463,13 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
     **Feature: sibling-directory-consolidation-threshold, Property 4, 5, 6, 7, 8, 9, 10, 12: Configuration reading**
     **Validates: Requirements 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.4, 4.2**
     """
-    logger.info(
-        f"Reading consolidation configuration for bucket: {bucket_name}",
-        extra={'extra_fields': {
-            'bucket_name': bucket_name,
-            'operation': 'get_bucket_consolidation_config'
-        }}
-    )
+    # logger.info(
+    #     f"Reading consolidation configuration for bucket: {bucket_name}",
+    #     extra={'extra_fields': {
+    #         'bucket_name': bucket_name,
+    #         'operation': 'get_bucket_consolidation_config'
+    #     }}
+    # )
     
     # Retrieve bucket tags
     tags = get_bucket_tags(bucket_name)

@@ -1,10 +1,12 @@
 version: 0.2
 
-# Many BUILD ENVIRONMENT VARIABLES are specified in the template-pipeline.yml template.
-# You can also check the environment variables and values for this CodeBuild project
+# BUILD ENVIRONMENT VARIABLES are specified in Pipeline template for CodeBuild
+# You can view environment variables and values for this CodeBuild project:
 # AWS Web Console >> CodeBuild >> Build >> Projects >> [this project] >> [build run] >> Environment Variables
 # 
 # You can also run the command `printenv`
+#
+# Use BUILD ENVIRONMENT VARIABLES as conditionals, customizations, or parameters/arguments for scripts
 
 phases:
   install:

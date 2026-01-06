@@ -109,22 +109,22 @@ def create_one_time_schedule() -> Optional[str]:
             'ActionAfterCompletion': 'DELETE'  # Auto-delete after execution
         }
         
-        logger.info(
-            "Creating EventBridge schedule DEBUG",
-            extra={'extra_fields': {
-                'scheduleRequest': schedule_request,
-                'currentTime': current_time.isoformat(),
-                'targetTime': target_time.isoformat(),
-                'aggregationWindowSeconds': AGGREGATION_WINDOW_SECONDS
-            }}
-        )
+        # logger.info(
+        #     "Creating EventBridge schedule DEBUG",
+        #     extra={'extra_fields': {
+        #         'scheduleRequest': schedule_request,
+        #         'currentTime': current_time.isoformat(),
+        #         'targetTime': target_time.isoformat(),
+        #         'aggregationWindowSeconds': AGGREGATION_WINDOW_SECONDS
+        #     }}
+        # )
         
         # Create the one-time schedule
         response = scheduler.create_schedule(**schedule_request)
         
         # DEBUG: Log full AWS response
         logger.info(
-            "EventBridge schedule creation response DEBUG",
+            "EventBridge schedule creation response",
             extra={'extra_fields': {
                 'fullResponse': response,
                 'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
