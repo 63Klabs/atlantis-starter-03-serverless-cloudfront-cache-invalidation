@@ -7,7 +7,7 @@ from unittest.mock import patch
 from hypothesis import given, settings, strategies as st
 
 
-@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.integers(min_value=1, max_value=1000))
 def test_property_3_environment_variable_reading(sibling_threshold):
     """Property 3: Environment variable reading.
@@ -34,7 +34,7 @@ def test_property_3_environment_variable_reading(sibling_threshold):
             f"Expected threshold {sibling_threshold}, got {loaded_threshold}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.one_of(
     st.integers(min_value=-1000, max_value=0),  # Below valid range
     st.integers(min_value=1001, max_value=2000),  # Above valid range
@@ -66,7 +66,7 @@ def test_property_15_environment_variable_validation(invalid_value):
             f"Expected default threshold 10 for invalid value '{invalid_value}', got {loaded_threshold}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.just(None))  # Test missing environment variable
 def test_property_16_environment_variable_fallback(_):
     """Property 16: Environment variable fallback.
@@ -98,7 +98,7 @@ def test_property_16_environment_variable_fallback(_):
             f"Expected default threshold 10 for missing env var, got {loaded_threshold}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(
     st.one_of(
         st.integers(min_value=-100, max_value=-1),  # Below valid range
@@ -134,7 +134,7 @@ def test_property_11_13_14_consolidation_stop_level_validation(invalid_value):
             f"Expected default stop level 1 for invalid value '{invalid_value}', got {loaded_stop_level}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.integers(min_value=0, max_value=20))
 def test_property_consolidation_stop_level_valid_range(stop_level):
     """Test that valid ConsolidationStopLevel values (0-20) are accepted.

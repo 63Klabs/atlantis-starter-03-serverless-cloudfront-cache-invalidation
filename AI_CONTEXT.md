@@ -37,9 +37,11 @@ Shared templates for S3, DynamoDB, caching, networking (CloudFront/Route53), and
 
 If extended permissions are needed:
 
-* Add them as **Managed Policies** using
-  * `CloudFormationSvcRoleIncludeManagedPolicyArns` or
-  * `CodeBuildSvcRoleIncludeManagedPolicyArns`
+* Add them as **Managed Policies**
+  * Create them in a separate CloudFormation stack
+  * Add the ARN of the managed policy to the appropriate pipleline parameter:
+    * `CloudFormationSvcRoleIncludeManagedPolicyArns` or
+    * `CodeBuildSvcRoleIncludeManagedPolicyArns`
 * Do **not** edit the upstream templates.
 
 ## 3. Application Infrastructure Requirements
@@ -117,9 +119,10 @@ The following branches correspond to automated AWS Pipelines:
 | -------- | ----------- | ----------- |
 | **test** | TEST        | Test        |
 | **beta** | PROD        | Beta        |
+| **stage** | PROD       | Stage       |
 | **main** | PROD        | Prod        |
 
-The use/naming of a beta or staging stage is up to the project owner. However, when deployed, it functions like a production environment.
+The use/naming of a beta or staging branch is up to the project owner. However, when deployed, it functions like a production environment.
 
 Production environments (PROD) will have gradual deployments, longer log retention, and CloudWatch Alarms and Dashboards.
 
@@ -232,3 +235,5 @@ It must:
 * Keep dependencies small; use AWS-native services.
 * Include unit tests for new functions.
 * Keep shared infrastructure out of this repo.
+
+Additional guidelines are included in the [Kiro Steering directory](./.kiro/steering/). Though created for the Kiro AI, they provide important documentation for the environment, organization, and tests found in this repository.

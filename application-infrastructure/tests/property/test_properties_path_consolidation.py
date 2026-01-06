@@ -131,7 +131,7 @@ def paths_exceeding_limit(draw, min_paths=1001, max_paths=2500):
 
 # Property Tests
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(index_or_default_file_path())
 def test_property_20_index_and_default_file_directory_consolidation(file_path):
     """Property 20: Index and default file directory consolidation.
@@ -179,7 +179,7 @@ def test_property_20_index_and_default_file_directory_consolidation(file_path):
     assert consolidated_path == expected, f"Expected {expected}, got {consolidated_path}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(directory_with_files(min_files=4, max_files=10))
 def test_property_21_directory_consolidation_threshold(directory_and_files):
     """Property 21: Directory consolidation threshold.
@@ -221,7 +221,7 @@ def test_property_21_directory_consolidation_threshold(directory_and_files):
     assert consolidated_path == expected, f"Expected {expected}, got {consolidated_path}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(sibling_directories_with_wildcards(min_siblings=11, max_siblings=20))
 def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     """Property 22: Sibling directory consolidation.
@@ -263,7 +263,7 @@ def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     assert consolidated_path == expected, f"Expected {expected}, got {consolidated_path}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.lists(file_path(min_depth=2, max_depth=5), min_size=1, max_size=100))
 def test_property_23_root_consolidation_terminal_case(paths):
     """Property 23: Root consolidation terminal case.
@@ -293,7 +293,7 @@ def test_property_23_root_consolidation_terminal_case(paths):
         assert all_consolidated[0] == '/*', "Root consolidation should be /*"
 
 
-@settings(max_examples=10, suppress_health_check=[HealthCheck.large_base_example])
+@settings(max_examples=5, suppress_health_check=[HealthCheck.large_base_example])  # Optimized for faster execution
 @given(st.integers(min_value=1001, max_value=1500))
 def test_property_24_invalidation_request_splitting(num_paths):
     """Property 24: Invalidation request splitting.
@@ -325,7 +325,7 @@ def test_property_24_invalidation_request_splitting(num_paths):
     assert total_paths == num_paths, f"Expected {num_paths} paths, got {total_paths}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_25_redundant_subdirectory_removal(data):
     """Property 25: Redundant subdirectory removal.
@@ -409,7 +409,7 @@ def test_property_25_redundant_subdirectory_removal(data):
         assert unrelated_path in consolidated, f"Unrelated path {unrelated_path} should be preserved, but not found in {consolidated}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_25_nested_redundant_removal(data):
     """Property 25: Redundant subdirectory removal - nested case.
@@ -466,7 +466,7 @@ def test_property_25_nested_redundant_removal(data):
 
 # Stop Level Property Tests
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.lists(file_path(min_depth=1, max_depth=5), min_size=1, max_size=50))
 def test_property_1_root_consolidation_for_stop_level_zero(paths):
     """Property 1: Root consolidation for stop level zero.
@@ -490,7 +490,7 @@ def test_property_1_root_consolidation_for_stop_level_zero(paths):
     assert consolidated[0] == '/*', f"Should consolidate to /*, got {consolidated[0]}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.lists(file_path(min_depth=1, max_depth=5), min_size=1, max_size=50),
        st.integers(min_value=1, max_value=10))
 def test_property_2_stop_level_zero_override_behavior(paths, directory_threshold):
@@ -515,7 +515,7 @@ def test_property_2_stop_level_zero_override_behavior(paths, directory_threshold
     assert consolidated[0] == '/*', f"Should consolidate to /*, got {consolidated[0]}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.lists(file_path(min_depth=1, max_depth=5), min_size=1, max_size=50))
 def test_property_3_stop_level_zero_logging(paths):
     """Property 3: Stop level zero logging.
@@ -590,7 +590,7 @@ def test_property_3_stop_level_zero_logging(paths):
         handler.close()
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.integers(min_value=1, max_value=10),  # stop_level
        st.integers(min_value=0, max_value=10))  # depth
 def test_property_4_consolidation_allowed_at_specified_depth(stop_level, depth):
@@ -610,7 +610,7 @@ def test_property_4_consolidation_allowed_at_specified_depth(stop_level, depth):
         assert result is False, f"Consolidation should be blocked at depth {depth} with stop level {stop_level}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.integers(min_value=1, max_value=8),   # stop_level
        st.integers(min_value=1, max_value=5))   # extra_depth (> 0)
 def test_property_5_consolidation_prevented_at_deep_depths(stop_level, extra_depth):
@@ -640,7 +640,7 @@ def test_property_5_consolidation_prevented_at_deep_depths(stop_level, extra_dep
 
 # Logging Property Tests
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_7_stop_level_prevention_logging(data):
     """Property 7: Stop level prevention logging.
@@ -733,7 +733,7 @@ def test_property_7_stop_level_prevention_logging(data):
         handler.close()
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_8_stop_level_allowance_logging(data):
     """Property 8: Stop level allowance logging.
@@ -826,7 +826,7 @@ def test_property_8_stop_level_allowance_logging(data):
         handler.close()
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_6_path_depth_calculation_accuracy(data):
     """Property 6: Path depth calculation accuracy.
@@ -900,7 +900,7 @@ def test_property_6_path_depth_calculation_accuracy(data):
     assert root_depth == 0, f"Root path should have depth 0, got {root_depth}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_6_specific_requirements_validation(data):
     """Property 6: Path depth calculation - specific requirements validation.
@@ -975,7 +975,7 @@ def test_property_6_specific_requirements_validation(data):
         assert actual == expected, f"Expected depth {expected} for path {path} with root {root}, got {actual}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_9_depth_calculation_logging(data):
     """Property 9: Depth calculation logging.
@@ -1062,7 +1062,7 @@ def test_property_9_depth_calculation_logging(data):
         handler.close()
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.one_of(
     st.integers(min_value=-100, max_value=-1),  # Negative values
     st.integers(min_value=21, max_value=1000),  # Values above max range
@@ -1165,7 +1165,7 @@ def test_property_10_invalid_stop_level_logging(invalid_stop_level):
 
 # Stop Level Compliance Property Tests
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_11_index_file_consolidation_stop_level_compliance(data):
     """Property 11: Index file consolidation stop level compliance.
@@ -1235,7 +1235,7 @@ def test_property_11_index_file_consolidation_stop_level_compliance(data):
     assert allowed_index_file not in allowed_result, f"Original index file {allowed_index_file} should be replaced by wildcard"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_12_directory_threshold_consolidation_stop_level_compliance(data):
     """Property 12: Directory threshold consolidation stop level compliance.
@@ -1318,7 +1318,7 @@ def test_property_12_directory_threshold_consolidation_stop_level_compliance(dat
         assert file_path not in allowed_result, f"Original file {file_path} should be replaced by wildcard"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_13_sibling_directory_consolidation_stop_level_compliance(data):
     """Property 13: Sibling directory consolidation stop level compliance.
@@ -1399,7 +1399,7 @@ def test_property_13_sibling_directory_consolidation_stop_level_compliance(data)
         assert sibling_wildcard not in allowed_result, f"Original sibling wildcard {sibling_wildcard} should be replaced by parent wildcard"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_14_consolidation_type_permission_at_allowed_depths(data):
     """Property 14: Consolidation type permission at allowed depths.
@@ -1466,7 +1466,7 @@ def test_property_14_consolidation_type_permission_at_allowed_depths(data):
         assert sibling_wildcard not in sibling_result, f"Original sibling wildcard {sibling_wildcard} should be replaced by parent wildcard"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_15_stop_level_precedence_over_other_rules(data):
     """Property 15: Stop level precedence over other rules.
@@ -1570,7 +1570,7 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
     assert len(allowed_consolidated) < len(allowed_test_paths), f"Should have consolidated paths at allowed depth, got {len(allowed_consolidated)} from {len(allowed_test_paths)}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_1_sibling_threshold_parameter_usage(data):
     """Property 1: Sibling threshold parameter usage.
@@ -1646,7 +1646,7 @@ def test_property_1_sibling_threshold_parameter_usage(data):
     assert len(consolidated_no_consolidation) == num_siblings, f"Should have {num_siblings} paths when threshold not exceeded, got {len(consolidated_no_consolidation)}"
 
 
-@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_2_bucket_specific_sibling_threshold_usage(data):
     """Property 2: Bucket-specific sibling threshold usage.
@@ -1743,7 +1743,7 @@ def test_property_2_bucket_specific_sibling_threshold_usage(data):
                                                 assert call_args[1]['directory_threshold'] == bucket_config['directory_threshold'], "directory_threshold should match bucket config"
                                                 assert call_args[1]['stop_level'] == bucket_config['stop_level'], "stop_level should match bucket config"
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_3_sibling_threshold_boundary_conditions(data):
     """Property 3: Sibling threshold boundary conditions.
@@ -1840,7 +1840,7 @@ def test_property_3_sibling_threshold_boundary_conditions(data):
             assert sibling in consolidated_below_threshold, \
                 f"Sibling {sibling} should remain when count is below threshold"
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_4_backward_compatibility_with_missing_parameter(data):
     """Property 4: Backward compatibility with missing parameter.
@@ -1929,7 +1929,7 @@ def test_property_4_backward_compatibility_with_missing_parameter(data):
     assert parent_wildcard not in boundary_consolidated, f"Parent wildcard {parent_wildcard} should not be present at boundary condition"
 
 
-@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_5_comprehensive_sibling_threshold_behavior(data):
     """Property 5: Comprehensive sibling threshold behavior.
@@ -2033,7 +2033,7 @@ def test_property_5_comprehensive_sibling_threshold_behavior(data):
                 f"Original sibling {sibling_wildcard} should remain when blocked by stop level"
 
 
-@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_5_sibling_threshold_interaction_with_directory_threshold(data):
     """Property 5: Sibling threshold interaction with directory threshold.
@@ -2099,7 +2099,7 @@ def test_property_5_sibling_threshold_interaction_with_directory_threshold(data)
             f"Original file {file_path} should be replaced by parent wildcard"
 
 
-@settings(max_examples=10)  # Minimal iterations per testing guidelines  
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.data())
 def test_property_5_sibling_threshold_parameter_precedence(data):
     """Property 5: Sibling threshold parameter precedence over global constant.

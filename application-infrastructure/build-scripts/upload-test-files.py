@@ -51,6 +51,36 @@ class UploadResult:
     upload_paths: List[str]
 
 
+@dataclass
+class EnhancedUploadResult:
+    """Enhanced results from uploading to a bucket with file type breakdown"""
+    bucket: str
+    successful_uploads: int
+    failed_uploads: int
+    upload_paths: List[str]
+    legacy_file_count: int  # Count of legacy files (12)
+    nested_file_count: int  # Count of nested structure files (50)
+    root_directory: str     # Name of the nested structure root directory
+
+
+@dataclass
+class DirectoryLevel:
+    """Represents a single directory level in the nested structure"""
+    level_number: int  # 1-5
+    directory_path: str
+    files: List[str]  # 10 filenames
+    subdirectory: Optional[str]  # None for level 5
+
+
+@dataclass
+class NestedStructureInfo:
+    """Information about the generated nested directory structure"""
+    root_directory: str
+    levels: List[DirectoryLevel]
+    total_files: int  # Should always be 50
+    total_directories: int  # Should always be 4 (levels 1-4 have subdirs)
+
+
 class ArgumentParser:
     """Handles command line argument parsing and validation"""
     
@@ -236,6 +266,128 @@ class FileGenerator:
         return f"test-{random_chars}.html"
 
 
+class NestedStructureGenerator:
+    """Generates complex nested directory structures for testing"""
+    
+    def __init__(self):
+        """Initialize NestedStructureGenerator"""
+        self.logger = logging.getLogger(__name__)
+    
+    def generate_root_directory_name(self) -> str:
+        """
+        Generate a randomly named root directory with 8 alphanumeric characters
+        
+        Returns:
+            Root directory name (8 random alphanumeric characters)
+        """
+        # Generate 8 random alphanumeric characters (uppercase, lowercase, digits)
+        random_chars = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        return random_chars
+    
+    def generate_subdirectory_name(self, level: int) -> str:
+        """
+        Generate a subdirectory name following "level-X-YYYYYYYY" pattern
+        
+        Args:
+            level: Directory level number (1-4)
+            
+        Returns:
+            Subdirectory name following "level-X-YYYYYYYY" pattern
+        """
+        if not (1 <= level <= 4):
+            raise ValueError(f"Level must be between 1 and 4, got {level}")
+        
+        # Generate 8 random alphanumeric characters (uppercase, lowercase, digits)
+        random_chars = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        return f"level-{level}-{random_chars}"
+    
+    def generate_nested_filename(self) -> str:
+        """
+        Generate a nested filename following "nested-XXXXXX.html" pattern
+        
+        Returns:
+            Filename following "nested-XXXXXX.html" pattern where XXXXXX is 6 random alphanumeric characters
+        """
+        # Generate 6 random alphanumeric characters (uppercase, lowercase, digits)
+        random_chars = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+        return f"nested-{random_chars}.html"
+    
+    def generate_nested_structure(self, base_path: str) -> Tuple[List[Tuple[str, str]], NestedStructureInfo]:
+        """
+        Generate a complete 5-level deep nested directory structure with files at each level
+        
+        Args:
+            base_path: Base S3 path (e.g., "/stage/public/")
+            
+        Returns:
+            Tuple containing:
+            - List of tuples (s3_key, filename) where:
+              - s3_key is the full S3 path including base_path and nested structure
+              - filename is the original filename for logging
+              Total of 50 files (10 files per level × 5 levels)
+            - NestedStructureInfo object with structure details
+        """
+        paths = []
+        levels = []
+        
+        # Generate root directory name
+        root_dir = self.generate_root_directory_name()
+        
+        # Build the nested structure level by level
+        current_path = f"{base_path.rstrip('/')}/{root_dir}"
+        
+        for level in range(1, 6):  # Levels 1-5
+            # Generate 10 files at this level
+            level_filenames = set()  # Track filenames to ensure uniqueness
+            level_files = []
+            
+            for _ in range(10):
+                # Generate unique filename for this level
+                attempt = 0
+                while attempt < 100:  # Prevent infinite loop
+                    filename = self.generate_nested_filename()
+                    if filename not in level_filenames:
+                        level_filenames.add(filename)
+                        break
+                    attempt += 1
+                
+                if attempt >= 100:
+                    raise RuntimeError(f"Could not generate unique filename at level {level} after 100 attempts")
+                
+                level_files.append(filename)
+                
+                # Create full S3 path
+                s3_key = f"{current_path}/{filename}"
+                paths.append((s3_key, filename))
+            
+            # Create subdirectory for next level (except at level 5)
+            subdirectory = None
+            if level < 5:
+                subdir_name = self.generate_subdirectory_name(level)
+                subdirectory = subdir_name
+                current_path = f"{current_path}/{subdir_name}"
+            
+            # Create DirectoryLevel object
+            directory_level = DirectoryLevel(
+                level_number=level,
+                directory_path=current_path if level < 5 else current_path.rsplit('/', 1)[0],
+                files=level_files,
+                subdirectory=subdirectory
+            )
+            levels.append(directory_level)
+        
+        # Create NestedStructureInfo
+        structure_info = NestedStructureInfo(
+            root_directory=root_dir,
+            levels=levels,
+            total_files=len(paths),  # Should be 50
+            total_directories=sum(1 for level in levels if level.subdirectory is not None)  # Should be 4
+        )
+        
+        self.logger.debug(f"Generated nested structure with {len(paths)} files in root directory: {root_dir}")
+        return paths, structure_info
+
+
 class PathGenerator:
     """Creates diverse S3 path structures for testing"""
     
@@ -248,6 +400,59 @@ class PathGenerator:
         """
         self.config = config
         self.logger = logging.getLogger(__name__)
+        self.nested_generator = NestedStructureGenerator()
+    
+    def generate_all_upload_paths(self, base_path: str) -> List[Tuple[str, str]]:
+        """
+        Generate combined legacy and nested structure paths for comprehensive testing
+        
+        Args:
+            base_path: Base S3 path (e.g., "/stage/public/")
+            
+        Returns:
+            List of tuples (s3_key, filename) where:
+            - s3_key is the full S3 path including base_path
+            - filename is the original filename for logging
+            Total of 62 files (12 legacy + 50 nested structure files)
+        """
+        # Generate legacy paths (12 files)
+        legacy_paths = self.generate_upload_paths(base_path, 12)
+        
+        # Generate nested structure paths (50 files)
+        nested_paths, _ = self.nested_generator.generate_nested_structure(base_path)
+        
+        # Combine and return (62 total files)
+        all_paths = legacy_paths + nested_paths
+        
+        self.logger.debug(f"Generated {len(all_paths)} total upload paths: {len(legacy_paths)} legacy + {len(nested_paths)} nested")
+        return all_paths
+    
+    def generate_all_upload_paths_with_info(self, base_path: str) -> Tuple[List[Tuple[str, str]], NestedStructureInfo]:
+        """
+        Generate combined legacy and nested structure paths with structure information
+        
+        Args:
+            base_path: Base S3 path (e.g., "/stage/public/")
+            
+        Returns:
+            Tuple containing:
+            - List of tuples (s3_key, filename) where:
+              - s3_key is the full S3 path including base_path
+              - filename is the original filename for logging
+              Total of 62 files (12 legacy + 50 nested structure files)
+            - NestedStructureInfo object with nested structure details
+        """
+        # Generate legacy paths (12 files)
+        legacy_paths = self.generate_upload_paths(base_path, 12)
+        
+        # Generate nested structure paths (50 files)
+        nested_paths, structure_info = self.nested_generator.generate_nested_structure(base_path)
+        
+        # Combine and return (62 total files)
+        all_paths = legacy_paths + nested_paths
+        
+        self.logger.debug(f"Generated {len(all_paths)} total upload paths: {len(legacy_paths)} legacy + {len(nested_paths)} nested")
+        return all_paths, structure_info
     
     def generate_upload_paths(self, base_path: str, count: int = 12) -> List[Tuple[str, str]]:
         """
@@ -492,6 +697,86 @@ class Logger:
             self.logger.error("  - Check bucket names and existence")
             self.logger.error("  - Ensure network connectivity to AWS")
     
+    def log_enhanced_summary(self, results: Dict[str, 'EnhancedUploadResult']) -> None:
+        """
+        Log enhanced summary of all upload operations with file type breakdown
+        
+        Args:
+            results: Dictionary mapping bucket names to EnhancedUploadResult objects
+        """
+        self.logger.info("\n=== Enhanced Upload Summary ===")
+        
+        total_successful = 0
+        total_failed = 0
+        total_legacy_files = 0
+        total_nested_files = 0
+        
+        for bucket, result in results.items():
+            total_successful += result.successful_uploads
+            total_failed += result.failed_uploads
+            total_legacy_files += result.legacy_file_count
+            total_nested_files += result.nested_file_count
+            
+            # Basic bucket summary
+            self.logger.info(f"{bucket}: {result.successful_uploads} successful, {result.failed_uploads} failed")
+            
+            # File type breakdown
+            self.logger.info(f"  Legacy files: {result.legacy_file_count}")
+            self.logger.info(f"  Nested structure files: {result.nested_file_count}")
+            self.logger.info(f"  Root directory: {result.root_directory}")
+            
+            if self.config.verbose and result.upload_paths:
+                self.logger.info(f"  Uploaded paths:")
+                for path in result.upload_paths:
+                    clean_path = path.lstrip('/')
+                    self.logger.info(f"    s3://{bucket}/{clean_path}")
+        
+        # Enhanced total summary with file type breakdown
+        total_files = total_legacy_files + total_nested_files
+        self.logger.info(f"\nTotal: {total_successful} successful, {total_failed} failed uploads")
+        self.logger.info(f"File breakdown: {total_legacy_files} legacy + {total_nested_files} nested = {total_files} total files per bucket")
+        
+        if total_failed > 0:
+            self.logger.error(f"\n{total_failed} uploads failed. Check bucket permissions and network connectivity.")
+            self.logger.error("Retry suggestions:")
+            self.logger.error("  - Verify AWS credentials and permissions")
+            self.logger.error("  - Check bucket names and existence")
+            self.logger.error("  - Ensure network connectivity to AWS")
+    
+    def log_nested_structure_start(self, root_dir: str) -> None:
+        """
+        Log the start of nested structure creation with root directory and overview
+        
+        Args:
+            root_dir: Name of the root directory being created
+        """
+        self.logger.info(f"Creating nested structure in root directory: {root_dir}")
+        self.logger.info("Structure: 5 levels deep, 10 files per level, 50 total files")
+        
+        if self.config.verbose:
+            self.logger.info("Nested structure pattern:")
+            self.logger.info("  Level 1: 10 files + 1 subdirectory")
+            self.logger.info("  Level 2: 10 files + 1 subdirectory") 
+            self.logger.info("  Level 3: 10 files + 1 subdirectory")
+            self.logger.info("  Level 4: 10 files + 1 subdirectory")
+            self.logger.info("  Level 5: 10 files (no subdirectory)")
+    
+    def log_level_progress(self, level: int, files_count: int) -> None:
+        """
+        Log progress for directory level creation
+        
+        Args:
+            level: Directory level number (1-5)
+            files_count: Number of files created at this level
+        """
+        self.logger.info(f"Level {level}: Created {files_count} files")
+        
+        if self.config.verbose:
+            if level < 5:
+                self.logger.debug(f"Level {level}: Also created 1 subdirectory for next level")
+            else:
+                self.logger.debug(f"Level {level}: Final level, no subdirectory created")
+    
     def log_error_with_guidance(self, error_message: str, suggestions: List[str]) -> None:
         """
         Log error message with actionable guidance
@@ -509,6 +794,9 @@ class Logger:
 
 class S3Uploader:
     """Handles S3 upload operations with error handling and retry logic"""
+    
+    # S3 key length limit (1024 characters)
+    MAX_S3_KEY_LENGTH = 1024
     
     def __init__(self, session: boto3.Session, config: Configuration, logger: Logger):
         """
@@ -543,6 +831,28 @@ class S3Uploader:
             self.logger_component.log_bucket_validation(bucket, False, str(e))
             return False
     
+    def validate_s3_key_length(self, key: str) -> bool:
+        """
+        Validate that an S3 key does not exceed the maximum length limit
+        
+        Args:
+            key: S3 object key (path)
+            
+        Returns:
+            True if key length is valid, False otherwise
+        """
+        clean_key = key.lstrip('/')
+        key_length = len(clean_key)
+        
+        if key_length > self.MAX_S3_KEY_LENGTH:
+            self.logger.error(
+                f"S3 key length exceeds limit: {key_length} > {self.MAX_S3_KEY_LENGTH} characters. "
+                f"Key: {clean_key[:100]}{'...' if key_length > 100 else ''}"
+            )
+            return False
+        
+        return True
+    
     def upload_file(self, bucket: str, key: str, content: str) -> bool:
         """
         Upload a single file to S3
@@ -556,6 +866,14 @@ class S3Uploader:
             True if upload successful, False otherwise
         """
         try:
+            # Validate S3 key length before upload attempt
+            if not self.validate_s3_key_length(key):
+                self.logger_component.log_upload_failure(
+                    bucket, key, 
+                    f"S3 key length exceeds {self.MAX_S3_KEY_LENGTH} character limit"
+                )
+                return False
+            
             # Remove leading slash from key if present
             clean_key = key.lstrip('/')
             
@@ -586,6 +904,14 @@ class S3Uploader:
         Returns:
             True if upload successful, False if all retries failed
         """
+        # Validate S3 key length before any upload attempts
+        if not self.validate_s3_key_length(key):
+            self.logger_component.log_upload_failure(
+                bucket, key, 
+                f"S3 key length exceeds {self.MAX_S3_KEY_LENGTH} character limit"
+            )
+            return False
+        
         for attempt in range(max_retries + 1):  # +1 for initial attempt
             try:
                 # Remove leading slash from key if present
@@ -673,6 +999,127 @@ class S3Uploader:
             self.logger_component.log_bucket_processing_complete(bucket, successful_uploads, failed_uploads)
         
         return results
+    
+    def execute_enhanced_upload_tasks(self, tasks: List[UploadTask], structure_info: NestedStructureInfo) -> Dict[str, EnhancedUploadResult]:
+        """
+        Execute a list of upload tasks with enhanced tracking, handling errors per bucket
+        
+        Args:
+            tasks: List of UploadTask objects to execute
+            structure_info: NestedStructureInfo object with nested structure details
+            
+        Returns:
+            Dictionary mapping bucket names to EnhancedUploadResult objects
+        """
+        results = {}
+        
+        # Group tasks by bucket
+        tasks_by_bucket = {}
+        for task in tasks:
+            if task.bucket not in tasks_by_bucket:
+                tasks_by_bucket[task.bucket] = []
+            tasks_by_bucket[task.bucket].append(task)
+        
+        # Process each bucket
+        for bucket, bucket_tasks in tasks_by_bucket.items():
+            self.logger_component.log_bucket_processing_start(bucket)
+            
+            # Validate bucket exists
+            if not self.validate_bucket_exists(bucket):
+                self.logger.error(f"Skipping bucket {bucket} - validation failed")
+                results[bucket] = EnhancedUploadResult(
+                    bucket=bucket,
+                    successful_uploads=0,
+                    failed_uploads=len(bucket_tasks),
+                    upload_paths=[],
+                    legacy_file_count=0,
+                    nested_file_count=0,
+                    root_directory=structure_info.root_directory
+                )
+                continue
+            
+            # Separate legacy and nested file tasks for error isolation
+            legacy_tasks = []
+            nested_tasks = []
+            
+            for task in bucket_tasks:
+                if task.filename.startswith('nested-'):
+                    nested_tasks.append(task)
+                else:
+                    legacy_tasks.append(task)
+            
+            # Process legacy files first (maintain backward compatibility)
+            legacy_successful = 0
+            legacy_failed = 0
+            legacy_paths = []
+            
+            self.logger.info(f"Processing {len(legacy_tasks)} legacy files for bucket {bucket}")
+            
+            for task in legacy_tasks:
+                try:
+                    if self.upload_with_retry(task.bucket, task.key, task.content):
+                        legacy_successful += 1
+                        legacy_paths.append(task.key)
+                    else:
+                        legacy_failed += 1
+                        self.logger.warning(f"Legacy file upload failed: {task.filename}")
+                except Exception as e:
+                    legacy_failed += 1
+                    self.logger.error(f"Legacy file upload error for {task.filename}: {e}")
+            
+            # Process nested structure files separately (error isolation)
+            nested_successful = 0
+            nested_failed = 0
+            nested_paths = []
+            
+            self.logger.info(f"Processing {len(nested_tasks)} nested structure files for bucket {bucket}")
+            
+            try:
+                for task in nested_tasks:
+                    try:
+                        if self.upload_with_retry(task.bucket, task.key, task.content):
+                            nested_successful += 1
+                            nested_paths.append(task.key)
+                        else:
+                            nested_failed += 1
+                            self.logger.warning(f"Nested structure file upload failed: {task.filename}")
+                    except Exception as e:
+                        nested_failed += 1
+                        self.logger.error(f"Nested structure file upload error for {task.filename}: {e}")
+            except Exception as e:
+                # If nested structure processing fails completely, log but continue
+                self.logger.error(f"Nested structure processing failed for bucket {bucket}: {e}")
+                nested_failed = len(nested_tasks)
+                nested_successful = 0
+                nested_paths = []
+            
+            # Combine results
+            total_successful = legacy_successful + nested_successful
+            total_failed = legacy_failed + nested_failed
+            all_paths = legacy_paths + nested_paths
+            
+            results[bucket] = EnhancedUploadResult(
+                bucket=bucket,
+                successful_uploads=total_successful,
+                failed_uploads=total_failed,
+                upload_paths=all_paths,
+                legacy_file_count=len(legacy_tasks),
+                nested_file_count=len(nested_tasks),
+                root_directory=structure_info.root_directory
+            )
+            
+            # Log detailed completion status with file type breakdown
+            self.logger.info(f"Bucket {bucket} completed: {total_successful} successful, {total_failed} failed")
+            self.logger.info(f"  Legacy files: {legacy_successful} successful, {legacy_failed} failed")
+            self.logger.info(f"  Nested files: {nested_successful} successful, {nested_failed} failed")
+            
+            # Provide clear error reporting distinguishing between file types
+            if legacy_failed > 0:
+                self.logger.error(f"Legacy file processing had {legacy_failed} failures in bucket {bucket}")
+            if nested_failed > 0:
+                self.logger.error(f"Nested structure processing had {nested_failed} failures in bucket {bucket}")
+        
+        return results
 
 
 def setup_console_logging(verbose: bool = False) -> logging.Logger:
@@ -728,14 +1175,21 @@ def main():
         path_generator = PathGenerator(config)
         s3_uploader = S3Uploader(session, config, logger_component)
         
-        # Generate upload tasks
+        # Generate upload tasks with enhanced tracking
         upload_tasks = []
         source_content = file_generator.get_source_content()
+        structure_info = None
         
         for bucket in buckets:
             for stage in stages:
                 base_path = env_manager.determine_base_path(stage)
-                upload_paths = path_generator.generate_upload_paths(base_path)
+                upload_paths, nested_info = path_generator.generate_all_upload_paths_with_info(base_path)
+                
+                # Store structure info for enhanced logging (same for all buckets/stages)
+                if structure_info is None:
+                    structure_info = nested_info
+                    logger_component.log_nested_structure_start(nested_info.root_directory)
+                
                 for s3_key, filename in upload_paths:
                     task = UploadTask(
                         bucket=bucket,
@@ -745,11 +1199,11 @@ def main():
                     )
                     upload_tasks.append(task)
         
-        # Execute uploads
-        results = s3_uploader.execute_upload_tasks(upload_tasks)
+        # Execute uploads with enhanced tracking
+        results = s3_uploader.execute_enhanced_upload_tasks(upload_tasks, structure_info)
         
-        # Log summary
-        logger_component.log_summary(results)
+        # Log enhanced summary
+        logger_component.log_enhanced_summary(results)
         
         # Determine exit code
         total_failed = sum(result.failed_uploads for result in results.values())

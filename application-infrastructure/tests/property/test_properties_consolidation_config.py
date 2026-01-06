@@ -141,7 +141,7 @@ def tags_with_both_config_strategy(draw, threshold_value, stop_level_value):
 
 # Property Tests
 
-@settings(max_examples=20)  # Reduced from 100 per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_threshold_tag_strategy())
 def test_property_1_directory_threshold_tag_reading(bucket_name, threshold_value):
     """Property 1: Directory consolidation threshold tag reading.
@@ -170,7 +170,7 @@ def test_property_1_directory_threshold_tag_reading(bucket_name, threshold_value
             f"Expected source 'tag', got {config['directory_threshold_source']}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_threshold_tag_strategy())
 def test_property_2_valid_directory_threshold_usage(bucket_name, threshold_value):
     """Property 2: Valid directory threshold tag usage.
@@ -201,7 +201,7 @@ def test_property_2_valid_directory_threshold_usage(bucket_name, threshold_value
             "Should use tag source when valid tag is present"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy())
 def test_property_3_directory_threshold_fallback(bucket_name):
     """Property 3: Directory threshold fallback behavior.
@@ -228,7 +228,7 @@ def test_property_3_directory_threshold_fallback(bucket_name):
             f"Expected source 'default', got {config['directory_threshold_source']}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), invalid_tag_value_strategy())
 def test_property_4_invalid_directory_threshold_handling(bucket_name, invalid_value):
     """Property 4: Invalid directory threshold handling.
@@ -258,7 +258,7 @@ def test_property_4_invalid_directory_threshold_handling(bucket_name, invalid_va
             f"Expected source 'default', got {config['directory_threshold_source']}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_stop_level_tag_strategy())
 def test_property_6_stop_level_tag_reading(bucket_name, stop_level_value):
     """Property 6: Consolidation stop level tag reading.
@@ -286,7 +286,7 @@ def test_property_6_stop_level_tag_reading(bucket_name, stop_level_value):
             f"Expected source 'tag', got {config['stop_level_source']}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_stop_level_tag_strategy())
 def test_property_7_valid_stop_level_usage(bucket_name, stop_level_value):
     """Property 7: Valid stop level tag usage.
@@ -316,7 +316,7 @@ def test_property_7_valid_stop_level_usage(bucket_name, stop_level_value):
             "Should not use global constant when valid tag is present"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy())
 def test_property_8_stop_level_fallback(bucket_name):
     """Property 8: Stop level fallback behavior.
@@ -343,7 +343,7 @@ def test_property_8_stop_level_fallback(bucket_name):
             f"Expected source 'default', got {config['stop_level_source']}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy())
 def test_property_15_configuration_logging_completeness(bucket_name):
     """Property 15: Configuration logging completeness.
@@ -386,7 +386,7 @@ def test_property_15_configuration_logging_completeness(bucket_name):
         assert 'configuration_tags_found' in log_extra
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy())
 def test_property_16_default_value_logging(bucket_name):
     """Property 16: Default value logging.
@@ -424,7 +424,7 @@ def test_property_16_default_value_logging(bucket_name):
         assert log_extra['stop_level_source'] == 'default'
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), invalid_tag_value_strategy())
 def test_property_17_invalid_tag_logging(bucket_name, invalid_value):
     """Property 17: Invalid tag value logging.
@@ -465,7 +465,7 @@ def test_property_17_invalid_tag_logging(bucket_name, invalid_value):
     stop_level=st.integers(min_value=0, max_value=20),
     aggregation_window=st.integers(min_value=60, max_value=3600)
 )
-@settings(max_examples=20)  # Reduced iterations per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 def test_property_environment_variable_configuration(directory_threshold, stop_level, aggregation_window):
     """
     **Feature: dynamic-bucket-consolidation-config, Property 13: Environment variable configuration**

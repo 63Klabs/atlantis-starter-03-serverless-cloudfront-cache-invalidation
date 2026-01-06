@@ -1,5 +1,5 @@
 - [x] Move up path consolidation
-- [ ] Increase num of tests in upload-test-files.py
+- [x] Increase num of tests in upload-test-files.py
 - [ ] Add Custom path for bucket
 - [ ] Clean up debug output
-- [ ] Remove Kiro directory from .gitignore
+- [ ] Remove Kiro specs directory from .gitignore

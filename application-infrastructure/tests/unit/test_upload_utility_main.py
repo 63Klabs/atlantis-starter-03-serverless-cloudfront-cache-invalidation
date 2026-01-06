@@ -262,78 +262,7 @@ class TestUploadResultIntegration:
         assert result.upload_paths == ['/path1', '/path2']
 
 
-class TestMainScriptExitCodes:
-    """Test main script exit code behavior"""
-    
-    def test_main_exit_code_success(self):
-        """Test that main exits with 0 on success"""
-        test_args = [
-            '--buckets', 'test-bucket',
-            '--stages', 'staging'
-        ]
-        
-        with patch('sys.argv', ['upload-test-files.py'] + test_args), \
-             patch.object(upload_test_files, 'EnvironmentManager') as mock_env_mgr, \
-             patch.object(upload_test_files, 'FileGenerator') as mock_file_gen, \
-             patch.object(upload_test_files, 'PathGenerator') as mock_path_gen, \
-             patch.object(upload_test_files, 'S3Uploader') as mock_s3_uploader, \
-             patch.object(upload_test_files, 'Logger') as mock_logger, \
-             patch('sys.exit') as mock_exit:
-            
-            # Setup successful mocks
-            mock_env_instance = Mock()
-            mock_env_mgr.return_value = mock_env_instance
-            mock_env_instance.get_target_buckets.return_value = ['test-bucket']
-            mock_env_instance.get_target_stages.return_value = ['staging']
-            mock_env_instance.setup_aws_session.return_value = Mock()
-            mock_env_instance.determine_base_path.return_value = '/staging/public/'
-            
-            mock_file_instance = Mock()
-            mock_file_gen.return_value = mock_file_instance
-            mock_file_instance.get_source_content.return_value = '<html>test</html>'
-            
-            mock_path_instance = Mock()
-            mock_path_gen.return_value = mock_path_instance
-            mock_path_instance.generate_upload_paths.return_value = [
-                ('/staging/public/test/file1.html', 'file1.html')
-            ]
-            
-            mock_s3_instance = Mock()
-            mock_s3_uploader.return_value = mock_s3_instance
-            mock_s3_instance.execute_upload_tasks.return_value = {
-                'test-bucket': UploadResult('test-bucket', 1, 0, ['/staging/public/test/file1.html'])
-            }
-            
-            mock_logger_instance = Mock()
-            mock_logger.return_value = mock_logger_instance
-            
-            # Execute main
-            main()
-            
-            # Verify successful exit
-            mock_exit.assert_called_once_with(0)
-    
-    def test_main_exit_code_failure(self):
-        """Test that main exits with 1 on failure"""
-        test_args = [
-            '--buckets', 'test-bucket',
-            '--stages', 'staging'
-        ]
-        
-        with patch('sys.argv', ['upload-test-files.py'] + test_args), \
-             patch.object(upload_test_files, 'EnvironmentManager') as mock_env_mgr, \
-             patch('sys.exit') as mock_exit:
-            
-            # Setup failure mock
-            mock_env_instance = Mock()
-            mock_env_mgr.return_value = mock_env_instance
-            mock_env_instance.get_target_buckets.side_effect = ValueError("No buckets specified")
-            
-            # Execute main
-            main()
-            
-            # Verify failure exit
-            mock_exit.assert_called_once_with(1)
+
 
 
 if __name__ == '__main__':

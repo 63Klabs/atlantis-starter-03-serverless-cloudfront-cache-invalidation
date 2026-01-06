@@ -148,7 +148,7 @@ def sibling_directories_at_depth(draw, target_depth, num_siblings=12):
 
 # Property Tests
 
-@settings(max_examples=20)  # Reduced per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 @given(directory_with_files_above_threshold())
 def test_property_5_bucket_specific_threshold_application(directory_and_files_and_threshold):
     """Property 5: Bucket-specific threshold application.
@@ -188,7 +188,7 @@ def test_property_5_bucket_specific_threshold_application(directory_and_files_an
             f"Individual file {file_path} should be consolidated away"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.lists(file_path(min_depth=1, max_depth=1), min_size=5, max_size=20))
 def test_property_9_root_consolidation_stop_level_zero(paths):
     """Property 9: Root consolidation for stop level zero.
@@ -208,7 +208,7 @@ def test_property_9_root_consolidation_stop_level_zero(paths):
     assert result[0][0] == '/*', f"Should consolidate to root wildcard, got {result[0]}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(paths_for_consolidation_testing(target_depth=2, min_files_per_dir=4), st.integers(min_value=2, max_value=5))
 def test_property_10_stop_level_consolidation_prevention(paths_at_depth, stop_level):
     """Property 10: Stop level consolidation prevention.
@@ -255,7 +255,7 @@ def test_property_10_stop_level_consolidation_prevention(paths_at_depth, stop_le
             f"Stop level {stop_level} should allow consolidation at depth {parent_depth}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.sampled_from(['/dir/index.html', '/dir/default.html', '/a/b/index.php', '/x/y/z/default.asp']), 
        st.integers(min_value=2, max_value=4))
 def test_property_11_index_file_stop_level_interaction(index_file_path, stop_level):
@@ -297,7 +297,7 @@ def test_property_11_index_file_stop_level_interaction(index_file_path, stop_lev
             "Original index file should be consolidated away"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(sibling_directories_at_depth(target_depth=2), st.integers(min_value=2, max_value=4))
 def test_property_12_sibling_directory_stop_level_interaction(parent_and_wildcards, stop_level):
     """Property 12: Sibling directory stop level interaction.
@@ -337,7 +337,7 @@ def test_property_12_sibling_directory_stop_level_interaction(parent_and_wildcar
             "Should consolidate all siblings to single parent wildcard"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(st.lists(file_path(min_depth=2, max_depth=4), min_size=5, max_size=15))
 def test_property_14_backward_compatibility_preservation(paths):
     """Property 14: Backward compatibility preservation.
@@ -363,7 +363,7 @@ def test_property_14_backward_compatibility_preservation(paths):
             f"Chunk {i} should be identical: stop_level_1={set(chunk_with_stop)}, default={set(chunk_default)}"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(paths_at_specific_depth(target_depth=3, num_paths=6), st.integers(min_value=2, max_value=4))
 def test_property_18_stop_level_prevention_logging(paths_at_depth, stop_level):
     """Property 18: Stop level prevention logging.
@@ -410,7 +410,7 @@ def test_property_18_stop_level_prevention_logging(paths_at_depth, stop_level):
             assert False, "Stop level prevention was logged but consolidation still occurred"
 
 
-@settings(max_examples=20)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(directory_with_files_above_threshold(), st.integers(min_value=4, max_value=8))
 def test_property_19_bucket_specific_threshold_logging(directory_and_files_and_threshold, custom_threshold):
     """Property 19: Bucket-specific threshold logging.

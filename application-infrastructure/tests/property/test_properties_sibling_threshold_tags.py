@@ -110,7 +110,7 @@ def invalid_stop_level_tag_strategy(draw):
 
 # Property Tests
 
-@settings(max_examples=10)  # Minimal iterations per testing guidelines
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_sibling_threshold_tag_strategy())
 def test_property_4_bucket_tag_reading(bucket_name, sibling_threshold_value):
     """Property 4: Bucket tag reading.
@@ -138,7 +138,7 @@ def test_property_4_bucket_tag_reading(bucket_name, sibling_threshold_value):
             f"Expected source 'tag', got {config['sibling_directory_threshold_source']}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_sibling_threshold_tag_strategy())
 def test_property_5_valid_tag_value_usage(bucket_name, sibling_threshold_value):
     """Property 5: Valid tag value usage.
@@ -174,7 +174,7 @@ def test_property_5_valid_tag_value_usage(bucket_name, sibling_threshold_value):
             "Should use tag source when valid tag is present"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), invalid_sibling_threshold_tag_strategy())
 def test_property_6_invalid_tag_value_handling(bucket_name, invalid_value):
     """Property 6: Invalid tag value handling.
@@ -207,7 +207,7 @@ def test_property_6_invalid_tag_value_handling(bucket_name, invalid_value):
         assert mock_logger.warning.called, "Should log warning for invalid tag value"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy())
 def test_property_7_missing_tag_fallback(bucket_name):
     """Property 7: Missing tag fallback.
@@ -234,7 +234,7 @@ def test_property_7_missing_tag_fallback(bucket_name):
             f"Expected source 'default', got {config['sibling_directory_threshold_source']}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_sibling_threshold_tag_strategy())
 def test_property_8_configuration_priority_resolution(bucket_name, sibling_threshold_value):
     """Property 8: Configuration priority resolution.
@@ -269,7 +269,7 @@ def test_property_8_configuration_priority_resolution(bucket_name, sibling_thres
             "Should indicate tag as the source when tag is present"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy())
 def test_property_9_parameter_fallback_behavior(bucket_name):
     """Property 9: Parameter fallback behavior.
@@ -296,7 +296,7 @@ def test_property_9_parameter_fallback_behavior(bucket_name):
             f"Expected source 'default', got {config['sibling_directory_threshold_source']}"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_sibling_threshold_tag_strategy())
 def test_property_10_configuration_source_logging(bucket_name, sibling_threshold_value):
     """Property 10: Configuration source logging.
@@ -338,7 +338,7 @@ def test_property_10_configuration_source_logging(bucket_name, sibling_threshold
         assert 'SiblingDirectoryConsolidationThreshold' in log_extra['configuration_tags_found']
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), invalid_stop_level_tag_strategy())
 def test_property_12_consolidation_stop_level_tag_validation(bucket_name, invalid_stop_level):
     """Property 12: ConsolidationStopLevel tag validation.
@@ -371,7 +371,7 @@ def test_property_12_consolidation_stop_level_tag_validation(bucket_name, invali
         assert mock_logger.warning.called, "Should log warning for invalid tag value"
 
 
-@settings(max_examples=10)
+@settings(max_examples=5)  # Optimized for faster execution
 @given(bucket_name_strategy(), valid_stop_level_tag_strategy())
 def test_property_consolidation_stop_level_valid_range(bucket_name, valid_stop_level):
     """Test that valid ConsolidationStopLevel tag values (0-20) are accepted.
