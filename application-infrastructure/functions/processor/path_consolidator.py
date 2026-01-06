@@ -314,7 +314,7 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
                 consolidated.add(consolidated_path)
                 consolidation_count += 1
                 
-                logger.debug(
+                logger.info(
                     f"Directory threshold consolidation at depth {parent_depth}: {len(files)} files in {parent} -> {consolidated_path}",
                     extra={'extra_fields': {
                         'operation': 'consolidate_by_directory_threshold',
@@ -812,7 +812,7 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
     
     # Log the decision for property-based tests
     if allowed:
-        logger.debug(
+        logger.info(
             f"Stop level allows consolidation at depth {depth}",
             extra={'extra_fields': {
                 'stop_level': stop_level,
@@ -821,7 +821,7 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
             }}
         )
     else:
-        logger.debug(
+        logger.info(
             f"Stop level prevents consolidation at depth {depth}",
             extra={'extra_fields': {
                 'stop_level': stop_level,
