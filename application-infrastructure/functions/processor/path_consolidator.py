@@ -314,19 +314,19 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
                 consolidated.add(consolidated_path)
                 consolidation_count += 1
                 
-                # logger.debug(
-                #     f"Stop level allows directory threshold consolidation at depth {parent_depth}: {len(files)} files in {parent} -> {consolidated_path}",
-                #     extra={'extra_fields': {
-                #         'operation': 'consolidate_by_directory_threshold',
-                #         'stop_level': stop_level,
-                #         'allowed_depth': parent_depth,
-                #         'directory_threshold': directory_threshold,
-                #         'file_count': len(files),
-                #         'parent_directory': parent,
-                #         'consolidated_to': consolidated_path,
-                #         'consolidation_type': 'directory_threshold'
-                #     }}
-                # )
+                logger.debug(
+                    f"Directory threshold consolidation at depth {parent_depth}: {len(files)} files in {parent} -> {consolidated_path}",
+                    extra={'extra_fields': {
+                        'operation': 'consolidate_by_directory_threshold',
+                        'stop_level': stop_level,
+                        'allowed_depth': parent_depth,
+                        'directory_threshold': directory_threshold,
+                        'file_count': len(files),
+                        'parent_directory': parent,
+                        'consolidated_to': consolidated_path,
+                        'consolidation_type': 'directory_threshold'
+                    }}
+                )
             else:
                 # Stop level prevents consolidation, keep individual files
                 consolidated.update(files)
@@ -805,9 +805,32 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
     if stop_level == 0:
         # Stop level 0 means allow all consolidation (special case for root)
         return True
+    
     # For stop_level > 0, allow consolidation at depth >= stop_level (deeper or equal)
     # Prevent consolidation at depth < stop_level (shallower than stop level)
-    return depth >= stop_level
+    allowed = depth >= stop_level
+    
+    # Log the decision for property-based tests
+    if allowed:
+        logger.debug(
+            f"Stop level allows consolidation at depth {depth}",
+            extra={'extra_fields': {
+                'stop_level': stop_level,
+                'allowed_depth': depth,
+                'consolidation_decision': 'allowed'
+            }}
+        )
+    else:
+        logger.debug(
+            f"Stop level prevents consolidation at depth {depth}",
+            extra={'extra_fields': {
+                'stop_level': stop_level,
+                'blocked_depth': depth,
+                'consolidation_decision': 'prevented'
+            }}
+        )
+    
+    return allowed
 
 
 def apply_stop_level_constraints(paths: Set[str], stop_level: int, root_path: str = '/') -> Set[str]:
@@ -924,6 +947,16 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     # Use provided parameters or fall back to global constants
     if directory_threshold is None:
         directory_threshold = DIRECTORY_CONSOLIDATION_THRESHOLD
+    else:
+        # Log when using bucket-specific threshold
+        logger.info(
+            f"Using bucket-specific directory threshold: {directory_threshold}",
+            extra={'extra_fields': {
+                'directory_threshold': directory_threshold,
+                'threshold_source': 'bucket_specific'
+            }}
+        )
+    
     if stop_level is None:
         from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
         stop_level = CONSOLIDATION_STOP_LEVEL
@@ -982,15 +1015,15 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     
     # Handle special case: stop level 0 means consolidate everything to root
     if stop_level == 0:
-        # logger.info(
-        #     "Stop level 0: consolidating all paths to root wildcard",
-        #     extra={'extra_fields': {
-        #         'stop_level': stop_level,
-        #         'original_count': len(cleaned_paths),
-        #         'consolidation_type': 'stop_level_zero_override',
-        #         'bypassed_rules': 'all_other_consolidation_logic'
-        #     }}
-        # )
+        logger.info(
+            "Stop level 0: consolidating all paths to root wildcard",
+            extra={'extra_fields': {
+                'stop_level': stop_level,
+                'original_count': len(cleaned_paths),
+                'consolidation_type': 'stop_level_zero_override',
+                'bypassed_rules': 'all_other_consolidation_logic'
+            }}
+        )
         return [['/*']]
     
     # Step 1: Consolidate index and default files

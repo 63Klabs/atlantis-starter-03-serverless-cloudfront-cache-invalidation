@@ -302,6 +302,7 @@ def process_s3_record(record: Dict[str, Any], queue_url: str) -> Dict[str, Any]:
                 #         'windowEndTime': active_window.get('windowEndTime')
                 #     }}
                 # )
+                pass  # Active window exists, no action needed
             else:
                 # No active window, create a new schedule
                 # logger.info(
@@ -353,6 +354,7 @@ def process_s3_record(record: Dict[str, Any], queue_url: str) -> Dict[str, Any]:
                         #         'scheduleArn': schedule_arn
                         #     }}
                         # )
+                        pass  # Window created successfully
                     else:
                         # logger.info(
                         #     "Window creation skipped (race condition - another invocation created it)",
@@ -360,6 +362,7 @@ def process_s3_record(record: Dict[str, Any], queue_url: str) -> Dict[str, Any]:
                         #         'scheduleArn': schedule_arn
                         #     }}
                         # )
+                        pass  # Window creation skipped
                 else:
                     # logger.warning(
                     #     "Failed to create schedule, but event was queued successfully DEBUG",
@@ -368,6 +371,7 @@ def process_s3_record(record: Dict[str, Any], queue_url: str) -> Dict[str, Any]:
                     #         'scheduleArnResult': schedule_arn
                     #     }}
                     # )
+                    pass  # Schedule creation failed
                     
         except Exception as e:
             # Log error but don't fail the entire operation
