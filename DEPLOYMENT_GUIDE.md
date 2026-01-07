@@ -1,4 +1,4 @@
-# Deployment Guide - Enhanced Multi-Bucket CloudFront Invalidation Service
+# Deployment Guide - Multi-Bucket CloudFront Invalidation Service
 
 This guide provides step-by-step instructions for deploying the Multi-Bucket CloudFront Invalidation Service.
 
@@ -205,6 +205,9 @@ The following steps are performed from the command line from within the SAM CONF
 
 ### Step 6: Deploy the CloudFront Distribution
 
+- You will need the `OriginBucketDomainForCloudFront` from the storage stack outputs.
+- When configuring the CloudFront distribution, you will need to add a new tag: `AllowInvalidationEvents=true`
+
 ```bash
 ## -------------------------
 ## CREATE THE CLOUDFRONT DISTRIBUTIONS
@@ -240,6 +243,8 @@ The following steps are performed from the command line from within the SAM CONF
 
 The following are performed from the command line from within the Invalidator Service repository.
 
+Make sure you followed the steps to deploy both a PROD and TEST network stack. Invalidations are only sent to production resources.
+
 ```bash
 ## -------------------------
 ## TEST
@@ -261,6 +266,16 @@ aws s3 cp test.html s3://BUCKET_NAME/prod/public/test-2.html
 cd application-infrastructure/build-scripts
 python3 ./upload-test-files.py --buckets BUCKET_NAME
 ```
+
+### Step 8: Move to Production
+
+The above commands using the Atlantis CLI scripts only deployed a TEST instance of the invalidator service. When ready to use it in production you should deploy a production instance and reconfigure your S3 buckets to use the PRODUCTION invalidator ARN. 
+
+It is useful to keep a test instance of the invalidator for testing any custom changes. To have the S3 bucket submit events to a different invalidator instance just re-run the `config.py` script for that storage stack and set the `CloudFrontCacheInvalidatorArn` parameter to point to the alternate instance.
+
+### Removing Invalidation from a Bucket
+
+To remove invalidation from your storage stack just re-run the `config.py` script fo that storage stack and leave the `CloudFrontCacheInvalidatorArn` blank by entering a dash `-` (otherwise it will remain the set value).
 
 ## Configuration
 

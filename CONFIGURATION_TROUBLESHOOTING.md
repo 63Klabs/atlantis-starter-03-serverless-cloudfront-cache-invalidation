@@ -1,4 +1,4 @@
-# Configuration Troubleshooting Guide
+# Configuration Troubleshooting Guide - Multi-Bucket CloudFront Invalidation Service
 
 This guide provides detailed troubleshooting steps for the Multi-Bucket CloudFront Invalidation Service.
 
