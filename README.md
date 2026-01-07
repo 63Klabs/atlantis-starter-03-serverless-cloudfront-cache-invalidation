@@ -2,7 +2,7 @@
 
 > For use with [Atlantis Platform Templates and Scripts](https://github.com/63Klabs/atlantis-cfn-configuration-repo-for-serverless-deployments) using AWS SAM.
 
-An application that demonstrates Atlantis Platform Templates for provisioning a method to invalidate CloudFront caches when objects are updated in an S3 bucket storing static web content.
+An application stack that provisions a solution to invalidate CloudFront caches when objects are updated in an S3 bucket storing static web content.
 
 ## Architecture
 
