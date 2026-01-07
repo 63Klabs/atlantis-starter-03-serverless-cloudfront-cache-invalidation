@@ -154,15 +154,15 @@ def consolidate_index_and_default_files(paths: Set[str], stop_level: int = None,
     # Validate and sanitize stop level
     stop_level = validate_stop_level(stop_level)
     
-    logger.debug(
-        f"Starting index/default file consolidation with stop level {stop_level}",
-        extra={'extra_fields': {
-            'operation': 'consolidate_index_and_default_files',
-            'stop_level': stop_level,
-            'root_path': root_path,
-            'input_path_count': len(paths)
-        }}
-    )
+    # logger.debug(
+    #     f"Starting index/default file consolidation with stop level {stop_level}",
+    #     extra={'extra_fields': {
+    #         'operation': 'consolidate_index_and_default_files',
+    #         'stop_level': stop_level,
+    #         'root_path': root_path,
+    #         'input_path_count': len(paths)
+    #     }}
+    # )
     
     consolidated = set()
     consolidation_count = 0
@@ -175,63 +175,63 @@ def consolidate_index_and_default_files(paths: Set[str], stop_level: int = None,
             # Check if consolidation to parent is allowed by stop level
             parent_depth = calculate_path_depth(parent, root_path)
             
-            logger.debug(
-                f"Evaluating index/default file consolidation: {path}",
-                extra={'extra_fields': {
-                    'operation': 'consolidate_index_and_default_files',
-                    'original_path': path,
-                    'parent_directory': parent,
-                    'parent_depth': parent_depth,
-                    'stop_level': stop_level,
-                    'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
-                }}
-            )
+            # logger.debug(
+            #     f"Evaluating index/default file consolidation: {path}",
+            #     extra={'extra_fields': {
+            #         'operation': 'consolidate_index_and_default_files',
+            #         'original_path': path,
+            #         'parent_directory': parent,
+            #         'parent_depth': parent_depth,
+            #         'stop_level': stop_level,
+            #         'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
+            #     }}
+            # )
             
             if is_consolidation_allowed_at_depth(parent_depth, stop_level):
                 consolidated_path = '/*' if parent == '/' else f"{parent}/*"
                 consolidated.add(consolidated_path)
                 consolidation_count += 1
                 
-                logger.debug(
-                    f"Stop level allows index/default consolidation at depth {parent_depth}: {path} -> {consolidated_path}",
-                    extra={'extra_fields': {
-                        'operation': 'consolidate_index_and_default_files',
-                        'stop_level': stop_level,
-                        'allowed_depth': parent_depth,
-                        'original_path': path,
-                        'consolidated_to': consolidated_path,
-                        'consolidation_type': 'index_default_file'
-                    }}
-                )
+                # logger.debug(
+                #     f"Stop level allows index/default consolidation at depth {parent_depth}: {path} -> {consolidated_path}",
+                #     extra={'extra_fields': {
+                #         'operation': 'consolidate_index_and_default_files',
+                #         'stop_level': stop_level,
+                #         'allowed_depth': parent_depth,
+                #         'original_path': path,
+                #         'consolidated_to': consolidated_path,
+                #         'consolidation_type': 'index_default_file'
+                #     }}
+                # )
             else:
                 # Stop level prevents consolidation, keep original path
                 consolidated.add(path)
                 blocked_count += 1
                 
-                logger.debug(
-                    f"Stop level {stop_level} prevents index/default consolidation at depth {parent_depth}: {path}",
-                    extra={'extra_fields': {
-                        'operation': 'consolidate_index_and_default_files',
-                        'stop_level': stop_level,
-                        'blocked_depth': parent_depth,
-                        'original_path': path,
-                        'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
-                        'consolidation_type': 'index_default_file'
-                    }}
-                )
+                # logger.debug(
+                #     f"Stop level {stop_level} prevents index/default consolidation at depth {parent_depth}: {path}",
+                #     extra={'extra_fields': {
+                #         'operation': 'consolidate_index_and_default_files',
+                #         'stop_level': stop_level,
+                #         'blocked_depth': parent_depth,
+                #         'original_path': path,
+                #         'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
+                #         'consolidation_type': 'index_default_file'
+                #     }}
+                # )
         else:
             consolidated.add(path)
     
-    logger.debug(
-        f"Index/default file consolidation complete: {consolidation_count} consolidated, {blocked_count} blocked by stop level",
-        extra={'extra_fields': {
-            'operation': 'consolidate_index_and_default_files',
-            'stop_level': stop_level,
-            'consolidations_performed': consolidation_count,
-            'consolidations_blocked': blocked_count,
-            'output_path_count': len(consolidated)
-        }}
-    )
+    # logger.debug(
+    #     f"Index/default file consolidation complete: {consolidation_count} consolidated, {blocked_count} blocked by stop level",
+    #     extra={'extra_fields': {
+    #         'operation': 'consolidate_index_and_default_files',
+    #         'stop_level': stop_level,
+    #         'consolidations_performed': consolidation_count,
+    #         'consolidations_blocked': blocked_count,
+    #         'output_path_count': len(consolidated)
+    #     }}
+    # )
     
     return consolidated
 
@@ -260,16 +260,16 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
     # Validate and sanitize stop level
     stop_level = validate_stop_level(stop_level)
     
-    logger.debug(
-        f"Starting directory threshold consolidation with threshold {directory_threshold}, stop level {stop_level}",
-        extra={'extra_fields': {
-            'operation': 'consolidate_by_directory_threshold',
-            'directory_threshold': directory_threshold,
-            'stop_level': stop_level,
-            'root_path': root_path,
-            'input_path_count': len(paths)
-        }}
-    )
+    # logger.debug(
+    #     f"Starting directory threshold consolidation with threshold {directory_threshold}, stop level {stop_level}",
+    #     extra={'extra_fields': {
+    #         'operation': 'consolidate_by_directory_threshold',
+    #         'directory_threshold': directory_threshold,
+    #         'stop_level': stop_level,
+    #         'root_path': root_path,
+    #         'input_path_count': len(paths)
+    #     }}
+    # )
     
     # Group paths by parent directory
     directory_groups: Dict[str, List[str]] = defaultdict(list)
@@ -292,19 +292,19 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
     for parent, files in directory_groups.items():
         parent_depth = calculate_path_depth(parent, root_path)
         
-        logger.debug(
-            f"Evaluating directory threshold consolidation for {parent}: {len(files)} files",
-            extra={'extra_fields': {
-                'operation': 'consolidate_by_directory_threshold',
-                'parent_directory': parent,
-                'parent_depth': parent_depth,
-                'file_count': len(files),
-                'directory_threshold': directory_threshold,
-                'stop_level': stop_level,
-                'exceeds_threshold': len(files) > directory_threshold,
-                'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
-            }}
-        )
+        # logger.debug(
+        #     f"Evaluating directory threshold consolidation for {parent}: {len(files)} files",
+        #     extra={'extra_fields': {
+        #         'operation': 'consolidate_by_directory_threshold',
+        #         'parent_directory': parent,
+        #         'parent_depth': parent_depth,
+        #         'file_count': len(files),
+        #         'directory_threshold': directory_threshold,
+        #         'stop_level': stop_level,
+        #         'exceeds_threshold': len(files) > directory_threshold,
+        #         'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
+        #     }}
+        # )
         
         if len(files) > directory_threshold:
             # Check if consolidation is allowed by stop level
@@ -314,8 +314,8 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
                 consolidated.add(consolidated_path)
                 consolidation_count += 1
                 
-                logger.debug(
-                    f"Stop level allows directory threshold consolidation at depth {parent_depth}: {len(files)} files in {parent} -> {consolidated_path}",
+                logger.info(
+                    f"Directory threshold consolidation at depth {parent_depth}: {len(files)} files in {parent} -> {consolidated_path}",
                     extra={'extra_fields': {
                         'operation': 'consolidate_by_directory_threshold',
                         'stop_level': stop_level,
@@ -332,18 +332,18 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
                 consolidated.update(files)
                 blocked_count += 1
                 
-                logger.debug(
-                    f"Stop level {stop_level} prevents directory consolidation at depth {parent_depth}: {parent} ({len(files)} files)",
-                    extra={'extra_fields': {
-                        'operation': 'consolidate_by_directory_threshold',
-                        'stop_level': stop_level,
-                        'blocked_depth': parent_depth,
-                        'parent_directory': parent,
-                        'file_count': len(files),
-                        'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
-                        'consolidation_type': 'directory_threshold'
-                    }}
-                )
+                # logger.debug(
+                #     f"Stop level {stop_level} prevents directory consolidation at depth {parent_depth}: {parent} ({len(files)} files)",
+                #     extra={'extra_fields': {
+                #         'operation': 'consolidate_by_directory_threshold',
+                #         'stop_level': stop_level,
+                #         'blocked_depth': parent_depth,
+                #         'parent_directory': parent,
+                #         'file_count': len(files),
+                #         'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
+                #         'consolidation_type': 'directory_threshold'
+                #     }}
+                # )
         else:
             # Keep individual files (below threshold)
             consolidated.update(files)
@@ -351,17 +351,17 @@ def consolidate_by_directory_threshold(paths: Set[str], directory_threshold: int
     # Add back existing wildcards
     consolidated.update(directory_wildcards)
     
-    logger.debug(
-        f"Directory threshold consolidation complete: {consolidation_count} directories consolidated, {blocked_count} blocked by stop level",
-        extra={'extra_fields': {
-            'operation': 'consolidate_by_directory_threshold',
-            'stop_level': stop_level,
-            'directory_threshold': directory_threshold,
-            'consolidations_performed': consolidation_count,
-            'consolidations_blocked': blocked_count,
-            'output_path_count': len(consolidated)
-        }}
-    )
+    # logger.debug(
+    #     f"Directory threshold consolidation complete: {consolidation_count} directories consolidated, {blocked_count} blocked by stop level",
+    #     extra={'extra_fields': {
+    #         'operation': 'consolidate_by_directory_threshold',
+    #         'stop_level': stop_level,
+    #         'directory_threshold': directory_threshold,
+    #         'consolidations_performed': consolidation_count,
+    #         'consolidations_blocked': blocked_count,
+    #         'output_path_count': len(consolidated)
+    #     }}
+    # )
     
     return consolidated
 
@@ -412,16 +412,16 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
     # Validate and sanitize stop level
     stop_level = validate_stop_level(stop_level)
     
-    logger.debug(
-        f"Starting sibling directory consolidation with stop level {stop_level}, sibling threshold {sibling_threshold}",
-        extra={'extra_fields': {
-            'operation': 'consolidate_sibling_directories',
-            'stop_level': stop_level,
-            'root_path': root_path,
-            'input_path_count': len(paths),
-            'sibling_threshold': sibling_threshold
-        }}
-    )
+    # logger.debug(
+    #     f"Starting sibling directory consolidation with stop level {stop_level}, sibling threshold {sibling_threshold}",
+    #     extra={'extra_fields': {
+    #         'operation': 'consolidate_sibling_directories',
+    #         'stop_level': stop_level,
+    #         'root_path': root_path,
+    #         'input_path_count': len(paths),
+    #         'sibling_threshold': sibling_threshold
+    #     }}
+    # )
     
     # Extract directory wildcards (paths ending with /*)
     wildcards = {p for p in paths if p.endswith('/*')}
@@ -444,19 +444,19 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
     for parent, siblings in parent_groups.items():
         parent_depth = calculate_path_depth(parent, root_path)
         
-        logger.debug(
-            f"Evaluating sibling directory consolidation for {parent}: {len(siblings)} siblings",
-            extra={'extra_fields': {
-                'operation': 'consolidate_sibling_directories',
-                'parent_directory': parent,
-                'parent_depth': parent_depth,
-                'sibling_count': len(siblings),
-                'sibling_threshold': sibling_threshold,
-                'stop_level': stop_level,
-                'exceeds_threshold': len(siblings) > sibling_threshold,
-                'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
-            }}
-        )
+        # logger.debug(
+        #     f"Evaluating sibling directory consolidation for {parent}: {len(siblings)} siblings",
+        #     extra={'extra_fields': {
+        #         'operation': 'consolidate_sibling_directories',
+        #         'parent_directory': parent,
+        #         'parent_depth': parent_depth,
+        #         'sibling_count': len(siblings),
+        #         'sibling_threshold': sibling_threshold,
+        #         'stop_level': stop_level,
+        #         'exceeds_threshold': len(siblings) > sibling_threshold,
+        #         'consolidation_allowed': is_consolidation_allowed_at_depth(parent_depth, stop_level)
+        #     }}
+        # )
         
         if len(siblings) > sibling_threshold:
             # Check if consolidation is allowed by stop level
@@ -466,35 +466,35 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
                 consolidated.add(consolidated_path)
                 consolidation_count += 1
                 
-                logger.debug(
-                    f"Stop level allows sibling directory consolidation at depth {parent_depth}: {len(siblings)} siblings in {parent} -> {consolidated_path}",
-                    extra={'extra_fields': {
-                        'operation': 'consolidate_sibling_directories',
-                        'stop_level': stop_level,
-                        'allowed_depth': parent_depth,
-                        'sibling_count': len(siblings),
-                        'parent_directory': parent,
-                        'consolidated_to': consolidated_path,
-                        'consolidation_type': 'sibling_directory'
-                    }}
-                )
+                # logger.debug(
+                #     f"Stop level allows sibling directory consolidation at depth {parent_depth}: {len(siblings)} siblings in {parent} -> {consolidated_path}",
+                #     extra={'extra_fields': {
+                #         'operation': 'consolidate_sibling_directories',
+                #         'stop_level': stop_level,
+                #         'allowed_depth': parent_depth,
+                #         'sibling_count': len(siblings),
+                #         'parent_directory': parent,
+                #         'consolidated_to': consolidated_path,
+                #         'consolidation_type': 'sibling_directory'
+                #     }}
+                # )
             else:
                 # Stop level prevents consolidation, keep individual siblings
                 consolidated.update(siblings)
                 blocked_count += 1
                 
-                logger.debug(
-                    f"Stop level {stop_level} prevents sibling consolidation at depth {parent_depth}: {parent} ({len(siblings)} siblings)",
-                    extra={'extra_fields': {
-                        'operation': 'consolidate_sibling_directories',
-                        'stop_level': stop_level,
-                        'blocked_depth': parent_depth,
-                        'parent_directory': parent,
-                        'sibling_count': len(siblings),
-                        'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
-                        'consolidation_type': 'sibling_directory'
-                    }}
-                )
+                # logger.debug(
+                #     f"Stop level {stop_level} prevents sibling consolidation at depth {parent_depth}: {parent} ({len(siblings)} siblings)",
+                #     extra={'extra_fields': {
+                #         'operation': 'consolidate_sibling_directories',
+                #         'stop_level': stop_level,
+                #         'blocked_depth': parent_depth,
+                #         'parent_directory': parent,
+                #         'sibling_count': len(siblings),
+                #         'would_consolidate_to': f"{parent}/*" if parent != '/' else '/*',
+                #         'consolidation_type': 'sibling_directory'
+                #     }}
+                # )
         else:
             # Keep individual sibling wildcards (below threshold)
             consolidated.update(siblings)
@@ -502,16 +502,16 @@ def consolidate_sibling_directories(paths: Set[str], stop_level: int = None, roo
     # Add back non-wildcard paths
     consolidated.update(non_wildcards)
     
-    logger.debug(
-        f"Sibling directory consolidation complete: {consolidation_count} parent directories consolidated, {blocked_count} blocked by stop level",
-        extra={'extra_fields': {
-            'operation': 'consolidate_sibling_directories',
-            'stop_level': stop_level,
-            'consolidations_performed': consolidation_count,
-            'consolidations_blocked': blocked_count,
-            'output_path_count': len(consolidated)
-        }}
-    )
+    # logger.debug(
+    #     f"Sibling directory consolidation complete: {consolidation_count} parent directories consolidated, {blocked_count} blocked by stop level",
+    #     extra={'extra_fields': {
+    #         'operation': 'consolidate_sibling_directories',
+    #         'stop_level': stop_level,
+    #         'consolidations_performed': consolidation_count,
+    #         'consolidations_blocked': blocked_count,
+    #         'output_path_count': len(consolidated)
+    #     }}
+    # )
     
     return consolidated
 
@@ -739,18 +739,18 @@ def calculate_path_depth(path: str, root_path: str = '/') -> int:
     
     if public_index == -1:
         # No 'public' directory found - fallback to simple depth calculation
-        logger.debug(
-            f"Path depth calculation: no 'public' directory found, using simple depth",
-            extra={'extra_fields': {
-                'operation': 'calculate_path_depth',
-                'path': path,
-                'root_path': root_path,
-                'path_normalized': path_normalized,
-                'segments': segments,
-                'calculated_depth': len(segments),
-                'reason': 'no_public_directory_fallback'
-            }}
-        )
+        # logger.debug(
+        #     f"Path depth calculation: no 'public' directory found, using simple depth",
+        #     extra={'extra_fields': {
+        #         'operation': 'calculate_path_depth',
+        #         'path': path,
+        #         'root_path': root_path,
+        #         'path_normalized': path_normalized,
+        #         'segments': segments,
+        #         'calculated_depth': len(segments),
+        #         'reason': 'no_public_directory_fallback'
+        #     }}
+        # )
         return len(segments)
     
     # Calculate depth relative to 'public' directory
@@ -760,21 +760,21 @@ def calculate_path_depth(path: str, root_path: str = '/') -> int:
     # But we want public to be level 1, so:
     depth_from_public = len(segments) - public_index
     
-    logger.debug(
-        f"Path depth calculation: calculated from 'public' directory",
-        extra={'extra_fields': {
-            'operation': 'calculate_path_depth',
-            'path': path,
-            'root_path': root_path,
-            'path_normalized': path_normalized,
-            'segments': segments,
-            'public_index': public_index,
-            'public_segment': segments[public_index] if public_index >= 0 else None,
-            'segments_after_public': segments[public_index+1:] if public_index >= 0 else [],
-            'calculated_depth': depth_from_public,
-            'reason': 'calculated_from_public_directory'
-        }}
-    )
+    # logger.debug(
+    #     f"Path depth calculation: calculated from 'public' directory",
+    #     extra={'extra_fields': {
+    #         'operation': 'calculate_path_depth',
+    #         'path': path,
+    #         'root_path': root_path,
+    #         'path_normalized': path_normalized,
+    #         'segments': segments,
+    #         'public_index': public_index,
+    #         'public_segment': segments[public_index] if public_index >= 0 else None,
+    #         'segments_after_public': segments[public_index+1:] if public_index >= 0 else [],
+    #         'calculated_depth': depth_from_public,
+    #         'reason': 'calculated_from_public_directory'
+    #     }}
+    # )
     
     return depth_from_public
 
@@ -805,9 +805,32 @@ def is_consolidation_allowed_at_depth(depth: int, stop_level: int) -> bool:
     if stop_level == 0:
         # Stop level 0 means allow all consolidation (special case for root)
         return True
+    
     # For stop_level > 0, allow consolidation at depth >= stop_level (deeper or equal)
     # Prevent consolidation at depth < stop_level (shallower than stop level)
-    return depth >= stop_level
+    allowed = depth >= stop_level
+    
+    # Log the decision for property-based tests
+    if allowed:
+        logger.info(
+            f"Stop level allows consolidation at depth {depth}",
+            extra={'extra_fields': {
+                'stop_level': stop_level,
+                'allowed_depth': depth,
+                'consolidation_decision': 'allowed'
+            }}
+        )
+    else:
+        logger.info(
+            f"Stop level prevents consolidation at depth {depth}",
+            extra={'extra_fields': {
+                'stop_level': stop_level,
+                'blocked_depth': depth,
+                'consolidation_decision': 'prevented'
+            }}
+        )
+    
+    return allowed
 
 
 def apply_stop_level_constraints(paths: Set[str], stop_level: int, root_path: str = '/') -> Set[str]:
@@ -851,14 +874,14 @@ def apply_stop_level_constraints(paths: Set[str], stop_level: int, root_path: st
             allowed_wildcards.add(wildcard)
         else:
             blocked_wildcards.add(wildcard)
-            logger.debug(
-                f"Stop level {stop_level} prevents consolidation at depth {depth}: {wildcard}",
-                extra={'extra_fields': {
-                    'stop_level': stop_level,
-                    'blocked_depth': depth,
-                    'blocked_wildcard': wildcard
-                }}
-            )
+            # logger.debug(
+            #     f"Stop level {stop_level} prevents consolidation at depth {depth}: {wildcard}",
+            #     extra={'extra_fields': {
+            #         'stop_level': stop_level,
+            #         'blocked_depth': depth,
+            #         'blocked_wildcard': wildcard
+            #     }}
+            # )
     
     # For blocked wildcards, we need to expand them back to individual paths
     # This is a simplified approach - in practice, the consolidation algorithm
@@ -924,6 +947,16 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     # Use provided parameters or fall back to global constants
     if directory_threshold is None:
         directory_threshold = DIRECTORY_CONSOLIDATION_THRESHOLD
+    else:
+        # Log when using bucket-specific threshold
+        logger.info(
+            f"Using bucket-specific directory threshold: {directory_threshold}",
+            extra={'extra_fields': {
+                'directory_threshold': directory_threshold,
+                'threshold_source': 'bucket_specific'
+            }}
+        )
+    
     if stop_level is None:
         from common.constants import CONSOLIDATION_STOP_LEVEL # pyright: ignore[reportMissingImports]
         stop_level = CONSOLIDATION_STOP_LEVEL
@@ -931,14 +964,14 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     # Validate and sanitize stop level
     stop_level = validate_stop_level(stop_level)
     
-    logger.info(
-        f"Starting path consolidation with {len(paths)} paths",
-        extra={'extra_fields': {
-            'original_path_count': len(paths),
-            'directory_threshold': directory_threshold,
-            'stop_level': stop_level
-        }}
-    )
+    # logger.info(
+    #     f"Starting path consolidation with {len(paths)} paths",
+    #     extra={'extra_fields': {
+    #         'original_path_count': len(paths),
+    #         'directory_threshold': directory_threshold,
+    #         'stop_level': stop_level
+    #     }}
+    # )
     
     # Step 0: Clean and filter input paths
     cleaned_paths = []
@@ -995,12 +1028,12 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     
     # Step 1: Consolidate index and default files
     path_set = consolidate_index_and_default_files(path_set, stop_level, root_path)
-    logger.debug(
-        f"After index/default consolidation: {len(path_set)} paths",
-        extra={'extra_fields': {
-            'path_count': len(path_set)
-        }}
-    )
+    # logger.debug(
+    #     f"After index/default consolidation: {len(path_set)} paths",
+    #     extra={'extra_fields': {
+    #         'path_count': len(path_set)
+    #     }}
+    # )
     
     # Step 2: Recursively apply directory and sibling consolidation
     path_set = consolidate_paths_recursive(path_set, directory_threshold, stop_level, root_path, sibling_threshold)

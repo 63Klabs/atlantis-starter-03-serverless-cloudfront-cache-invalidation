@@ -1,6 +1,6 @@
 # Multi-Bucket CloudFront Invalidation Service
 
-An event-driven, serverless application that automatically invalidates CloudFront cache entries when objects are updated in S3 buckets. The system is designed to be decoupled from specific buckets and distributions, using tag-based discovery and validation to support multiple applications within the Atlantis Platform framework.
+An event-driven, serverless application that automatically invalidates CloudFront cache entries when objects are updated in S3 buckets. The system is designed to be decoupled from specific buckets and distributions, using tag-based discovery and validation to support multiple applications within the 63Klabs Atlantis Platform Templates and Scripts framework.
 
 ## Table of Contents
 
@@ -21,11 +21,13 @@ An event-driven, serverless application that automatically invalidates CloudFron
 The system consists of two primary Lambda functions that work together to process S3 events and create CloudFront invalidations:
 
 ```
-┌─────────────┐
-│  S3 Bucket  │
-│  (Multiple) │
-└──────┬──────┘
-       │ S3 Event
+╔══════════════════╗
+║ - [ External ] - ║═╗
+║  S3 Bucket       ║ ║
+║  (Multiple)      ║ ║
+╚╦═════════════════╝ ║
+ ╚═══════════════════╝
+       │ S3 Event Trigger
        │ (PUT/POST/COPY/DELETE)
        ▼
 ┌─────────────────────┐
@@ -36,59 +38,48 @@ The system consists of two primary Lambda functions that work together to proces
 │  - Track window     │
 └──────┬──────────────┘
        │
-       ├─────────────────┐
-       │                 │
-       ▼                 ▼
-┌─────────────┐   ┌──────────────┐
-│  SQS Queue  │   │  DynamoDB    │
-│  (Standard) │   │  (Tracking)  │
-└──────┬──────┘   └──────┬───────┘
-       │                 │
-       │                 │ Check window
-       │                 │ Create schedule
-       │                 ▼
-       │          ┌──────────────────┐
-       │          │ EventBridge      │
-       │          │ Scheduler        │
-       │          │ (One-time, +5min)│
-       │          └──────┬───────────┘
-       │                 │
-       │                 │ After 5 minutes
-       ▼                 ▼
+       ├─────────────────┬─────────────────┐
+       │                 │ Check window    │ Create schedule
+       ▼                 ▼                 ▼ 
+┌─────────────┐   ┌──────────────┐   ┌──────────────────┐
+│  SQS Queue  │   │  DynamoDB    │   │ EventBridge      │
+│  (Standard) │   │  (Tracking)  │   │ Scheduler        │
+└─────────────┘   └──────────────┘   │ (One-time, +5min)│
+       ▲             ▲               └──────┬───────────┘ 
+       │             | Close Window         |
+       │ Poll Queue  |                      │ After 5 minutes
+       |             |  ┌───────────────────┘
+       |             |  ▼
 ┌────────────────────────────────┐
 │  Processor Lambda              │
-│  - Batch read from SQS         │
-│  - Validate bucket tags        │
+│  - Batch read from SQS         │      ┌─────────────┐
+│  - Group events by bucket      │─────►│  SQS DLQ    │
+│  - Read bucket tags            │      │  (Failures) │
+│  - Consolidate paths           │      └─────────────┘
 │  - Resolve distributions       │
-│  - Validate distribution tags  │
-│  - Consolidate paths           │
 │  - Submit invalidations        │
 └────────────┬───────────────────┘
              │
              ▼
-┌─────────────────────┐
-│  CloudFront         │
-│  Distributions      │
-│  (Multiple)         │
-└─────────────────────┘
-
-┌─────────────┐
-│  SQS DLQ    │
-│  (Failures) │
-└─────────────┘
+     ╔══════════════════╗
+     ║ - [ External ] - ║═╗
+     ║  CloudFront      ║ ║
+     ║  Distributions   ║ ║
+     ║  (Multiple)      ║ ║
+     ╚╦═════════════════╝ ║
+      ╚═══════════════════╝
 ```
 
 ## Key Features
 
 - **Decoupled Architecture**: Single stack supports any number of S3 buckets and CloudFront distributions
 - **Tag-Driven Discovery**: Uses AWS resource tags for permission validation and resource discovery
-- **Event Aggregation**: Collects events over a 5-minute window to batch process invalidations
-- **Dynamic Path Consolidation**: Intelligently reduces invalidation paths with configurable thresholds and stop levels
+- **Event Aggregation**: Collects events over a 5-minute (configurable) window to batch process invalidations
+- **Dynamic Path Consolidation**: Reduces invalidation paths with configurable thresholds and stop levels
 - **Per-Bucket Configuration**: Override global settings using S3 bucket tags for customized behavior
 - **Consolidation Stop Level**: Control consolidation depth to prevent over-consolidation
 - **CloudFormation Parameters**: System-wide default configuration with environment-specific values
 - **Comprehensive Logging**: Detailed configuration decision logging for troubleshooting and auditing
-- **Backward Compatible**: Existing deployments continue to work without changes
 - **Secure**: Implements least-privilege IAM policies with tag-based conditions
 - **Cost-Effective**: Uses on-demand scheduling instead of constant cron jobs
 - **Production-Ready**: Includes monitoring, alarms, and gradual deployment for PROD environments
@@ -105,12 +96,7 @@ The system consists of two primary Lambda functions that work together to proces
 - Filter events based on path pattern (`/<StageId>/public/*`)
 - Send valid events to SQS queue
 - Track aggregation windows in DynamoDB
-- Create EventBridge one-time schedules for processing
-
-**Configuration**:
-- Timeout: 10 seconds
-- Memory: 256 MB
-- Concurrency: Unlimited (scales with S3 events)
+- Create EventBridge one-time schedules for processing (schedule runs then self-deletes)
 
 ### 2. Processor Lambda
 
@@ -126,11 +112,6 @@ The system consists of two primary Lambda functions that work together to proces
 - Submit CreateInvalidation requests to CloudFront
 - Delete processed messages from SQS
 - Close aggregation window in DynamoDB
-
-**Configuration**:
-- Timeout: 300 seconds (5 minutes)
-- Memory: 512 MB
-- Concurrency: 1 (prevents duplicate processing)
 
 ### 3. SQS Event Queue
 
@@ -239,17 +220,7 @@ Key: invalidator:ConsolidationStopLevel
 Value: 2  (range: 0-20)
 ```
 
-**How to Add Bucket Configuration Tags**:
-```bash
-aws s3api put-bucket-tagging \
-  --bucket your-bucket-name \
-  --tagging 'TagSet=[
-    {Key=AllowInvalidationEvents,Value=true},
-    {Key=invalidator:DirectoryConsolidationThreshold,Value=5},
-    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=15},
-    {Key=invalidator:ConsolidationStopLevel,Value=2}
-  ]'
-```
+To configure, refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#configuration)
 
 ### Consolidation Rules
 
@@ -274,6 +245,12 @@ Input:  /prod/public/images/logo.png
         /prod/public/images/background.png
 Output: /prod/public/images/*
 
+# With DirectoryConsolidationThreshold = 3 but not threshold not met
+Input:  /prod/public/images/logo.png
+        /prod/public/images/banner.jpg
+Output: /prod/public/images/logo.png
+        /prod/public/images/banner.jpg
+
 # With bucket tag DirectoryConsolidationThreshold = 5
 Input:  5+ files in /prod/public/css/
 Output: /prod/public/css/*
@@ -283,6 +260,8 @@ Output: /prod/public/css/*
 
 The stop level prevents consolidation at or above a specified directory depth from the root:
 
+(The root refers to the Origin Path used by CloudFront. It is in the `public/` directory of the S3 object path: `StageId/public/*ROOT*)
+
 ```
 # ConsolidationStopLevel = 0: Consolidate everything to root
 Input:  Any paths
@@ -290,7 +269,8 @@ Output: /*
 
 # ConsolidationStopLevel = 1 (default): Allow normal consolidation
 Input:  /prod/public/dir1/*, /prod/public/dir2/*
-Output: /prod/public/* (if threshold met)
+Output (if threshold not met): /prod/public/dir1/*, /prod/public/dir2/*
+Output (if threshold met): /prod/public/*
 
 # ConsolidationStopLevel = 2: Prevent consolidation at depth 2
 Input:  /prod/public/dir1/a/*, /prod/public/dir1/b/*
@@ -320,16 +300,16 @@ Output: /prod/public/* (if stop level allows)
 
 #### 5. Root Consolidation
 
-When consolidation reaches the origin path root, use `/*`:
+When consolidation reaches the origin path root, uses `/*`:
 
 ```
 Input:  Multiple directories at root level
-Output: /*
+Output: /prod/public/*
 ```
 
 #### 6. Request Splitting
 
-If consolidated paths exceed the limit (default 1000), split into multiple requests:
+If consolidated paths exceed the limit for a single distribution (default 1000), split into multiple invalidation requests:
 
 ```
 Input:  1500 paths
@@ -348,6 +328,7 @@ The system uses the following priority order for configuration values:
 ### Example Consolidation Flows
 
 #### Standard Configuration (threshold=3, stop_level=1)
+
 ```
 Original Events:
 - /prod/public/css/main.css
@@ -366,6 +347,7 @@ After Consolidation:
 ```
 
 #### High Stop Level Configuration (threshold=3, stop_level=3)
+
 ```
 Original Events:
 - /prod/public/docs/api/file1.html
@@ -381,6 +363,7 @@ After Consolidation:
 ```
 
 #### Root Consolidation (stop_level=0)
+
 ```
 Original Events:
 - /prod/public/css/main.css
@@ -388,7 +371,7 @@ Original Events:
 - /prod/public/images/logo.png
 
 After Consolidation:
-- /*  (all paths consolidated to root)
+- /prod/public/*  (all paths consolidated to root)
 ```
 
 ## Required Tags
@@ -397,12 +380,16 @@ After Consolidation:
 
 #### Required Tags
 
-For an S3 bucket to trigger invalidations, it MUST have the following tag:
+For an S3 bucket to allow invalidations, it MUST have the following tag:
 
 ```
 Key: AllowInvalidationEvents
 Value: true
 ```
+
+This tag is automatically added to buckets created by the Atlantis Template for stacks that provision S3 buckets using OAC (Object Access Control) for use with CloudFront distributions when the Invalidator Service ARN is provided as a parameter during CloudFormation stack deployment.
+
+Refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#deployment-steps)
 
 #### Optional Configuration Tags
 
@@ -434,24 +421,10 @@ Value: 0-20 (directory depth from root where consolidation stops)
   - 2+ = prevent consolidation at that depth or shallower
   - Range: 0-20, defaults to CloudFormation parameter value
 
-**How to Add Required Tag Only**:
-```bash
-aws s3api put-bucket-tagging \
-  --bucket your-bucket-name \
-  --tagging 'TagSet=[{Key=AllowInvalidationEvents,Value=true}]'
-```
-
-**How to Add with Configuration Overrides**:
-```bash
-aws s3api put-bucket-tagging \
-  --bucket your-bucket-name \
-  --tagging 'TagSet=[
-    {Key=AllowInvalidationEvents,Value=true},
-    {Key=invalidator:DirectoryConsolidationThreshold,Value=5},
-    {Key=invalidator:SiblingDirectoryConsolidationThreshold,Value=15},
-    {Key=invalidator:ConsolidationStopLevel,Value=2}
-  ]'
-```
+Add tags during S3 stack deployment when prompted to add additional tags:
+- `invalidator:DirectoryConsolidationThreshold=5`
+- `invalidator:SiblingDirectoryConsolidationThreshold=15`
+- `invalidator:ConsolidationStopLevel=2`
 
 **Tag Validation**:
 - Invalid tag values (non-numeric, out of range) are logged and ignored
@@ -477,114 +450,23 @@ atlantis:ApplicationDeploymentId: acme-static-assets-prod
 ```
 
 **How to Add**:
-```bash
-aws cloudfront tag-resource \
-  --resource arn:aws:cloudfront::123456789012:distribution/EDFDVBD6EXAMPLE \
-  --tags 'Items=[{Key=AllowInvalidationEvents,Value=true},{Key=atlantis:ApplicationDeploymentId,Value=acme-static-assets-prod}]'
+
+The `atlantis:ApplicationDeploymentId` tags is automatically added when the CloudFormation stack provisioning the distribution is deployed.
+
+However, when prompted to add new tags during configuration be sure to add the `AllowInvalidationEvents` tag.
+
 ```
+AllowInvalidationEvents=true
+```
+
+Refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#deployment-steps)
 
 ### Tag Validation Flow
 
 1. **Bucket Validation**: Processor checks S3 bucket tags before processing events
 2. **Distribution Discovery**: Processor finds distributions matching bucket origin
 3. **Distribution Validation**: Processor checks distribution tags before submitting invalidation
-4. **Skip on Failure**: If tags are missing or incorrect, processing is skipped and logged
-
-## Deployment
-
-### Prerequisites
-
-- AWS CLI configured with appropriate credentials
-- AWS SAM CLI installed
-- Python 3.9 or later
-- Access to Atlantis Platform deployment pipeline
-
-### Deployment Steps
-
-1. **Clone the Repository**:
-   ```bash
-   git clone <repository-url>
-   cd application-infrastructure
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Build the Application**:
-   ```bash
-   sam build
-   ```
-
-4. **Deploy to TEST Environment**:
-   ```bash
-   sam deploy \
-     --stack-name atlantis-cloudfront-invalidation-test \
-     --parameter-overrides \
-       DeployEnvironment=TEST \
-       Prefix=atlantis \
-       ProjectId=cloudfront-invalidation \
-       StageId=test
-   ```
-
-5. **Deploy to PROD Environment**:
-   ```bash
-   sam deploy \
-     --stack-name atlantis-cloudfront-invalidation-prod \
-     --parameter-overrides \
-       DeployEnvironment=PROD \
-       Prefix=atlantis \
-       ProjectId=cloudfront-invalidation \
-       StageId=prod \
-       AlarmNotificationEmail=ops@example.com \
-       FunctionGradualDeploymentType=Linear10PercentEvery1Minute
-   ```
-
-6. **Deploy with Custom Consolidation Settings**:
-   ```bash
-   sam deploy \
-     --stack-name atlantis-cloudfront-invalidation-prod \
-     --parameter-overrides \
-       DeployEnvironment=PROD \
-       Prefix=atlantis \
-       ProjectId=cloudfront-invalidation \
-       StageId=prod \
-       DirectoryConsolidationThreshold=5 \
-       ConsolidationStopLevel=2 \
-       AggregationWindowSeconds=180 \
-       AlarmNotificationEmail=ops@example.com
-   ```
-
-### Configure S3 Bucket Notifications
-
-After deployment, configure your S3 buckets to send events to the Ingestor Lambda:
-
-```bash
-# Get the Ingestor Lambda ARN from CloudFormation outputs
-INGESTOR_ARN=$(aws cloudformation describe-stacks \
-  --stack-name atlantis-cloudfront-invalidation-prod \
-  --query 'Stacks[0].Outputs[?OutputKey==`IngestorLambdaArn`].OutputValue' \
-  --output text)
-
-# Configure S3 bucket notification
-aws s3api put-bucket-notification-configuration \
-  --bucket your-bucket-name \
-  --notification-configuration '{
-    "LambdaFunctionConfigurations": [{
-      "LambdaFunctionArn": "'$INGESTOR_ARN'",
-      "Events": ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"],
-      "Filter": {
-        "Key": {
-          "FilterRules": [{
-            "Name": "prefix",
-            "Value": "prod/public/"
-          }]
-        }
-      }
-    }]
-  }'
-```
+4. **Skip on Failure**: If tags are missing or incorrect, processing for that bucket is skipped and logged
 
 ## Configuration
 
@@ -611,20 +493,23 @@ aws s3api put-bucket-notification-configuration \
 ### CloudFormation Parameters
 
 #### Application Resource Naming
-- `Prefix`: Resource naming prefix (e.g., "atlantis")
+
+- `Prefix`: Resource naming prefix (e.g., "acme")
 - `ProjectId`: Project identifier
 - `StageId`: Stage identifier (prod, test, dev)
-- `S3BucketNameOrgPrefix`: S3 bucket naming prefix
+- `S3BucketNameOrgPrefix`: S3 bucket naming prefix (e.g., "acmeco")
 - `RolePath`: IAM role path
 - `PermissionsBoundaryArn`: IAM permissions boundary
 
 #### Deployment Environment
+
 - `DeployEnvironment`: PROD, TEST, or DEV
 - `FunctionGradualDeploymentType`: Deployment strategy (PROD only)
 - `DeployRole`: CloudFormation service role
 - `AlarmNotificationEmail`: Email for CloudWatch Alarms (PROD only)
 
 #### Application Parameters
+
 - `LogRetentionInDaysForPROD`: Log retention for PROD (default: 90)
 - `LogRetentionInDaysForDEVTEST`: Log retention for TEST/DEV (default: 7)
 - `AggregationWindowSeconds`: Event aggregation window duration (default: 300, range: 60-900)
@@ -634,6 +519,7 @@ aws s3api put-bucket-notification-configuration \
 - `MaxPathsPerInvalidation`: Maximum paths per CloudFront invalidation request (default: 1000, range: 1-3000)
 
 #### Lambda Function Settings
+
 - `IngestorTimeoutInSeconds`: Ingestor Lambda timeout (default: 10)
 - `IngestorMemoryInMB`: Ingestor Lambda memory (default: 256)
 - `ProcessorTimeoutInSeconds`: Processor Lambda timeout (default: 300)
@@ -647,12 +533,14 @@ aws s3api put-bucket-notification-configuration \
 Both Lambda functions write structured JSON logs to CloudWatch:
 
 **Log Groups**:
+
 - `/aws/lambda/<Prefix>-<ProjectId>-<StageId>-ingestor`
 - `/aws/lambda/<Prefix>-<ProjectId>-<StageId>-processor`
 
 **Log Insights Queries**:
 
 Find all filtered events:
+
 ```
 fields @timestamp, bucketName, objectKey, reason
 | filter @message like /filtered/
@@ -660,6 +548,7 @@ fields @timestamp, bucketName, objectKey, reason
 ```
 
 Find all invalidation submissions:
+
 ```
 fields @timestamp, distributionId, invalidationId, pathCount
 | filter @message like /invalidation created/
@@ -667,6 +556,7 @@ fields @timestamp, distributionId, invalidationId, pathCount
 ```
 
 Find all errors:
+
 ```
 fields @timestamp, @message
 | filter @type = "ERROR"
@@ -674,6 +564,7 @@ fields @timestamp, @message
 ```
 
 Find configuration decisions:
+
 ```
 fields @timestamp, bucketName, directoryThreshold, stopLevel, source
 | filter @message like /effective configuration/
@@ -681,6 +572,7 @@ fields @timestamp, bucketName, directoryThreshold, stopLevel, source
 ```
 
 Find consolidation prevention due to stop level:
+
 ```
 fields @timestamp, @message, paths
 | filter @message like /consolidation prevented.*stop level/
@@ -688,6 +580,7 @@ fields @timestamp, @message, paths
 ```
 
 Find bucket tag validation warnings:
+
 ```
 fields @timestamp, bucketName, tagKey, tagValue, reason
 | filter @message like /invalid.*tag/
@@ -906,15 +799,10 @@ pytest tests/integration/ -v
 
 ### Cost Breakdown
 
-**Estimated Monthly Costs** (for moderate usage):
-- Lambda Invocations: $5-10
-- SQS Messages: $1-2
-- DynamoDB: $1-2 (on-demand)
-- CloudWatch Logs: $2-5
+**Estimated Costs**:
 - CloudFront Invalidations: $0.005 per path (first 1000 free)
 - EventBridge Scheduler: $0.01 per invocation
-
-**Total**: ~$10-20/month (excluding CloudFront invalidation costs)
+- Lambda, SQS, DynamoDb, and CloudWatch logs
 
 ### Cost Optimization Strategies
 
@@ -937,8 +825,6 @@ The system scales automatically with S3 event volume:
 ### Project Documentation
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) - Step-by-step deployment instructions for enhanced system
 - [Configuration Troubleshooting Guide](CONFIGURATION_TROUBLESHOOTING.md) - Detailed troubleshooting for configuration issues
-- [Requirements Document](.kiro/specs/dynamic-bucket-consolidation-config/requirements.md) - Feature requirements
-- [Design Document](.kiro/specs/dynamic-bucket-consolidation-config/design.md) - Technical design details
 
 ### AWS Documentation
 - [AWS Serverless Application Model (SAM)](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
@@ -948,7 +834,8 @@ The system scales automatically with S3 event volume:
 - [CloudFormation Parameters](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/parameters-section-structure.html)
 
 ### Platform Documentation
-- [Atlantis Platform Documentation](https://github.com/63klabs/serverless-deploy-pipeline-atlantis)
+- [Atlantis Platform Templates and Scripts Documentation](https://github.com/63Klabs/atlantis-cfn-configuration-repo-for-serverless-deployments)
+- [Atlantis Platform Templates and Scripts Tutorials](https://github.com/63Klabs/atlantis-tutorials)
 
 ## Support
 

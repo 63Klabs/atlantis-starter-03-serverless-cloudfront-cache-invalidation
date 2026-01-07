@@ -67,25 +67,25 @@ def receive_messages_batch(queue_url: str, max_messages: int = SQS_MAX_BATCH_SIZ
         # Ensure max_messages is within valid range
         max_messages = max(1, min(max_messages, 10))
         
-        logger.info(
-            "Receiving messages from SQS queue",
-            extra={'extra_fields': {
-                'queue_url': queue_url,
-                'max_messages': max_messages,
-                'wait_time_seconds': SQS_LONG_POLL_WAIT_TIME_SECONDS
-            }}
-        )
+        # logger.info(
+        #     "Receiving messages from SQS queue",
+        #     extra={'extra_fields': {
+        #         'queue_url': queue_url,
+        #         'max_messages': max_messages,
+        #         'wait_time_seconds': SQS_LONG_POLL_WAIT_TIME_SECONDS
+        #     }}
+        # )
         
         # DEBUG: Log SQS receive request
-        logger.info(
-            "SQS receive_message request DEBUG",
-            extra={'extra_fields': {
-                'queueUrl': queue_url,
-                'maxMessages': max_messages,
-                'waitTimeSeconds': SQS_LONG_POLL_WAIT_TIME_SECONDS,
-                'sqsClientRegion': sqs_client.meta.region_name if hasattr(sqs_client, 'meta') else 'unknown'
-            }}
-        )
+        # logger.info(
+        #     "SQS receive_message request DEBUG",
+        #     extra={'extra_fields': {
+        #         'queueUrl': queue_url,
+        #         'maxMessages': max_messages,
+        #         'waitTimeSeconds': SQS_LONG_POLL_WAIT_TIME_SECONDS,
+        #         'sqsClientRegion': sqs_client.meta.region_name if hasattr(sqs_client, 'meta') else 'unknown'
+        #     }}
+        # )
         
         # Receive messages with long polling
         response = sqs_client.receive_message(
@@ -96,29 +96,29 @@ def receive_messages_batch(queue_url: str, max_messages: int = SQS_MAX_BATCH_SIZ
         )
         
         # DEBUG: Log SQS response
-        logger.info(
-            "SQS receive_message response DEBUG",
-            extra={'extra_fields': {
-                'fullResponse': response,
-                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
-                'responseMetadata': response.get('ResponseMetadata', {}),
-                'hasMessages': 'Messages' in response,
-                'messageCount': len(response.get('Messages', []))
-            }}
-        )
+        # logger.info(
+        #     "SQS receive_message response DEBUG",
+        #     extra={'extra_fields': {
+        #         'fullResponse': response,
+        #         'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+        #         'responseMetadata': response.get('ResponseMetadata', {}),
+        #         'hasMessages': 'Messages' in response,
+        #         'messageCount': len(response.get('Messages', []))
+        #     }}
+        # )
         
         # Handle empty queue gracefully
         messages = response.get('Messages', [])
         
         # DEBUG: Log message analysis
-        logger.info(
-            "SQS messages analysis DEBUG",
-            extra={'extra_fields': {
-                'messageCount': len(messages),
-                'messageTypes': [type(msg).__name__ for msg in messages],
-                'messageKeys': [list(msg.keys()) if isinstance(msg, dict) else 'not_dict' for msg in messages[:3]]
-            }}
-        )
+        # logger.info(
+        #     "SQS messages analysis DEBUG",
+        #     extra={'extra_fields': {
+        #         'messageCount': len(messages),
+        #         'messageTypes': [type(msg).__name__ for msg in messages],
+        #         'messageKeys': [list(msg.keys()) if isinstance(msg, dict) else 'not_dict' for msg in messages[:3]]
+        #     }}
+        # )
         
         if not messages:
             logger.info(
@@ -131,45 +131,45 @@ def receive_messages_batch(queue_url: str, max_messages: int = SQS_MAX_BATCH_SIZ
         parsed_messages = []
         
         # DEBUG: Log parsing start
-        logger.info(
-            "Starting message body parsing DEBUG",
-            extra={'extra_fields': {
-                'messagesToParse': len(messages)
-            }}
-        )
+        # logger.info(
+        #     "Starting message body parsing DEBUG",
+        #     extra={'extra_fields': {
+        #         'messagesToParse': len(messages)
+        #     }}
+        # )
         
         for i, message in enumerate(messages):
             # DEBUG: Log each message parsing
-            logger.info(
-                f"Parsing message {i+1}/{len(messages)} DEBUG",
-                extra={'extra_fields': {
-                    'messageIndex': i,
-                    'messageId': message.get('MessageId', 'no_id'),
-                    'messageKeys': list(message.keys()) if isinstance(message, dict) else 'not_dict',
-                    'bodyLength': len(message.get('Body', '')) if message.get('Body') else 0,
-                    'bodyPreview': message.get('Body', '')[:200] + '...' if message.get('Body') else 'no_body'
-                }}
-            )
+            # logger.info(
+            #     f"Parsing message {i+1}/{len(messages)} DEBUG",
+            #     extra={'extra_fields': {
+            #         'messageIndex': i,
+            #         'messageId': message.get('MessageId', 'no_id'),
+            #         'messageKeys': list(message.keys()) if isinstance(message, dict) else 'not_dict',
+            #         'bodyLength': len(message.get('Body', '')) if message.get('Body') else 0,
+            #         'bodyPreview': message.get('Body', '')[:200] + '...' if message.get('Body') else 'no_body'
+            #     }}
+            # )
             
             try:
                 parsed_body = json.loads(message['Body'])
                 message['parsed_body'] = parsed_body
                 
                 # DEBUG: Log successful parsing
-                logger.info(
-                    f"Message {i+1} parsing successful DEBUG",
-                    extra={'extra_fields': {
-                        'messageIndex': i,
-                        'messageId': message.get('MessageId', 'no_id'),
-                        'parsedBody': parsed_body,
-                        'parsedBodyKeys': list(parsed_body.keys()) if isinstance(parsed_body, dict) else 'not_dict'
-                    }}
-                )
+                # logger.info(
+                #     f"Message {i+1} parsing successful DEBUG",
+                #     extra={'extra_fields': {
+                #         'messageIndex': i,
+                #         'messageId': message.get('MessageId', 'no_id'),
+                #         'parsedBody': parsed_body,
+                #         'parsedBodyKeys': list(parsed_body.keys()) if isinstance(parsed_body, dict) else 'not_dict'
+                #     }}
+                # )
                 
                 parsed_messages.append(message)
             except json.JSONDecodeError as e:
                 logger.error(
-                    f"Failed to parse message {i+1} body as JSON: {str(e)} DEBUG",
+                    f"Failed to parse message {i+1} body as JSON: {str(e)}",
                     extra={'extra_fields': {
                         'messageIndex': i,
                         'message_id': message.get('MessageId'),
@@ -183,7 +183,7 @@ def receive_messages_batch(queue_url: str, max_messages: int = SQS_MAX_BATCH_SIZ
         
         # DEBUG: Log parsing summary
         logger.info(
-            "Message parsing complete DEBUG",
+            "Message parsing complete",
             extra={'extra_fields': {
                 'totalMessages': len(messages),
                 'successfullyParsed': len(parsed_messages),
@@ -244,23 +244,23 @@ def delete_message(queue_url: str, receipt_handle: str) -> None:
     try:
         sqs_client = get_sqs_client()
         
-        logger.debug(
-            "Deleting message from SQS queue",
-            extra={'extra_fields': {
-                'queue_url': queue_url,
-                'receipt_handle': receipt_handle[:50] + '...'  # Truncate for logging
-            }}
-        )
+        # logger.debug(
+        #     "Deleting message from SQS queue",
+        #     extra={'extra_fields': {
+        #         'queue_url': queue_url,
+        #         'receipt_handle': receipt_handle[:50] + '...'  # Truncate for logging
+        #     }}
+        # )
         
         sqs_client.delete_message(
             QueueUrl=queue_url,
             ReceiptHandle=receipt_handle
         )
         
-        logger.debug(
-            "Successfully deleted message from SQS",
-            extra={'extra_fields': {'queue_url': queue_url}}
-        )
+        # logger.debug(
+        #     "Successfully deleted message from SQS",
+        #     extra={'extra_fields': {'queue_url': queue_url}}
+        # )
         
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', 'Unknown')
@@ -310,7 +310,7 @@ def delete_messages_batch(queue_url: str, receipt_handles: List[str]) -> Dict[st
     **Feature: multi-bucket-cloudfront-invalidation, Property 13: Message deletion after successful processing**
     """
     if not receipt_handles:
-        logger.debug("No messages to delete")
+        # logger.debug("No messages to delete")
         return {'successful': [], 'failed': []}
     
     try:
@@ -333,13 +333,13 @@ def delete_messages_batch(queue_url: str, receipt_handles: List[str]) -> Dict[st
                 for idx, handle in enumerate(batch)
             ]
             
-            logger.info(
-                f"Deleting batch of {len(entries)} messages from SQS",
-                extra={'extra_fields': {
-                    'queue_url': queue_url,
-                    'batch_size': len(entries)
-                }}
-            )
+            # logger.info(
+            #     f"Deleting batch of {len(entries)} messages from SQS",
+            #     extra={'extra_fields': {
+            #         'queue_url': queue_url,
+            #         'batch_size': len(entries)
+            #     }}
+            # )
             
             response = sqs_client.delete_message_batch(
                 QueueUrl=queue_url,

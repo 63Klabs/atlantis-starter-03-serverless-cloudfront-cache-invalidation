@@ -117,7 +117,7 @@ def create_invalidation(distribution_id: str, paths: List[str]) -> Optional[dict
     
     # DEBUG: Log invalidation request details
     logger.info(
-        f"Submitting invalidation request for distribution {distribution_id} DEBUG",
+        f"Submitting invalidation request for distribution {distribution_id}",
         extra={'extra_fields': {
             'distribution_id': distribution_id,
             'path_count': len(paths),
@@ -137,7 +137,7 @@ def create_invalidation(distribution_id: str, paths: List[str]) -> Optional[dict
         
         # DEBUG: Log CloudFront response
         logger.info(
-            f"CloudFront create_invalidation response DEBUG",
+            f"CloudFront create_invalidation response",
             extra={'extra_fields': {
                 'distributionId': distribution_id,
                 'fullResponse': response,
@@ -152,7 +152,7 @@ def create_invalidation(distribution_id: str, paths: List[str]) -> Optional[dict
         
         # DEBUG: Log invalidation extraction
         logger.info(
-            f"Invalidation details extraction DEBUG",
+            f"Invalidation details extraction",
             extra={'extra_fields': {
                 'distributionId': distribution_id,
                 'invalidation': invalidation,
@@ -166,7 +166,7 @@ def create_invalidation(distribution_id: str, paths: List[str]) -> Optional[dict
         
         # DEBUG: Log extracted values
         logger.info(
-            f"Extracted invalidation values DEBUG",
+            f"Extracted invalidation values",
             extra={'extra_fields': {
                 'distributionId': distribution_id,
                 'invalidationId': invalidation_id,

@@ -440,12 +440,12 @@ def test_property_19_bucket_specific_threshold_logging(directory_and_files_and_t
         # If consolidation occurred, should also log the consolidation decision
         consolidated = result[0]
         if f"{directory}/*" in consolidated:
-            debug_logged = False
-            for call in mock_logger.debug.call_args_list:
+            info_logged_consolidation = False
+            for call in mock_logger.info.call_args_list:
                 call_str = str(call)
                 if 'Directory threshold consolidation' in call_str and str(custom_threshold) in call_str:
-                    debug_logged = True
+                    info_logged_consolidation = True
                     break
             
-            assert debug_logged, \
+            assert info_logged_consolidation, \
                 f"Should log directory threshold consolidation decision with threshold {custom_threshold}"

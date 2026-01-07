@@ -83,54 +83,54 @@ def check_active_window() -> Optional[Dict[str, Any]]:
     
     try:
         # DEBUG: Log DynamoDB query request
-        logger.info(
-            "Checking active window in DynamoDB DEBUG",
-            extra={'extra_fields': {
-                'tableName': table.name,
-                'queryKey': {'windowId': WINDOW_ID_FIXED_VALUE},
-                'windowIdConstant': WINDOW_ID_FIXED_VALUE
-            }}
-        )
+        # logger.info(
+        #     "Checking active window in DynamoDB DEBUG",
+        #     extra={'extra_fields': {
+        #         'tableName': table.name,
+        #         'queryKey': {'windowId': WINDOW_ID_FIXED_VALUE},
+        #         'windowIdConstant': WINDOW_ID_FIXED_VALUE
+        #     }}
+        # )
         
         response = table.get_item(
             Key={'windowId': WINDOW_ID_FIXED_VALUE}
         )
         
         # DEBUG: Log DynamoDB response
-        logger.info(
-            "DynamoDB get_item response DEBUG",
-            extra={'extra_fields': {
-                'fullResponse': _convert_decimals_for_logging(response),
-                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
-                'responseMetadata': response.get('ResponseMetadata', {}),
-                'itemExists': 'Item' in response
-            }}
-        )
+        # logger.info(
+        #     "DynamoDB get_item response DEBUG",
+        #     extra={'extra_fields': {
+        #         'fullResponse': _convert_decimals_for_logging(response),
+        #         'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+        #         'responseMetadata': response.get('ResponseMetadata', {}),
+        #         'itemExists': 'Item' in response
+        #     }}
+        # )
         
         item = response.get('Item')
         
         # DEBUG: Log item analysis
-        logger.info(
-            "DynamoDB item analysis DEBUG",
-            extra={'extra_fields': {
-                'item': _convert_decimals_for_logging(item),
-                'itemType': type(item).__name__,
-                'itemKeys': list(item.keys()) if isinstance(item, dict) else 'not_dict',
-                'itemStatus': item.get('status') if isinstance(item, dict) else 'no_status',
-                'expectedActiveStatus': WINDOW_STATUS_ACTIVE
-            }}
-        )
+        # logger.info(
+        #     "DynamoDB item analysis DEBUG",
+        #     extra={'extra_fields': {
+        #         'item': _convert_decimals_for_logging(item),
+        #         'itemType': type(item).__name__,
+        #         'itemKeys': list(item.keys()) if isinstance(item, dict) else 'not_dict',
+        #         'itemStatus': item.get('status') if isinstance(item, dict) else 'no_status',
+        #         'expectedActiveStatus': WINDOW_STATUS_ACTIVE
+        #     }}
+        # )
         
         if item and item.get('status') == WINDOW_STATUS_ACTIVE:
-            logger.info(
-                "Active aggregation window found",
-                extra={'extra_fields': {
-                    'windowId': item.get('windowId'),
-                    'scheduleArn': item.get('scheduleArn'),
-                    'windowStartTime': item.get('windowStartTime'),
-                    'windowEndTime': item.get('windowEndTime')
-                }}
-            )
+            # logger.info(
+            #     "Active aggregation window found",
+            #     extra={'extra_fields': {
+            #         'windowId': item.get('windowId'),
+            #         'scheduleArn': item.get('scheduleArn'),
+            #         'windowStartTime': item.get('windowStartTime'),
+            #         'windowEndTime': item.get('windowEndTime')
+            #     }}
+            # )
             return item
         
         logger.info("No active aggregation window found")
@@ -184,19 +184,19 @@ def create_window(schedule_arn: str) -> bool:
     
     try:
         # DEBUG: Log DynamoDB put_item request
-        logger.info(
-            "Creating window in DynamoDB DEBUG",
-            extra={'extra_fields': {
-                'tableName': table.name,
-                'itemToCreate': _convert_decimals_for_logging(item),
-                'conditionExpression': 'attribute_not_exists(windowId) OR #status = :closed',
-                'expressionAttributeNames': {'#status': 'status'},
-                'expressionAttributeValues': {':closed': WINDOW_STATUS_CLOSED},
-                'currentTimestamp': current_time,
-                'windowEndTimestamp': window_end_time,
-                'ttlTimestamp': ttl_time
-            }}
-        )
+        # logger.info(
+        #     "Creating window in DynamoDB DEBUG",
+        #     extra={'extra_fields': {
+        #         'tableName': table.name,
+        #         'itemToCreate': _convert_decimals_for_logging(item),
+        #         'conditionExpression': 'attribute_not_exists(windowId) OR #status = :closed',
+        #         'expressionAttributeNames': {'#status': 'status'},
+        #         'expressionAttributeValues': {':closed': WINDOW_STATUS_CLOSED},
+        #         'currentTimestamp': current_time,
+        #         'windowEndTimestamp': window_end_time,
+        #         'ttlTimestamp': ttl_time
+        #     }}
+        # )
         
         response = table.put_item(
             Item=item,
@@ -210,36 +210,36 @@ def create_window(schedule_arn: str) -> bool:
         )
         
         # DEBUG: Log DynamoDB put_item response
-        logger.info(
-            "DynamoDB put_item response DEBUG",
-            extra={'extra_fields': {
-                'fullResponse': _convert_decimals_for_logging(response),
-                'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
-                'responseMetadata': response.get('ResponseMetadata', {}),
-                'putItemSuccessful': True
-            }}
-        )
+        # logger.info(
+        #     "DynamoDB put_item response DEBUG",
+        #     extra={'extra_fields': {
+        #         'fullResponse': _convert_decimals_for_logging(response),
+        #         'responseKeys': list(response.keys()) if isinstance(response, dict) else 'not_dict',
+        #         'responseMetadata': response.get('ResponseMetadata', {}),
+        #         'putItemSuccessful': True
+        #     }}
+        # )
         
-        logger.info(
-            "Created new aggregation window",
-            extra={'extra_fields': {
-                'windowId': WINDOW_ID_FIXED_VALUE,
-                'scheduleArn': schedule_arn,
-                'windowStartTime': current_time,
-                'windowEndTime': window_end_time,
-                'ttl': ttl_time
-            }}
-        )
+        # logger.info(
+        #     "Created new aggregation window",
+        #     extra={'extra_fields': {
+        #         'windowId': WINDOW_ID_FIXED_VALUE,
+        #         'scheduleArn': schedule_arn,
+        #         'windowStartTime': current_time,
+        #         'windowEndTime': window_end_time,
+        #         'ttl': ttl_time
+        #     }}
+        # )
         return True
         
     except ClientError as e:
         if e.response.get('Error', {}).get('Code') == 'ConditionalCheckFailedException':
-            logger.info(
-                "Active window already exists, skipping window creation",
-                extra={'extra_fields': {
-                    'windowId': WINDOW_ID_FIXED_VALUE
-                }}
-            )
+            # logger.info(
+            #     "Active window already exists, skipping window creation",
+            #     extra={'extra_fields': {
+            #         'windowId': WINDOW_ID_FIXED_VALUE
+            #     }}
+            # )
             return False
         
         logger.error(
@@ -284,13 +284,13 @@ def close_window() -> bool:
             ReturnValues='ALL_NEW'
         )
         
-        logger.info(
-            "Closed aggregation window",
-            extra={'extra_fields': {
-                'windowId': WINDOW_ID_FIXED_VALUE,
-                'updatedAttributes': _convert_decimals_for_logging(response.get('Attributes'))
-            }}
-        )
+        # logger.info(
+        #     "Closed aggregation window",
+        #     extra={'extra_fields': {
+        #         'windowId': WINDOW_ID_FIXED_VALUE,
+        #         'updatedAttributes': _convert_decimals_for_logging(response.get('Attributes'))
+        #     }}
+        # )
         return True
         
     except ClientError as e:

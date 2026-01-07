@@ -658,7 +658,7 @@ def test_property_7_stop_level_prevention_logging(data):
     # Create a string buffer to capture log output
     log_capture = StringIO()
     handler = logging.StreamHandler(log_capture)
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(logging.INFO)  # Changed from DEBUG to INFO
     
     # Set up JSON formatter to match the actual logger
     from common.logger import JSONFormatter
@@ -668,7 +668,7 @@ def test_property_7_stop_level_prevention_logging(data):
     # Get the path consolidator logger and add our handler
     from functions.processor.path_consolidator import logger
     original_level = logger.level
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)  # Changed from DEBUG to INFO
     logger.addHandler(handler)
     
     try:
@@ -751,7 +751,7 @@ def test_property_8_stop_level_allowance_logging(data):
     # Create a string buffer to capture log output
     log_capture = StringIO()
     handler = logging.StreamHandler(log_capture)
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(logging.INFO)  # Changed from DEBUG to INFO
     
     # Set up JSON formatter to match the actual logger
     from common.logger import JSONFormatter
@@ -761,7 +761,7 @@ def test_property_8_stop_level_allowance_logging(data):
     # Get the path consolidator logger and add our handler
     from functions.processor.path_consolidator import logger
     original_level = logger.level
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)  # Changed from DEBUG to INFO
     logger.addHandler(handler)
     
     try:
