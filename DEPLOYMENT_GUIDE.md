@@ -122,20 +122,22 @@ The following steps are performed from the command line from within the SAM Conf
 # -- OR -- if using CodeCommit:
 ./cli/create_repo.py YOUR_REPO_NAME --provider codecommit
 
-# > Choose atlantis-starter-03-serverless-cloudfront-cache-invalidation
-#   From the list of starter applications and follow the prompts
+# > Choose 03-serverless-cloudfront-cache-invalidation.zip 
+#   From the list of Available application starters and follow the prompts
 
-# > Copy the HTTPS URL
+# > Copy the HTTPS URL after creation
 ```
 
-Open a new terminal window and perform the following steps to clone and populate the `test` branch of your Invalidator Service repository.
+Open a new terminal window and make sure you are in the directory where you store your local repositories.
+
+Perform the following steps to clone and populate the `test` branch of your Invalidator Service repository.
 
 ```bash
 ## -------------------------
 ## MERGE and PUSH to TEST BRANCH
 
 # > Change OUT of the SAM CONFIG repo to where you clone app repos
-cd .. # Be sure to do this OUTSIDE of the SAM CONFIG repo! Open a new terminal if necessary
+cd .. # Be sure to do the following OUTSIDE of the SAM CONFIG repo! Open a new terminal if necessary
 
 # Clone your repository and perform your first deployment AS-IS just to make sure it works
 git clone YOUR_REPO_HTTPS_URL
