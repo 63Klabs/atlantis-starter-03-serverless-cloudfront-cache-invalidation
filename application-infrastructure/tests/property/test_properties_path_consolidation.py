@@ -1558,8 +1558,8 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
     allowed_result = consolidate_paths(allowed_test_paths, stop_level=stop_level)
     
     # Should return a single chunk
-    assert len(allowed_result) == 1, "Should return single chunk"
-    allowed_consolidated = allowed_result[0]
+    assert len(allowed_result['default']) == 1, "Should return single chunk"
+    allowed_consolidated = allowed_result['default'][0]
     
     # At allowed depth, consolidation SHOULD occur
     allowed_directory_wildcard = '/*' if allowed_base_path == '' else f"{allowed_base_path}/*"
@@ -1631,9 +1631,9 @@ def test_property_1_sibling_threshold_parameter_usage(data):
     result_no_consolidation = consolidate_paths(sibling_wildcards, stop_level=stop_level, sibling_threshold=high_threshold)
     
     # Should return a single chunk
-    assert len(result_no_consolidation) == 1, "Should return single chunk"
+    assert len(result_no_consolidation['default']) == 1, "Should return single chunk"
     
-    consolidated_no_consolidation = result_no_consolidation[0]
+    consolidated_no_consolidation = result_no_consolidation['default'][0]
     
     # Should NOT consolidate since siblings don't exceed the high threshold
     assert parent_wildcard not in consolidated_no_consolidation, f"Should not consolidate to {parent_wildcard} with {num_siblings} siblings not exceeding threshold {high_threshold}"
@@ -1712,7 +1712,7 @@ def test_property_2_bucket_specific_sibling_threshold_usage(data):
                                                 mock_get_config.return_value = bucket_config
                                                 mock_find_dist.return_value = ['DIST123']
                                                 mock_validate_dist.return_value = True
-                                                mock_consolidate.return_value = [['/prod/public/*']]  # Simulated consolidation result
+                                                mock_consolidate.return_value = {'prod': [['/prod/public/*']]}  # Simulated consolidation result
                                                 mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
                                                 mock_delete.return_value = {'successful': [f'handle{i}' for i in range(num_siblings)], 'failed': []}
                                                 
@@ -1782,8 +1782,8 @@ def test_property_3_sibling_threshold_boundary_conditions(data):
                                           stop_level=stop_level, 
                                           sibling_threshold=threshold)
     
-    assert len(result_at_threshold) == 1, "Should return single chunk"
-    consolidated_at_threshold = result_at_threshold[0]
+    assert len(result_at_threshold['default']) == 1, "Should return single chunk"
+    consolidated_at_threshold = result_at_threshold['default'][0]
     
     # Should NOT consolidate (count == threshold, need count > threshold)
     parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
@@ -1805,8 +1805,8 @@ def test_property_3_sibling_threshold_boundary_conditions(data):
                                              stop_level=stop_level, 
                                              sibling_threshold=threshold)
     
-    assert len(result_above_threshold) == 1, "Should return single chunk"
-    consolidated_above_threshold = result_above_threshold[0]
+    assert len(result_above_threshold['default']) == 1, "Should return single chunk"
+    consolidated_above_threshold = result_above_threshold['default'][0]
     
     # Should consolidate (count > threshold)
     assert parent_wildcard in consolidated_above_threshold, \
@@ -1828,8 +1828,8 @@ def test_property_3_sibling_threshold_boundary_conditions(data):
                                                  stop_level=stop_level, 
                                                  sibling_threshold=threshold)
         
-        assert len(result_below_threshold) == 1, "Should return single chunk"
-        consolidated_below_threshold = result_below_threshold[0]
+        assert len(result_below_threshold['default']) == 1, "Should return single chunk"
+        consolidated_below_threshold = result_below_threshold['default'][0]
         
         # Should NOT consolidate (count < threshold)
         assert parent_wildcard not in consolidated_below_threshold, \
@@ -1891,8 +1891,8 @@ def test_property_4_backward_compatibility_with_missing_parameter(data):
     assert result_without_param == result_other_params, "Missing parameter should behave same when other params specified"
     
     # Verify the consolidation actually happened (should consolidate to parent wildcard)
-    assert len(result_without_param) == 1, "Should return single chunk"
-    consolidated = result_without_param[0]
+    assert len(result_without_param['default']) == 1, "Should return single chunk"
+    consolidated = result_without_param['default'][0]
     
     parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
     assert parent_wildcard in consolidated, f"Should consolidate to {parent_wildcard} with {num_siblings} siblings exceeding default threshold"
@@ -1917,8 +1917,8 @@ def test_property_4_backward_compatibility_with_missing_parameter(data):
     assert boundary_result_without == boundary_result_with_none, "Boundary condition should behave identically"
     
     # Should NOT consolidate at boundary
-    assert len(boundary_result_without) == 1, "Should return single chunk"
-    boundary_consolidated = boundary_result_without[0]
+    assert len(boundary_result_without['default']) == 1, "Should return single chunk"
+    boundary_consolidated = boundary_result_without['default'][0]
     assert len(boundary_consolidated) == 10, f"Should have 10 individual wildcards at boundary, got {len(boundary_consolidated)}"
     
     # All original sibling wildcards should be present (not consolidated)
@@ -2175,11 +2175,11 @@ def test_property_5_sibling_threshold_parameter_precedence(data):
         "Missing parameter should behave same as explicit None"
     
     # Verify behavior based on thresholds
-    assert len(result_custom) == 1, "Should return single chunk with custom threshold"
-    assert len(result_global) == 1, "Should return single chunk with global threshold"
+    assert len(result_custom['default']) == 1, "Should return single chunk with custom threshold"
+    assert len(result_global['default']) == 1, "Should return single chunk with global threshold"
     
-    consolidated_custom = result_custom[0]
-    consolidated_global = result_global[0]
+    consolidated_custom = result_custom['default'][0]
+    consolidated_global = result_global['default'][0]
     parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
     
     # Check custom threshold behavior

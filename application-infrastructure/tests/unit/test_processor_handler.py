@@ -441,7 +441,8 @@ class TestProcessorHandler:
         assert 'Configuration error' in result['body']
         assert 'QUEUE_URL' in result['body']
 
-    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
+    @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
     @patch('functions.processor.handler.validate_bucket_tags')
     @patch('functions.processor.handler.get_bucket_tags')
@@ -455,7 +456,7 @@ class TestProcessorHandler:
     def test_configuration_resolution_with_bucket_tags(
         self, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,
-        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive, mock_boto_session
     ):
         """Test configuration resolution for buckets with configuration tags.
         
@@ -512,7 +513,8 @@ class TestProcessorHandler:
         assert call_args[1]['directory_threshold'] == 5
         assert call_args[1]['stop_level'] == 2
 
-    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
+    @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
     @patch('functions.processor.handler.validate_bucket_tags')
     @patch('functions.processor.handler.get_bucket_tags')
@@ -526,7 +528,7 @@ class TestProcessorHandler:
     def test_configuration_resolution_without_bucket_tags(
         self, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,
-        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive, mock_boto_session
     ):
         """Test configuration resolution for buckets without configuration tags.
         
@@ -584,7 +586,8 @@ class TestProcessorHandler:
         assert call_args[1]['directory_threshold'] == 3  # Default value
         assert call_args[1]['stop_level'] == 1  # Default value
 
-    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
+    @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
     @patch('functions.processor.handler.validate_bucket_tags')
     @patch('functions.processor.handler.get_bucket_tags')
@@ -600,7 +603,7 @@ class TestProcessorHandler:
     def test_configuration_reading_error_fallback(
         self, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,
-        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive, mock_boto_session
     ):
         """Test error handling when configuration reading fails.
         
@@ -648,7 +651,8 @@ class TestProcessorHandler:
         assert call_args[1]['directory_threshold'] == 3  # Fallback default
         assert call_args[1]['stop_level'] == 1  # Fallback default
 
-    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
+    @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
     @patch('functions.processor.handler.validate_bucket_tags')
     @patch('functions.processor.handler.get_bucket_tags')
@@ -663,7 +667,7 @@ class TestProcessorHandler:
     def test_configuration_decision_logging(
         self, mock_logger, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,
-        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive, mock_boto_session
     ):
         """Test logging of configuration decisions.
         
@@ -724,7 +728,8 @@ class TestProcessorHandler:
         
         assert config_logged, "Should log effective configuration being used for bucket"
 
-    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
+    @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
     @patch('functions.processor.handler.validate_bucket_tags')
     @patch('functions.processor.handler.get_bucket_tags')
@@ -738,7 +743,7 @@ class TestProcessorHandler:
     def test_sibling_threshold_parameter_passed_to_consolidate_paths(
         self, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,
-        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive, mock_boto_session
     ):
         """Test that sibling_directory_threshold from bucket config is passed to consolidate_paths.
         
