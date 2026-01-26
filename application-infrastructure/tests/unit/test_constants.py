@@ -25,7 +25,8 @@ class TestEnhancedConstants(unittest.TestCase):
             'AGGREGATION_WINDOW_SECONDS',
             'DIRECTORY_CONSOLIDATION_THRESHOLD', 
             'CONSOLIDATION_STOP_LEVEL',
-            'SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD'
+            'SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD',
+            'ORIGIN_PATH_PATTERN'
         ]
         for var in env_vars:
             self.original_env[var] = os.environ.get(var)
@@ -198,6 +199,93 @@ class TestEnhancedConstants(unittest.TestCase):
         with patch.dict(os.environ, {'TEST_VAR': '200'}):
             result = constants._get_validated_int_env('TEST_VAR', 10, 1, 100)
             self.assertEqual(result, 10)  # Should return default
+
+
+class TestOriginPathPatternConstants(unittest.TestCase):
+    """Test origin path pattern constants and configuration."""
+
+    def setUp(self):
+        """Set up test environment."""
+        # Store original environment variable
+        self.original_origin_path_pattern = os.environ.get('ORIGIN_PATH_PATTERN')
+        # Clear environment variable for clean testing
+        if 'ORIGIN_PATH_PATTERN' in os.environ:
+            del os.environ['ORIGIN_PATH_PATTERN']
+
+    def tearDown(self):
+        """Clean up test environment."""
+        # Restore original environment variable
+        if self.original_origin_path_pattern is not None:
+            os.environ['ORIGIN_PATH_PATTERN'] = self.original_origin_path_pattern
+        elif 'ORIGIN_PATH_PATTERN' in os.environ:
+            del os.environ['ORIGIN_PATH_PATTERN']
+
+    def test_origin_path_pattern_default_value(self):
+        """Test ORIGIN_PATH_PATTERN has correct default value."""
+        # Ensure no environment variable is set
+        if 'ORIGIN_PATH_PATTERN' in os.environ:
+            del os.environ['ORIGIN_PATH_PATTERN']
+        
+        import importlib
+        from common import constants as reloaded_constants
+        importlib.reload(reloaded_constants)
+        
+        self.assertEqual(reloaded_constants.ORIGIN_PATH_PATTERN, '/{stageId}/public')
+
+    def test_origin_path_pattern_environment_variable_override(self):
+        """Test ORIGIN_PATH_PATTERN reads from environment variable."""
+        # Test with custom pattern
+        with patch.dict(os.environ, {'ORIGIN_PATH_PATTERN': '/custom/path'}):
+            import importlib
+            from common import constants as reloaded_constants
+            importlib.reload(reloaded_constants)
+            
+            self.assertEqual(reloaded_constants.ORIGIN_PATH_PATTERN, '/custom/path')
+
+    def test_origin_path_pattern_empty_environment_variable_fallback(self):
+        """Test ORIGIN_PATH_PATTERN falls back to default when environment variable is empty."""
+        # Test with empty string
+        with patch.dict(os.environ, {'ORIGIN_PATH_PATTERN': ''}):
+            import importlib
+            from common import constants as reloaded_constants
+            importlib.reload(reloaded_constants)
+            
+            self.assertEqual(reloaded_constants.ORIGIN_PATH_PATTERN, '/{stageId}/public')
+
+    def test_public_path_segment_constant(self):
+        """Test PUBLIC_PATH_SEGMENT has correct value."""
+        import importlib
+        from common import constants as reloaded_constants
+        importlib.reload(reloaded_constants)
+        
+        self.assertEqual(reloaded_constants.PUBLIC_PATH_SEGMENT, 'public')
+
+    def test_production_stage_identifiers_constant(self):
+        """Test PRODUCTION_STAGE_IDENTIFIERS has correct values."""
+        import importlib
+        from common import constants as reloaded_constants
+        importlib.reload(reloaded_constants)
+        
+        expected = ['prod', 'beta', 'stage', 'staging']
+        self.assertEqual(reloaded_constants.PRODUCTION_STAGE_IDENTIFIERS, expected)
+
+    def test_non_production_stage_identifiers_constant(self):
+        """Test NON_PRODUCTION_STAGE_IDENTIFIERS has correct values."""
+        import importlib
+        from common import constants as reloaded_constants
+        importlib.reload(reloaded_constants)
+        
+        expected = ['dev', 'test']
+        self.assertEqual(reloaded_constants.NON_PRODUCTION_STAGE_IDENTIFIERS, expected)
+
+    def test_origin_path_depth_constant_removed(self):
+        """Test ORIGIN_PATH_DEPTH constant has been removed."""
+        import importlib
+        from common import constants as reloaded_constants
+        importlib.reload(reloaded_constants)
+        
+        # Verify the constant no longer exists
+        self.assertFalse(hasattr(reloaded_constants, 'ORIGIN_PATH_DEPTH'))
 
 
 if __name__ == '__main__':

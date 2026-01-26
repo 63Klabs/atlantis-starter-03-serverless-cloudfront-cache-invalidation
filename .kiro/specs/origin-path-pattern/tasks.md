@@ -8,7 +8,7 @@ Each task builds on previous work, ensuring no orphaned code. The implementation
 
 ## Tasks
 
-- [ ] 1. Update constants module with new configuration
+- [x] 1. Update constants module with new configuration
   - Remove hardcoded ORIGIN_PATH_DEPTH constant
   - Add ORIGIN_PATH_PATTERN with default `/{stageId}/public`
   - Add PUBLIC_PATH_SEGMENT constant with value `public`
@@ -17,7 +17,7 @@ Each task builds on previous work, ensuring no orphaned code. The implementation
   - Support ORIGIN_PATH_PATTERN environment variable override
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.7, 2.3, 2.4_
 
-- [ ] 1.1 Write unit tests for constants module
+- [x] 1.1 Write unit tests for constants module
   - Test default values for all constants
   - Test environment variable override behavior
   - Test fallback when environment variable is empty

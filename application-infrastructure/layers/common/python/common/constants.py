@@ -79,9 +79,17 @@ SQS_LONG_POLL_WAIT_TIME_SECONDS = 20
 # StageId patterns for production environments
 PRODUCTION_STAGE_PREFIXES = ['p', 's', 'b']
 
-# Path patterns
+# Origin path pattern configuration
+ORIGIN_PATH_PATTERN = os.environ.get('ORIGIN_PATH_PATTERN', '/{stageId}/public')
+# If environment variable is empty string, use default
+if not ORIGIN_PATH_PATTERN:
+    ORIGIN_PATH_PATTERN = '/{stageId}/public'
+
 PUBLIC_PATH_SEGMENT = 'public'
-ORIGIN_PATH_DEPTH = 3  # ['', stageId, 'public']
+
+# Stage identifiers for filtering
+PRODUCTION_STAGE_IDENTIFIERS = ['prod', 'beta', 'stage', 'staging']
+NON_PRODUCTION_STAGE_IDENTIFIERS = ['dev', 'test']
 
 # Index and default file patterns
 INDEX_FILE_PATTERNS = ['index.', 'default.']
