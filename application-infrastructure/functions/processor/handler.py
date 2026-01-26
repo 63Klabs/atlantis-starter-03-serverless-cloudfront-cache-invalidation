@@ -28,6 +28,7 @@ try:
     from distribution_finder import find_matching_distributions
     from path_consolidator import consolidate_paths
     from invalidation_client import create_invalidation
+    from pattern_resolver import resolve_bucket_pattern, filter_events_by_pattern
 except ImportError:
     # Development/test environment - use relative imports
     from .queue_client import receive_messages_batch, delete_messages_batch
@@ -35,6 +36,7 @@ except ImportError:
     from .distribution_finder import find_matching_distributions
     from .path_consolidator import consolidate_paths
     from .invalidation_client import create_invalidation
+    from .pattern_resolver import resolve_bucket_pattern, filter_events_by_pattern
 
 logger = setup_logger(__name__)
 
@@ -474,6 +476,62 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             summary['buckets_validated'] += 1
             
+            # Step 3.5: Resolve bucket pattern
+            # Get sample event path from first message
+            first_message = messages[0] if messages else {}
+            first_parsed_body = first_message.get('parsed_body', {})
+            sample_event_path = first_parsed_body.get('objectKey', '')
+            
+            if not sample_event_path:
+                logger.error(
+                    f"Missing objectKey in first message for bucket {bucket_name}, skipping",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'origin_path': origin_path,
+                        'missingObjectKey': True
+                    }}
+                )
+                messages_to_delete.extend(messages)
+                continue
+            
+            # Resolve the bucket's origin path pattern
+            bucket_pattern = resolve_bucket_pattern(bucket_name, sample_event_path)
+            
+            logger.info(
+                f"Resolved bucket pattern for {bucket_name}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'bucket_pattern': bucket_pattern,
+                    'sample_path': sample_event_path
+                }}
+            )
+            
+            # Step 3.6: Filter events by bucket pattern
+            filtered_messages = filter_events_by_pattern(messages, bucket_pattern)
+            
+            if not filtered_messages:
+                logger.info(
+                    f"No events match bucket pattern for {bucket_name}, skipping",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'bucket_pattern': bucket_pattern,
+                        'original_count': len(messages),
+                        'filtered_count': 0
+                    }}
+                )
+                messages_to_delete.extend(messages)
+                continue
+            
+            logger.info(
+                f"Filtered events by pattern: {len(messages)} -> {len(filtered_messages)}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'bucket_pattern': bucket_pattern,
+                    'original_count': len(messages),
+                    'filtered_count': len(filtered_messages)
+                }}
+            )
+            
             # DEBUG: Log bucket validation success
             # logger.info(
             #     f"Step 3: Bucket {bucket_name} validation passed DEBUG",
@@ -716,7 +774,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             # Step 7: Extract and consolidate paths
             object_paths = []
-            for message in messages:
+            for message in filtered_messages:  # Use filtered_messages instead of messages
                 parsed_body = message.get('parsed_body', {})
                 object_key = parsed_body.get('objectKey', '')
                 if object_key:
@@ -728,36 +786,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         if not relative_path.startswith('/'):
                             relative_path = '/' + relative_path
                         
-                        # DEBUG: Log path construction
-                        # logger.debug(
-                        #     f"Constructed invalidation path DEBUG",
-                        #     extra={'extra_fields': {
-                        #         'bucket_name': bucket_name,
-                        #         'object_key': object_key,
-                        #         'origin_path': origin_path,
-                        #         'relative_path': relative_path,
-                        #         'object_key_starts_with_origin': object_key.startswith(origin_path),
-                        #         'relative_path_starts_with_slash': relative_path.startswith('/')
-                        #     }}
-                        # )
-                        
                         object_paths.append(relative_path)
                     else:
                         # Fallback: use full object key with leading slash
                         fallback_path = object_key if object_key.startswith('/') else '/' + object_key
-                        
-                        # DEBUG: Log fallback path construction
-                        # logger.debug(
-                        #     f"Using fallback path construction DEBUG",
-                        #     extra={'extra_fields': {
-                        #         'bucket_name': bucket_name,
-                        #         'object_key': object_key,
-                        #         'origin_path': origin_path,
-                        #         'fallback_path': fallback_path,
-                        #         'object_key_starts_with_origin': object_key.startswith(origin_path)
-                        #     }}
-                        # )
-                        
                         object_paths.append(fallback_path)
             
             if not object_paths:
@@ -782,12 +814,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }}
             )
             
-            # Consolidate paths with bucket-specific configuration
-            consolidated_path_chunks = consolidate_paths(
+            # Consolidate paths with bucket-specific configuration and bucket pattern
+            consolidated_by_stage = consolidate_paths(
                 object_paths,
                 directory_threshold=bucket_config['directory_threshold'],
                 stop_level=bucket_config['stop_level'],
-                sibling_threshold=bucket_config['sibling_directory_threshold']
+                sibling_threshold=bucket_config['sibling_directory_threshold'],
+                bucket_pattern=bucket_pattern
             )
             
             # DEBUG: Log paths after consolidation
@@ -796,50 +829,64 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 extra={'extra_fields': {
                     'bucket_name': bucket_name,
                     'origin_path': origin_path,
-                    'chunk_count': len(consolidated_path_chunks),
-                    'consolidated_chunks': [chunk[:10] for chunk in consolidated_path_chunks]  # Log first 10 paths per chunk
+                    'bucket_pattern': bucket_pattern,
+                    'stage_count': len(consolidated_by_stage),
+                    'stages': list(consolidated_by_stage.keys())
                 }}
             )
             
-            # Step 8: Submit invalidations for each valid distribution
-            for dist_id in valid_distributions:
-                for chunk_idx, path_chunk in enumerate(consolidated_path_chunks):
-                    try:
-                        result = create_invalidation(dist_id, path_chunk)
-                        
-                        if result:
-                            summary['invalidations_submitted'] += 1
-                            logger.info(
-                                f"Successfully submitted invalidation for distribution {dist_id}",
-                                extra={'extra_fields': {
-                                    'distribution_id': dist_id,
-                                    'invalidation_id': result.get('Id'),
-                                    'path_count': len(path_chunk),
-                                    'chunk_index': chunk_idx,
-                                    'total_chunks': len(consolidated_path_chunks)
-                                }}
-                            )
-                        else:
+            # Step 8: Submit invalidations for each valid distribution and each stage
+            for stage, consolidated_path_chunks in consolidated_by_stage.items():
+                logger.info(
+                    f"Processing stage {stage} with {len(consolidated_path_chunks)} chunks",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'stage': stage,
+                        'chunk_count': len(consolidated_path_chunks)
+                    }}
+                )
+                
+                for dist_id in valid_distributions:
+                    for chunk_idx, path_chunk in enumerate(consolidated_path_chunks):
+                        try:
+                            result = create_invalidation(dist_id, path_chunk)
+                            
+                            if result:
+                                summary['invalidations_submitted'] += 1
+                                logger.info(
+                                    f"Successfully submitted invalidation for distribution {dist_id}, stage {stage}",
+                                    extra={'extra_fields': {
+                                        'distribution_id': dist_id,
+                                        'stage': stage,
+                                        'invalidation_id': result.get('Id'),
+                                        'path_count': len(path_chunk),
+                                        'chunk_index': chunk_idx,
+                                        'total_chunks': len(consolidated_path_chunks)
+                                    }}
+                                )
+                            else:
+                                summary['invalidations_failed'] += 1
+                                logger.error(
+                                    f"Failed to submit invalidation for distribution {dist_id}, stage {stage}",
+                                    extra={'extra_fields': {
+                                        'distribution_id': dist_id,
+                                        'stage': stage,
+                                        'path_count': len(path_chunk),
+                                        'chunk_index': chunk_idx
+                                    }}
+                                )
+                        except Exception as e:
                             summary['invalidations_failed'] += 1
                             logger.error(
-                                f"Failed to submit invalidation for distribution {dist_id}",
+                                f"Exception submitting invalidation for distribution {dist_id}, stage {stage}: {str(e)}",
                                 extra={'extra_fields': {
                                     'distribution_id': dist_id,
+                                    'stage': stage,
+                                    'error': str(e),
                                     'path_count': len(path_chunk),
                                     'chunk_index': chunk_idx
                                 }}
                             )
-                    except Exception as e:
-                        summary['invalidations_failed'] += 1
-                        logger.error(
-                            f"Exception submitting invalidation for distribution {dist_id}: {str(e)}",
-                            extra={'extra_fields': {
-                                'distribution_id': dist_id,
-                                'error': str(e),
-                                'path_count': len(path_chunk),
-                                'chunk_index': chunk_idx
-                            }}
-                        )
             
             # Mark messages for deletion (processed successfully)
             messages_to_delete.extend(messages)

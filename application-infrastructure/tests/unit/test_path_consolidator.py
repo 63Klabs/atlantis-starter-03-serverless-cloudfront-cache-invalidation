@@ -20,15 +20,15 @@ class TestEdgeCases:
     def test_empty_path_list(self):
         """Test consolidation with empty path list."""
         result = consolidate_paths([])
-        assert len(result) == 1
-        assert result[0] == []
+        assert len(result['default']) == 1
+        assert result['default'][0] == []
     
     def test_single_path(self):
         """Test consolidation with single path."""
         result = consolidate_paths(['/prod/public/file.html'])
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/prod/public/file.html'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/prod/public/file.html'
     
     def test_deeply_nested_structures(self):
         """Test consolidation with deeply nested directory structures."""
@@ -40,9 +40,9 @@ class TestEdgeCases:
         ]
         # Use stop_level=7 to allow consolidation at depth 7
         result = consolidate_paths(paths, stop_level=7)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should consolidate to directory level
-        assert result[0][0] == '/a/b/c/d/e/f/g/*'
+        assert result['default'][0][0] == '/a/b/c/d/e/f/g/*'
     
     def test_mixed_file_and_directory_paths(self):
         """Test consolidation with mix of files and directory wildcards."""
@@ -53,9 +53,9 @@ class TestEdgeCases:
             '/prod/public/dir4/file.html'
         ]
         result = consolidate_paths(paths)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should keep as-is since no consolidation threshold is met
-        assert len(result[0]) == 4
+        assert len(result['default'][0]) == 4
 
 
 class TestIndexDefaultFiles:
@@ -204,9 +204,9 @@ class TestComplexScenarios:
         
         result = consolidate_paths(paths, stop_level=0)
         # Should consolidate all the way to /*
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/*'
     
     def test_no_consolidation_needed(self):
         """Test paths that don't meet any consolidation criteria."""
@@ -217,8 +217,8 @@ class TestComplexScenarios:
         ]
         result = consolidate_paths(paths)
         # Should remain unchanged
-        assert len(result) == 1
-        assert len(result[0]) == 3
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 3
     
     def test_partial_consolidation(self):
         """Test scenario where only some paths consolidate."""
@@ -233,11 +233,11 @@ class TestComplexScenarios:
             '/dir3/file1.html'
         ]
         result = consolidate_paths(paths, stop_level=1)  # Allow consolidation at depth 1
-        assert len(result) == 1
-        assert '/dir1/*' in result[0]
-        assert '/dir2/file1.html' in result[0]
-        assert '/dir3/file1.html' in result[0]
-        assert len(result[0]) == 3
+        assert len(result['default']) == 1
+        assert '/dir1/*' in result['default'][0]
+        assert '/dir2/file1.html' in result['default'][0]
+        assert '/dir3/file1.html' in result['default'][0]
+        assert len(result['default'][0]) == 3
 
 
 class TestSplitting:
@@ -248,8 +248,8 @@ class TestSplitting:
         paths = [f'/dir{i}/file.html' for i in range(100)]
         result = consolidate_paths(paths)
         # Should return single chunk
-        assert len(result) == 1
-        assert len(result[0]) == 100
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 100
     
     def test_splitting_at_1000(self):
         """Test that paths are split at 1000 item boundary."""
@@ -257,9 +257,9 @@ class TestSplitting:
         paths = [f'/dir{i}/file.html' for i in range(1500)]
         result = consolidate_paths(paths)
         # Should split into 2 chunks
-        assert len(result) == 2
-        assert len(result[0]) == 1000
-        assert len(result[1]) == 500
+        assert len(result['default']) == 2
+        assert len(result['default'][0]) == 1000
+        assert len(result['default'][1]) == 500
 
 
 class TestPathDepthCalculation:
@@ -376,15 +376,15 @@ class TestBucketSpecificConfiguration:
         
         # With threshold 1, should consolidate
         result = consolidate_paths(paths, directory_threshold=1, stop_level=1)  # Allow consolidation at depth 1
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
         
         # With threshold 3, should not consolidate
         result = consolidate_paths(paths, directory_threshold=3)
-        assert len(result) == 1
-        assert len(result[0]) == 2
-        assert '/dir/file1.html' in result[0]
-        assert '/dir/file2.html' in result[0]
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 2
+        assert '/dir/file1.html' in result['default'][0]
+        assert '/dir/file2.html' in result['default'][0]
     
     def test_custom_stop_level(self):
         """Test consolidation with custom stop level."""
@@ -392,22 +392,22 @@ class TestBucketSpecificConfiguration:
         
         # With stop level 1, should consolidate normally
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
         
         # With stop level 2, should allow consolidation at depth 1
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should consolidate to /dir/* (depth 1) since depth 1 >= stop level 1
-        assert '/dir/*' in result[0]
+        assert '/dir/*' in result['default'][0]
     
     def test_stop_level_zero_special_case(self):
         """Test that stop level 0 consolidates everything to root."""
         paths = ['/dir1/file1.html', '/dir2/file2.html', '/dir3/file3.html']
         result = consolidate_paths(paths, stop_level=0)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/*'
     
     def test_index_file_with_stop_level(self):
         """Test index file consolidation respects stop level."""
@@ -415,13 +415,13 @@ class TestBucketSpecificConfiguration:
         
         # With stop level 1, should consolidate index file
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
         
         # With stop level 2, should allow consolidation to /dir/* (depth 1)
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
 
 
 class TestStopLevelEdgeCases:
@@ -436,41 +436,41 @@ class TestStopLevelEdgeCases:
             '/file4.html'
         ]
         result = consolidate_paths(paths, stop_level=0)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/*'
     
     def test_stop_level_zero_with_index_files(self):
         """Test stop level 0 overrides index file consolidation."""
         paths = ['/dir1/index.html', '/dir2/default.html', '/dir3/file.html']
         result = consolidate_paths(paths, stop_level=0)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/*'
     
     def test_stop_level_one_boundary_conditions(self):
         """Test stop level 1 boundary conditions."""
         # Test consolidation at exactly depth 1 (should be allowed)
         paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
         
         # Test that depth 2 consolidation is allowed with stop level 1
         # Create paths that would consolidate at depth 2
         deep_paths = ['/dir/subdir/file1.html', '/dir/subdir/file2.html', '/dir/subdir/file3.html', '/dir/subdir/file4.html']
         result = consolidate_paths(deep_paths, stop_level=1)
         # Should consolidate to /dir/subdir/* (depth 2 >= stop level 1 is true, so allowed)
-        assert len(result) == 1
-        assert '/dir/subdir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/subdir/*' in result['default'][0]
     
     def test_stop_level_two_allows_up_to_depth_two(self):
         """Test that stop level 2 allows consolidation at depth 2 and deeper."""
         paths = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should consolidate to /dir/* (depth 1) with stop level 1 since depth 1 >= 1
-        assert '/dir/*' in result[0]
+        assert '/dir/*' in result['default'][0]
         
         # Should also allow consolidation at depth 2
         deep_paths = [
@@ -478,8 +478,8 @@ class TestStopLevelEdgeCases:
             '/dir/subdir/file3.html', '/dir/subdir/file4.html'
         ]
         result = consolidate_paths(deep_paths, stop_level=2)
-        assert len(result) == 1
-        assert '/dir/subdir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/subdir/*' in result['default'][0]
         
         # But should allow consolidation at depth 3 with stop level 2
         deeper_paths = [
@@ -487,17 +487,17 @@ class TestStopLevelEdgeCases:
             '/dir/subdir/subsubdir/file3.html', '/dir/subdir/subsubdir/file4.html'
         ]
         result = consolidate_paths(deeper_paths, stop_level=2)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should consolidate to /dir/subdir/subsubdir/* (depth 3 >= stop level 2 is true)
-        assert '/dir/subdir/subsubdir/*' in result[0]
+        assert '/dir/subdir/subsubdir/*' in result['default'][0]
     
     def test_stop_level_three_allows_up_to_depth_three(self):
         """Test that stop level 3 allows consolidation at depth 3 and deeper."""
         # Should allow consolidation at depth 1
         paths_depth_1 = ['/dir/file1.html', '/dir/file2.html', '/dir/file3.html', '/dir/file4.html']
         result = consolidate_paths(paths_depth_1, stop_level=1)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
         
         # Should allow consolidation at depth 2
         paths_depth_2 = [
@@ -505,8 +505,8 @@ class TestStopLevelEdgeCases:
             '/dir/subdir/file3.html', '/dir/subdir/file4.html'
         ]
         result = consolidate_paths(paths_depth_2, stop_level=2)
-        assert len(result) == 1
-        assert '/dir/subdir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/subdir/*' in result['default'][0]
         
         # Should allow consolidation at depth 3
         paths_depth_3 = [
@@ -514,8 +514,8 @@ class TestStopLevelEdgeCases:
             '/dir/subdir/subsubdir/file3.html', '/dir/subdir/subsubdir/file4.html'
         ]
         result = consolidate_paths(paths_depth_3, stop_level=3)
-        assert len(result) == 1
-        assert '/dir/subdir/subsubdir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/subdir/subsubdir/*' in result['default'][0]
         
         # Should allow consolidation at depth 4 with stop level 3
         paths_depth_4 = [
@@ -523,9 +523,9 @@ class TestStopLevelEdgeCases:
             '/dir/subdir/subsubdir/subsubsubdir/file3.html', '/dir/subdir/subsubdir/subsubsubdir/file4.html'
         ]
         result = consolidate_paths(paths_depth_4, stop_level=3)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should consolidate to depth 4 with stop level 3 (depth 4 >= stop level 3)
-        assert '/dir/subdir/subsubdir/subsubsubdir/*' in result[0]
+        assert '/dir/subdir/subsubdir/subsubsubdir/*' in result['default'][0]
     
     def test_stop_level_with_sibling_directories(self):
         """Test stop level behavior with sibling directory consolidation."""
@@ -538,9 +538,9 @@ class TestStopLevelEdgeCases:
         
         # With stop level 2, should consolidate to directory wildcards but prevent sibling consolidation
         result = consolidate_paths(paths, stop_level=2)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should have individual directory wildcards, not parent consolidation (depth 1 < stop_level 2)
-        consolidated = result[0]
+        consolidated = result['default'][0]
         # Should have 12 directory wildcards (one for each dir0, dir1, ..., dir11)
         directory_wildcards = [p for p in consolidated if p.startswith('/parent/dir') and p.endswith('/*')]
         assert len(directory_wildcards) == 12, f"Expected 12 directory wildcards, got {len(directory_wildcards)}: {consolidated}"
@@ -548,9 +548,9 @@ class TestStopLevelEdgeCases:
         
         # With stop level 1, should allow consolidation to /parent/* (depth 1)
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should consolidate to parent since depth 1 >= stop level 1
-        assert '/parent/*' in result[0] or '/*' in result[0]  # May consolidate further
+        assert '/parent/*' in result['default'][0] or '/*' in result['default'][0]  # May consolidate further
     
     def test_mixed_depth_consolidation_with_stop_level(self):
         """Test consolidation with paths at different depths and stop level."""
@@ -567,19 +567,19 @@ class TestStopLevelEdgeCases:
         
         # With stop level 2, should allow consolidation at depth 2 and deeper, prevent shallower
         result = consolidate_paths(paths, stop_level=2)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         
         # Depth 1 should NOT consolidate (depth 1 < stop level 2)
-        assert '/dir1/*' not in result[0]
+        assert '/dir1/*' not in result['default'][0]
         # Should have individual files at depth 1
-        depth_1_files = [p for p in result[0] if p.startswith('/dir1/') and not p.endswith('/*')]
+        depth_1_files = [p for p in result['default'][0] if p.startswith('/dir1/') and not p.endswith('/*')]
         assert len(depth_1_files) == 4
         
         # Depth 2 should consolidate (depth 2 >= stop level 2)
-        assert '/dir2/subdir/*' in result[0]
+        assert '/dir2/subdir/*' in result['default'][0]
         
         # Depth 3 should also consolidate (depth 3 >= stop level 2)
-        assert '/dir3/sub1/sub2/*' in result[0]
+        assert '/dir3/sub1/sub2/*' in result['default'][0]
 
 
 class TestInvalidStopLevelHandling:
@@ -591,8 +591,8 @@ class TestInvalidStopLevelHandling:
         
         # Should fall back to default behavior (stop level 1)
         result = consolidate_paths(paths, stop_level=-1)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]  # Should consolidate normally with default stop level
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]  # Should consolidate normally with default stop level
     
     def test_very_large_stop_level(self):
         """Test that very large stop level falls back to default."""
@@ -600,8 +600,8 @@ class TestInvalidStopLevelHandling:
         
         # Should fall back to default behavior (stop level 1)
         result = consolidate_paths(paths, stop_level=100)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]  # Should consolidate normally with default stop level
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]  # Should consolidate normally with default stop level
     
     def test_none_stop_level(self):
         """Test that None stop level uses default."""
@@ -609,8 +609,8 @@ class TestInvalidStopLevelHandling:
         
         # Should use default stop level from constants
         result = consolidate_paths(paths, stop_level=None)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]  # Should consolidate normally with default stop level
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]  # Should consolidate normally with default stop level
 
 
 class TestSiblingThresholdParameter:
@@ -623,16 +623,16 @@ class TestSiblingThresholdParameter:
         
         # With threshold=3, should consolidate (5 > 3)
         result = consolidate_paths(paths, sibling_threshold=3, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
         
         # With threshold=5, should NOT consolidate (5 is not > 5)
         result = consolidate_paths(paths, sibling_threshold=5, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 5
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 5
         for i in range(5):
-            assert f'/parent/dir{i}/*' in result[0]
+            assert f'/parent/dir{i}/*' in result['default'][0]
     
     def test_sibling_threshold_boundary_conditions(self):
         """Test sibling threshold boundary conditions."""
@@ -641,15 +641,15 @@ class TestSiblingThresholdParameter:
         
         # With threshold=3, should NOT consolidate (3 is not > 3)
         result = consolidate_paths(paths, sibling_threshold=3, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 3
-        assert '/parent/*' not in result[0]
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 3
+        assert '/parent/*' not in result['default'][0]
         
         # With threshold=2, should consolidate (3 > 2)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
     
     def test_sibling_threshold_with_stop_level_interaction(self):
         """Test interaction between sibling threshold and stop level constraints."""
@@ -658,15 +658,15 @@ class TestSiblingThresholdParameter:
         
         # With stop_level=2, should prevent consolidation at depth 1 (1 < 2)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=2)
-        assert len(result) == 1
-        assert len(result[0]) == 4  # Should remain as individual directory wildcards
-        assert '/parent/*' not in result[0]
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 4  # Should remain as individual directory wildcards
+        assert '/parent/*' not in result['default'][0]
         
         # With stop_level=1, should allow consolidation at depth 1 (1 >= 1)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
     
     def test_sibling_threshold_none_fallback(self):
         """Test that None sibling_threshold falls back to global constant."""
@@ -678,9 +678,9 @@ class TestSiblingThresholdParameter:
         result_missing = consolidate_paths(paths, stop_level=1)
         
         assert result_none == result_missing
-        assert len(result_none) == 1
-        assert len(result_none[0]) == 1
-        assert result_none[0][0] == '/parent/*'
+        assert len(result_none['default']) == 1
+        assert len(result_none['default'][0]) == 1
+        assert result_none['default'][0][0] == '/parent/*'
     
     def test_sibling_threshold_zero_and_one(self):
         """Test edge cases with very low thresholds."""
@@ -689,18 +689,18 @@ class TestSiblingThresholdParameter:
         
         # With threshold=0, should consolidate (1 > 0)
         result = consolidate_paths(paths, sibling_threshold=0, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
         
         # Two sibling directories
         paths = ['/parent/dir0/*', '/parent/dir1/*']
         
         # With threshold=1, should consolidate (2 > 1)
         result = consolidate_paths(paths, sibling_threshold=1, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
     
     def test_sibling_threshold_very_high(self):
         """Test with very high threshold that prevents consolidation."""
@@ -709,11 +709,11 @@ class TestSiblingThresholdParameter:
         
         # With threshold=100, should NOT consolidate (10 < 100)
         result = consolidate_paths(paths, sibling_threshold=100, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 10
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 10
         for i in range(10):
-            assert f'/parent/dir{i}/*' in result[0]
-        assert '/parent/*' not in result[0]
+            assert f'/parent/dir{i}/*' in result['default'][0]
+        assert '/parent/*' not in result['default'][0]
     
     def test_mixed_threshold_scenarios(self):
         """Test scenarios with multiple parent directories and different thresholds."""
@@ -727,10 +727,10 @@ class TestSiblingThresholdParameter:
         
         # With threshold=3, parent1 and parent3 should consolidate, parent2 should not
         result = consolidate_paths(paths, sibling_threshold=3, stop_level=1)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         
         # Should have parent1/* and parent3/* consolidated, parent2 siblings remain
-        consolidated = result[0]
+        consolidated = result['default'][0]
         assert '/parent1/*' in consolidated
         assert '/parent3/*' in consolidated
         assert '/parent2/dir0/*' in consolidated
@@ -744,15 +744,15 @@ class TestSiblingThresholdEdgeCases:
     def test_empty_paths_with_sibling_threshold(self):
         """Test sibling threshold with empty path list."""
         result = consolidate_paths([], sibling_threshold=5)
-        assert len(result) == 1
-        assert result[0] == []
+        assert len(result['default']) == 1
+        assert result['default'][0] == []
     
     def test_single_path_with_sibling_threshold(self):
         """Test sibling threshold with single path."""
         result = consolidate_paths(['/file.html'], sibling_threshold=5)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/file.html'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/file.html'
     
     def test_non_wildcard_paths_with_sibling_threshold(self):
         """Test that sibling threshold doesn't affect non-wildcard paths."""
@@ -760,10 +760,10 @@ class TestSiblingThresholdEdgeCases:
         
         # Sibling threshold only applies to directory wildcards, not individual files
         result = consolidate_paths(paths, sibling_threshold=1, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 3
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 3
         for path in paths:
-            assert path in result[0]
+            assert path in result['default'][0]
     
     def test_mixed_wildcards_and_files_with_sibling_threshold(self):
         """Test sibling threshold with mix of wildcards and individual files."""
@@ -776,8 +776,8 @@ class TestSiblingThresholdEdgeCases:
         
         # With threshold=2, parent siblings should consolidate (3 > 2)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        assert len(result) == 1
-        consolidated = result[0]
+        assert len(result['default']) == 1
+        consolidated = result['default'][0]
         
         assert '/parent/*' in consolidated
         assert '/other/file.html' in consolidated
@@ -794,8 +794,8 @@ class TestSiblingThresholdEdgeCases:
         
         # With threshold=2, should consolidate to /level1/level2/* (3 > 2)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=2)
-        assert len(result) == 1
-        consolidated = result[0]
+        assert len(result['default']) == 1
+        consolidated = result['default'][0]
         
         assert '/level1/level2/*' in consolidated
         assert '/level1/other/file.html' in consolidated
@@ -816,9 +816,9 @@ class TestUserSpecificScenarioComprehensive:
         ]
         
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/prod/public/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/prod/public/*'
     
     def test_user_scenario_variations(self):
         """Test variations of user's scenario with different configurations."""
@@ -840,15 +840,15 @@ class TestUserSpecificScenarioComprehensive:
         
         for threshold, should_consolidate in test_cases:
             result = consolidate_paths(paths, sibling_threshold=threshold, stop_level=1)
-            assert len(result) == 1
+            assert len(result['default']) == 1
             
             if should_consolidate:
-                assert len(result[0]) == 1
-                assert result[0][0] == '/prod/public/*'
+                assert len(result['default'][0]) == 1
+                assert result['default'][0][0] == '/prod/public/*'
             else:
-                assert len(result[0]) == 4
+                assert len(result['default'][0]) == 4
                 for path in paths:
-                    assert path in result[0]
+                    assert path in result['default'][0]
     
     def test_user_scenario_with_stop_level_variations(self):
         """Test user's scenario with different stop levels."""
@@ -861,22 +861,22 @@ class TestUserSpecificScenarioComprehensive:
         
         # With stop_level=2, should prevent consolidation to /prod/public/* (depth 1 < stop_level 2)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=2)
-        assert len(result) == 1
-        assert len(result[0]) == 4
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 4
         for path in paths:
-            assert path in result[0]
+            assert path in result['default'][0]
         
         # With stop_level=1, should allow consolidation to /prod/public/* (depth 1 >= stop_level 1)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/prod/public/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/prod/public/*'
         
         # With stop_level=0, should consolidate to /* (special case)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=0)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/*'
 
 
 class ThresholdBoundaryConditions:
@@ -890,10 +890,10 @@ class ThresholdBoundaryConditions:
         # With threshold=5, should NOT consolidate (5 is not > 5)
         # Use stop_level=1 to allow normal consolidation logic (stop_level=0 forces root consolidation)
         result = consolidate_paths(paths, sibling_threshold=5, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 5
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 5
         for i in range(5):
-            assert f'/parent/dir{i}/*' in result[0]
+            assert f'/parent/dir{i}/*' in result['default'][0]
     
     def test_sibling_threshold_just_above_boundary(self):
         """Test consolidation when sibling count is just above threshold."""
@@ -902,9 +902,9 @@ class ThresholdBoundaryConditions:
         
         # With threshold=5, should consolidate (6 > 5)
         result = consolidate_paths(paths, sibling_threshold=5, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
     
     def test_sibling_threshold_just_below_boundary(self):
         """Test consolidation when sibling count is just below threshold."""
@@ -913,10 +913,10 @@ class ThresholdBoundaryConditions:
         
         # With threshold=5, should NOT consolidate (4 < 5)
         result = consolidate_paths(paths, sibling_threshold=5, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 4
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 4
         for i in range(4):
-            assert f'/parent/dir{i}/*' in result[0]
+            assert f'/parent/dir{i}/*' in result['default'][0]
     
     def test_sibling_threshold_with_mixed_parents(self):
         """Test threshold boundary conditions with multiple parent directories."""
@@ -929,21 +929,21 @@ class ThresholdBoundaryConditions:
         paths.extend([f'/parent3/dir{i}/*' for i in range(2)])
         
         result = consolidate_paths(paths, sibling_threshold=3, stop_level=1)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         
         # Parent1: exactly 3 siblings, should NOT consolidate (3 is not > 3)
-        assert '/parent1/dir0/*' in result[0]
-        assert '/parent1/dir1/*' in result[0]
-        assert '/parent1/dir2/*' in result[0]
-        assert '/parent1/*' not in result[0]
+        assert '/parent1/dir0/*' in result['default'][0]
+        assert '/parent1/dir1/*' in result['default'][0]
+        assert '/parent1/dir2/*' in result['default'][0]
+        assert '/parent1/*' not in result['default'][0]
         
         # Parent2: 4 siblings, should consolidate (4 > 3)
-        assert '/parent2/*' in result[0]
+        assert '/parent2/*' in result['default'][0]
         
         # Parent3: 2 siblings, should NOT consolidate (2 < 3)
-        assert '/parent3/dir0/*' in result[0]
-        assert '/parent3/dir1/*' in result[0]
-        assert '/parent3/*' not in result[0]
+        assert '/parent3/dir0/*' in result['default'][0]
+        assert '/parent3/dir1/*' in result['default'][0]
+        assert '/parent3/*' not in result['default'][0]
     
     def test_sibling_threshold_one(self):
         """Test sibling threshold of 1 (very low threshold)."""
@@ -952,9 +952,9 @@ class ThresholdBoundaryConditions:
         
         # With threshold=1, should consolidate (2 > 1)
         result = consolidate_paths(paths, sibling_threshold=1, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
     
     def test_sibling_threshold_zero(self):
         """Test sibling threshold of 0 (consolidates everything)."""
@@ -963,9 +963,9 @@ class ThresholdBoundaryConditions:
         
         # With threshold=0, should consolidate (1 > 0)
         result = consolidate_paths(paths, sibling_threshold=0, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
     
     def test_sibling_threshold_very_high(self):
         """Test very high sibling threshold (prevents consolidation)."""
@@ -974,10 +974,10 @@ class ThresholdBoundaryConditions:
         
         # With threshold=100, should NOT consolidate (10 < 100)
         result = consolidate_paths(paths, sibling_threshold=100, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 10
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 10
         for i in range(10):
-            assert f'/parent/dir{i}/*' in result[0]
+            assert f'/parent/dir{i}/*' in result['default'][0]
 
 
 class TestUserSpecificScenario:
@@ -996,9 +996,9 @@ class TestUserSpecificScenario:
         ]
         
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/prod/public/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/prod/public/*'
     
     def test_user_scenario_threshold_boundary_conditions(self):
         """Test threshold boundary conditions with user's scenario."""
@@ -1011,18 +1011,18 @@ class TestUserSpecificScenario:
         
         # With threshold=4, should NOT consolidate (4 is not > 4)
         result = consolidate_paths(paths, sibling_threshold=4, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 4
-        assert '/prod/public/m/*' in result[0]
-        assert '/prod/public/k/*' in result[0]
-        assert '/prod/public/w/*' in result[0]
-        assert '/prod/public/x/*' in result[0]
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 4
+        assert '/prod/public/m/*' in result['default'][0]
+        assert '/prod/public/k/*' in result['default'][0]
+        assert '/prod/public/w/*' in result['default'][0]
+        assert '/prod/public/x/*' in result['default'][0]
         
         # With threshold=3, should consolidate (4 > 3)
         result = consolidate_paths(paths, sibling_threshold=3, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/prod/public/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/prod/public/*'
     
     def test_user_scenario_with_stop_level_constraints(self):
         """Test user's scenario respects stop level constraints."""
@@ -1035,18 +1035,18 @@ class TestUserSpecificScenario:
         
         # With stop_level=2, should prevent consolidation to /prod/public/* (depth 1 < stop_level 2)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=2)
-        assert len(result) == 1
-        assert len(result[0]) == 4  # Should remain as individual directory wildcards
-        assert '/prod/public/m/*' in result[0]
-        assert '/prod/public/k/*' in result[0]
-        assert '/prod/public/w/*' in result[0]
-        assert '/prod/public/x/*' in result[0]
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 4  # Should remain as individual directory wildcards
+        assert '/prod/public/m/*' in result['default'][0]
+        assert '/prod/public/k/*' in result['default'][0]
+        assert '/prod/public/w/*' in result['default'][0]
+        assert '/prod/public/x/*' in result['default'][0]
         
         # With stop_level=1, should allow consolidation to /prod/public/* (depth 1 >= stop_level 1)
         result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/prod/public/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/prod/public/*'
 
 
 class TestBackwardCompatibility:
@@ -1058,8 +1058,8 @@ class TestBackwardCompatibility:
         
         # Default behavior should consolidate normally
         result = consolidate_paths(paths)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
     
     def test_stop_level_one_maintains_compatibility(self):
         """Test that explicit stop level 1 maintains existing behavior."""
@@ -1078,10 +1078,10 @@ class TestBackwardCompatibility:
         # Should consolidate index file to directory wildcard
         # The /dir/* wildcard covers both files, so about.html is not separate
         result = consolidate_paths(paths)
-        assert len(result) == 1
-        assert '/dir/*' in result[0]
+        assert len(result['default']) == 1
+        assert '/dir/*' in result['default'][0]
         # The wildcard covers all files in the directory
-        assert len(result[0]) == 1  # Only the wildcard should remain
+        assert len(result['default'][0]) == 1  # Only the wildcard should remain
     
     def test_complex_scenario_backward_compatibility(self):
         """Test complex consolidation scenario maintains backward compatibility."""
@@ -1094,9 +1094,9 @@ class TestBackwardCompatibility:
         # Should still consolidate to root with stop level that allows consolidation at depth 2
         # Use stop_level=2 to allow consolidation of /root/dir* directories (depth 2)
         result = consolidate_paths(paths, stop_level=2)
-        assert len(result) == 1
+        assert len(result['default']) == 1
         # Should consolidate all the way up (may be /* or specific pattern)
-        assert len(result[0]) <= 12  # Should be consolidated significantly
+        assert len(result['default'][0]) <= 12  # Should be consolidated significantly
     
     def test_consolidate_paths_without_sibling_threshold_parameter(self):
         """Test consolidate_paths calls without sibling_threshold parameter use global constant."""
@@ -1105,9 +1105,9 @@ class TestBackwardCompatibility:
         
         # Call without sibling_threshold parameter - should use global constant (10)
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert result[0][0] == '/parent/*'
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 1
+        assert result['default'][0][0] == '/parent/*'
         
         # Call with explicit None - should also use global constant
         result_none = consolidate_paths(paths, sibling_threshold=None, stop_level=1)
@@ -1120,10 +1120,10 @@ class TestBackwardCompatibility:
         
         # Without sibling_threshold parameter, should NOT consolidate (10 is not > 10)
         result = consolidate_paths(paths, stop_level=1)
-        assert len(result) == 1
-        assert len(result[0]) == 10
+        assert len(result['default']) == 1
+        assert len(result['default'][0]) == 10
         for i in range(10):
-            assert f'/parent/dir{i}/*' in result[0]
+            assert f'/parent/dir{i}/*' in result['default'][0]
         
         # With explicit None, should behave the same
         result_none = consolidate_paths(paths, sibling_threshold=None, stop_level=1)
@@ -1147,8 +1147,8 @@ class TestBackwardCompatibility:
         assert result_old_style == result_new_style
         
         # Both should consolidate to /prod/public/* since 4 > 3 (directory threshold)
-        assert len(result_old_style) == 1
-        assert '/prod/public/*' in result_old_style[0]
+        assert len(result_old_style['default']) == 1
+        assert '/prod/public/*' in result_old_style['default'][0]
     
     def test_parameter_order_independence(self):
         """Test that parameter order doesn't affect backward compatibility."""
@@ -1180,7 +1180,7 @@ class TestBackwardCompatibility:
         
         # All should consolidate to directory wildcards
         for result in [result1, result2, result3]:
-            assert len(result) == 1
-            assert '/dir1/*' in result[0]
-            assert '/dir2/*' in result[0]
-            assert len(result[0]) == 2
+            assert len(result['default']) == 1
+            assert '/dir1/*' in result['default'][0]
+            assert '/dir2/*' in result['default'][0]
+            assert len(result['default'][0]) == 2

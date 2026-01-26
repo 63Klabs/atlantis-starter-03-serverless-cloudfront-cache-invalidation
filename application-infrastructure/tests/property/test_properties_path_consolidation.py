@@ -158,9 +158,9 @@ def test_property_20_index_and_default_file_directory_consolidation(file_path):
     result = consolidate_paths([file_path], stop_level=stop_level)
     
     # Should return a single chunk
-    assert len(result) == 1, "Should return single chunk for one path"
+    assert len(result['default']) == 1, "Should return single chunk for one path"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Should have exactly one path (the parent directory wildcard)
     assert len(consolidated) == 1, f"Should consolidate to single path, got {len(consolidated)}"
@@ -207,9 +207,9 @@ def test_property_21_directory_consolidation_threshold(directory_and_files):
     result = consolidate_paths(files, stop_level=stop_level)
     
     # Should return a single chunk
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Should consolidate to a single directory wildcard
     assert len(consolidated) == 1, f"Should consolidate to single path, got {len(consolidated)}: {consolidated}"
@@ -249,9 +249,9 @@ def test_property_22_sibling_directory_consolidation(parent_and_wildcards):
     result = consolidate_paths(wildcards, stop_level=stop_level)
     
     # Should return a single chunk
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Should consolidate to parent wildcard
     assert len(consolidated) == 1, f"Should consolidate to single path, got {len(consolidated)}: {consolidated}"
@@ -280,7 +280,7 @@ def test_property_23_root_consolidation_terminal_case(paths):
     result = consolidate_paths(paths)
     
     # Should return at least one chunk
-    assert len(result) >= 1, "Should return at least one chunk"
+    assert len(result['default']) >= 1, "Should return at least one chunk"
     
     # Check if any consolidated path is /*
     all_consolidated = []
@@ -314,14 +314,14 @@ def test_property_24_invalidation_request_splitting(num_paths):
     result = consolidate_paths(unique_paths)
     
     # Should return multiple chunks
-    assert len(result) > 1, f"Should split into multiple chunks, got {len(result)}"
+    assert len(result['default']) > 1, f"Should split into multiple chunks, got {len(result['default'])}"
     
     # Each chunk should have at most 1000 paths
-    for i, chunk in enumerate(result):
+    for i, chunk in enumerate(result['default']):
         assert len(chunk) <= 1000, f"Chunk {i} has {len(chunk)} paths, should be <= 1000"
     
     # Total paths should equal input (no consolidation should happen)
-    total_paths = sum(len(chunk) for chunk in result)
+    total_paths = sum(len(chunk) for chunk in result['default'])
     assert total_paths == num_paths, f"Expected {num_paths} paths, got {total_paths}"
 
 
@@ -389,9 +389,9 @@ def test_property_25_redundant_subdirectory_removal(data):
     result = consolidate_paths(all_input_paths)
     
     # Should return a single chunk (not enough paths to split)
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # The parent wildcard should be present
     assert parent_wildcard in consolidated, f"Parent wildcard {parent_wildcard} should be present in {consolidated}"
@@ -432,8 +432,8 @@ def test_property_25_nested_redundant_removal(data):
     input_paths = [parent_wildcard, redundant_subdir]
     result = consolidate_paths(input_paths)
     
-    assert len(result) == 1, "Should return single chunk"
-    consolidated = result[0]
+    assert len(result['default']) == 1, "Should return single chunk"
+    consolidated = result['default'][0]
     
     assert parent_wildcard in consolidated, f"Parent wildcard should be present: {consolidated}"
     assert redundant_subdir not in consolidated, f"Redundant subdirectory should be removed: {consolidated}"
@@ -443,8 +443,8 @@ def test_property_25_nested_redundant_removal(data):
     input_paths = [parent_wildcard, other_file]
     result = consolidate_paths(input_paths)
     
-    assert len(result) == 1, "Should return single chunk"
-    consolidated = result[0]
+    assert len(result['default']) == 1, "Should return single chunk"
+    consolidated = result['default'][0]
     
     assert parent_wildcard in consolidated, f"Parent wildcard should be present: {consolidated}"
     assert other_file not in consolidated, f"Individual file should be removed: {consolidated}"
@@ -454,8 +454,8 @@ def test_property_25_nested_redundant_removal(data):
     input_paths = [parent_wildcard, redundant_subdir, other_file, other_subdir]
     result = consolidate_paths(input_paths)
     
-    assert len(result) == 1, "Should return single chunk"
-    consolidated = result[0]
+    assert len(result['default']) == 1, "Should return single chunk"
+    consolidated = result['default'][0]
     
     assert parent_wildcard in consolidated, f"Parent wildcard should be present: {consolidated}"
     assert redundant_subdir not in consolidated, f"Redundant subdirectory should be removed: {consolidated}"
@@ -481,9 +481,9 @@ def test_property_1_root_consolidation_for_stop_level_zero(paths):
     result = consolidate_paths(paths, stop_level=0)
     
     # Should return a single chunk
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Should consolidate to root wildcard only
     assert len(consolidated) == 1, f"Should consolidate to single path, got {len(consolidated)}: {consolidated}"
@@ -506,9 +506,9 @@ def test_property_2_stop_level_zero_override_behavior(paths, directory_threshold
     result = consolidate_paths(paths, directory_threshold=directory_threshold, stop_level=0)
     
     # Should return a single chunk
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Should always consolidate to root wildcard regardless of other parameters
     assert len(consolidated) == 1, f"Should consolidate to single path, got {len(consolidated)}: {consolidated}"
@@ -551,9 +551,9 @@ def test_property_3_stop_level_zero_logging(paths):
         result = consolidate_paths(paths, stop_level=0)
         
         # Verify the result is correct
-        assert len(result) == 1, "Should return single chunk"
-        assert len(result[0]) == 1, "Should consolidate to single path"
-        assert result[0][0] == '/*', "Should consolidate to /*"
+        assert len(result['default']) == 1, "Should return single chunk"
+        assert len(result['default'][0]) == 1, "Should consolidate to single path"
+        assert result['default'][0][0] == '/*', "Should consolidate to /*"
         
         # Get the captured log output
         log_output = log_capture.getvalue()
@@ -1114,8 +1114,8 @@ def test_property_10_invalid_stop_level_logging(invalid_stop_level):
             result = consolidate_paths(test_paths)
             
             # Verify the result uses default behavior (stop_level=1)
-            assert len(result) == 1, "Should return single chunk"
-            consolidated = result[0]
+            assert len(result['default']) == 1, "Should return single chunk"
+            consolidated = result['default'][0]
             
             # Should consolidate to /test/* with default stop level 1
             assert len(consolidated) == 1, f"Should consolidate to single path, got {consolidated}"
@@ -1515,8 +1515,8 @@ def test_property_15_stop_level_precedence_over_other_rules(data):
     result = consolidate_paths(test_paths, stop_level=stop_level)
     
     # Should return a single chunk
-    assert len(result) == 1, "Should return single chunk"
-    consolidated = result[0]
+    assert len(result['default']) == 1, "Should return single chunk"
+    consolidated = result['default'][0]
     
     # Stop level should take precedence - no consolidation should occur
     # All original paths should be preserved
@@ -1613,9 +1613,9 @@ def test_property_1_sibling_threshold_parameter_usage(data):
     result = consolidate_paths(sibling_wildcards, stop_level=stop_level, sibling_threshold=custom_threshold)
     
     # Should return a single chunk
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Should consolidate to parent wildcard since siblings exceed custom threshold
     parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
@@ -1980,9 +1980,9 @@ def test_property_5_comprehensive_sibling_threshold_behavior(data):
         result = consolidate_paths(sibling_wildcards, stop_level=stop_level, sibling_threshold=threshold)
         
         # Should return a single chunk
-        assert len(result) == 1, f"Should return single chunk for {sibling_count} siblings with threshold {threshold}"
+        assert len(result['default']) == 1, f"Should return single chunk for {sibling_count} siblings with threshold {threshold}"
         
-        consolidated = result[0]
+        consolidated = result['default'][0]
         parent_wildcard = f"{parent_path}/*" if parent_path else "/*"
         
         # Verify consolidation behavior based on threshold
@@ -2017,8 +2017,8 @@ def test_property_5_comprehensive_sibling_threshold_behavior(data):
         
         result_blocked = consolidate_paths(sibling_wildcards, stop_level=blocking_stop_level, sibling_threshold=threshold)
         
-        assert len(result_blocked) == 1, "Should return single chunk when blocked by stop level"
-        consolidated_blocked = result_blocked[0]
+        assert len(result_blocked['default']) == 1, "Should return single chunk when blocked by stop level"
+        consolidated_blocked = result_blocked['default'][0]
         
         # Should NOT consolidate regardless of threshold due to stop level
         assert parent_wildcard not in consolidated_blocked, \
@@ -2079,8 +2079,8 @@ def test_property_5_sibling_threshold_interaction_with_directory_threshold(data)
                              sibling_threshold=sibling_threshold, 
                              stop_level=stop_level)
     
-    assert len(result) == 1, "Should return single chunk"
-    consolidated = result[0]
+    assert len(result['default']) == 1, "Should return single chunk"
+    consolidated = result['default'][0]
     
     # Should consolidate all the way to parent wildcard
     # Stage 1: Files -> Directory wildcards (due to directory threshold)

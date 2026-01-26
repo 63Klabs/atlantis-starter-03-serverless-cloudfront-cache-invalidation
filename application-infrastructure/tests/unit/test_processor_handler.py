@@ -149,7 +149,7 @@ class TestProcessorHandler:
         mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/file1.js']]
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -350,7 +350,7 @@ class TestProcessorHandler:
         mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/dir/*']]  # Consolidated result
+        mock_consolidate.return_value = {'prod': [['/dir/*']]}  # Consolidated result
         mock_delete.return_value = {'successful': ['handle1', 'handle2'], 'failed': []}
         
         context = Mock()
@@ -402,7 +402,7 @@ class TestProcessorHandler:
         mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
         mock_find_dist.return_value = ['DIST123', 'DIST456']  # Multiple distributions
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/file1.js'], ['/file2.js']]  # Multiple chunks
+        mock_consolidate.return_value = {'prod': [['/file1.js'], ['/file2.js']]}  # Multiple chunks
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -490,7 +490,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/file1.js']]
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -562,7 +562,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/file1.js']]
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -626,7 +626,7 @@ class TestProcessorHandler:
         mock_get_config.side_effect = Exception("S3 error")  # Simulate configuration reading failure
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/file1.js']]
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -698,7 +698,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/file1.js']]
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -774,7 +774,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = [['/file1.js']]
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         

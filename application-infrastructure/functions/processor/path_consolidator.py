@@ -895,18 +895,19 @@ def apply_stop_level_constraints(paths: Set[str], stop_level: int, root_path: st
     return result
 
 
-def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_level: int = None, sibling_threshold: int = None) -> List[List[str]]:
+def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_level: int = None, sibling_threshold: int = None, bucket_pattern: str = None) -> Dict[str, List[List[str]]]:
     """Consolidate invalidation paths using threshold-based algorithm.
     
     This is the main entry point for path consolidation. It applies all
     consolidation rules in sequence:
     
     1. Filter and clean input paths
-    2. Consolidate index.* and default.* files to parent directories
-    3. Consolidate directories with more than threshold files
-    4. Consolidate sibling directories (more than sibling_threshold)
-    5. Recursively consolidate up to root if needed (respecting stop level)
-    6. Split into multiple requests if exceeding 1000 paths
+    2. Group paths by stage (if bucket_pattern contains {stageId})
+    3. Consolidate index.* and default.* files to parent directories
+    4. Consolidate directories with more than threshold files
+    5. Consolidate sibling directories (more than sibling_threshold)
+    6. Recursively consolidate up to root if needed (respecting stop level)
+    7. Split into multiple requests if exceeding 1000 paths
     
     Args:
         paths: List of object paths to invalidate (e.g., ['/prod/public/file.js'])
@@ -916,33 +917,40 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
                           When None, falls back to global constant (10). Consolidation occurs when 
                           sibling count > threshold (strict inequality). This parameter allows 
                           bucket-specific configuration via bucket tags.
+        bucket_pattern: Origin path pattern for the bucket (e.g., '/{stageId}/public').
+                       Used to calculate dynamic depth and group paths by stage.
+                       If None, uses legacy behavior (backward compatible).
         
     Returns:
-        List of path lists, where each inner list contains at most 1000
-        consolidated paths ready for CloudFront invalidation
+        Dictionary mapping stage -> list of path lists, where each inner list contains at most 1000
+        consolidated paths ready for CloudFront invalidation.
+        For patterns without {stageId}, returns {'default': [[paths]]}.
+        For legacy calls (bucket_pattern=None), returns {'default': [[paths]]} for backward compatibility.
         
     Examples:
-        # Basic consolidation with default thresholds
-        Input: ['/prod/public/index.html', '/prod/public/about.html',
-                '/prod/public/contact.html', '/prod/public/services.html']
-        Output: [['/prod/public/*']]
+        # Multi-stage consolidation with {stageId} pattern
+        paths = ['/prod/public/file1.html', '/beta/public/file2.html']
+        result = consolidate_paths(paths, bucket_pattern='/{stageId}/public')
+        # Output: {'prod': [['/prod/public/*']], 'beta': [['/beta/public/*']]}
         
-        # Custom sibling threshold for bucket-specific configuration
-        paths = ['/prod/public/m/*', '/prod/public/k/*', '/prod/public/w/*', '/prod/public/x/*']
-        result = consolidate_paths(paths, sibling_threshold=2, stop_level=1)
-        # Output: [['/prod/public/*']] (4 siblings > threshold 2)
+        # Single stage without {stageId}
+        paths = ['/public/file1.html', '/public/file2.html']
+        result = consolidate_paths(paths, bucket_pattern='/public')
+        # Output: {'default': [['/public/*']]}
         
-        # Backward compatibility - missing parameter uses global constant
-        result1 = consolidate_paths(paths)  # Uses global constant (10)
-        result2 = consolidate_paths(paths, sibling_threshold=None)  # Same behavior
+        # Backward compatibility - no bucket_pattern
+        paths = ['/prod/public/file1.html']
+        result = consolidate_paths(paths)
+        # Output: {'default': [['/prod/public/*']]} (legacy behavior)
         
     Parameter Behavior and Fallback Logic:
         - sibling_threshold=None: Uses SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD (10)
         - sibling_threshold=5: Custom threshold, consolidates when siblings > 5
-        - Missing parameter: Same as sibling_threshold=None (backward compatible)
+        - bucket_pattern=None: Legacy behavior, no stage grouping
+        - Missing parameter: Same as None (backward compatible)
     """
     if not paths:
-        return [[]]
+        return {'default': [[]]}
     
     # Use provided parameters or fall back to global constants
     if directory_threshold is None:
@@ -963,6 +971,9 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     
     # Validate and sanitize stop level
     stop_level = validate_stop_level(stop_level)
+    
+    # Import path utilities for stage extraction
+    from common.path_utils import extract_stage_from_path, calculate_path_depth as calc_depth  # pyright: ignore[reportMissingImports]
     
     # logger.info(
     #     f"Starting path consolidation with {len(paths)} paths",
@@ -996,7 +1007,7 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
     
     if not cleaned_paths:
         logger.warning("No valid paths remaining after cleaning")
-        return [[]]
+        return {'default': [[]]}
     
     logger.debug(
         f"After path cleaning: {len(cleaned_paths)} valid paths",
@@ -1006,66 +1017,125 @@ def consolidate_paths(paths: List[str], directory_threshold: int = None, stop_le
         }}
     )
     
-    # Convert to set for efficient operations
-    path_set = set(cleaned_paths)
+    # Group paths by stage if bucket_pattern contains {stageId}
+    stage_groups = {}
     
-    # For depth calculations, we now use the 'public' directory as the reference point
-    # The root_path parameter is kept for logging compatibility but depth is calculated from 'public'
-    root_path = '/'
-    
-    # Handle special case: stop level 0 means consolidate everything to root
-    if stop_level == 0:
+    if bucket_pattern and '{stageId}' in bucket_pattern:
+        # Calculate depth from bucket pattern
+        pattern_depth = calc_depth(bucket_pattern)
         logger.info(
-            "Stop level 0: consolidating all paths to root wildcard",
+            f"Using dynamic depth from bucket pattern: {pattern_depth}",
             extra={'extra_fields': {
-                'stop_level': stop_level,
-                'original_count': len(cleaned_paths),
-                'consolidation_type': 'stop_level_zero_override',
-                'bypassed_rules': 'all_other_consolidation_logic'
+                'bucket_pattern': bucket_pattern,
+                'calculated_depth': pattern_depth
             }}
         )
-        return [['/*']]
-    
-    # Step 1: Consolidate index and default files
-    path_set = consolidate_index_and_default_files(path_set, stop_level, root_path)
-    # logger.debug(
-    #     f"After index/default consolidation: {len(path_set)} paths",
-    #     extra={'extra_fields': {
-    #         'path_count': len(path_set)
-    #     }}
-    # )
-    
-    # Step 2: Recursively apply directory and sibling consolidation
-    path_set = consolidate_paths_recursive(path_set, directory_threshold, stop_level, root_path, sibling_threshold)
-    logger.debug(
-        f"After recursive consolidation: {len(path_set)} paths",
-        extra={'extra_fields': {
-            'path_count': len(path_set)
-        }}
-    )
-    
-    # Convert back to sorted list for consistent output
-    consolidated_list = sorted(list(path_set))
-    
-    logger.info(
-        f"Path consolidation complete: {len(paths)} -> {len(consolidated_list)} paths",
-        extra={'extra_fields': {
-            'original_count': len(paths),
-            'consolidated_count': len(consolidated_list),
-            'reduction_percent': round((1 - len(consolidated_list) / len(paths)) * 100, 2) if paths else 0
-        }}
-    )
-    
-    # Step 3: Split into chunks if needed
-    chunks = split_paths_for_invalidation(consolidated_list)
-    
-    if len(chunks) > 1:
+        
+        # Group paths by stage
+        for path in cleaned_paths:
+            stage = extract_stage_from_path(path, bucket_pattern)
+            stage_key = stage if stage else 'unknown'
+            
+            if stage_key not in stage_groups:
+                stage_groups[stage_key] = []
+            stage_groups[stage_key].append(path)
+        
         logger.info(
-            f"Split paths into {len(chunks)} invalidation requests",
+            f"Grouped paths into {len(stage_groups)} stages",
             extra={'extra_fields': {
-                'chunk_count': len(chunks),
-                'paths_per_chunk': [len(chunk) for chunk in chunks]
+                'stage_count': len(stage_groups),
+                'stages': list(stage_groups.keys()),
+                'paths_per_stage': {k: len(v) for k, v in stage_groups.items()}
             }}
         )
+    else:
+        # No stage grouping - use default
+        stage_groups['default'] = cleaned_paths
+        
+        # Calculate depth from bucket pattern if provided, otherwise use legacy behavior
+        if bucket_pattern:
+            pattern_depth = calc_depth(bucket_pattern)
+            logger.info(
+                f"Using dynamic depth from bucket pattern (no stage): {pattern_depth}",
+                extra={'extra_fields': {
+                    'bucket_pattern': bucket_pattern,
+                    'calculated_depth': pattern_depth
+                }}
+            )
+        else:
+            # Legacy behavior - depth will be calculated from 'public' directory
+            logger.info(
+                "Using legacy consolidation (no bucket pattern)",
+                extra={'extra_fields': {
+                    'legacy_mode': True
+                }}
+            )
     
-    return chunks
+    # Consolidate each stage separately
+    consolidated_by_stage = {}
+    
+    for stage, stage_paths in stage_groups.items():
+        # Convert to set for efficient operations
+        path_set = set(stage_paths)
+        
+        # For depth calculations, we now use the 'public' directory as the reference point
+        # The root_path parameter is kept for logging compatibility but depth is calculated from 'public'
+        root_path = '/'
+        
+        # Handle special case: stop level 0 means consolidate everything to root
+        if stop_level == 0:
+            logger.info(
+                f"Stop level 0: consolidating all paths to root wildcard for stage {stage}",
+                extra={'extra_fields': {
+                    'stage': stage,
+                    'stop_level': stop_level,
+                    'original_count': len(stage_paths),
+                    'consolidation_type': 'stop_level_zero_override',
+                    'bypassed_rules': 'all_other_consolidation_logic'
+                }}
+            )
+            consolidated_by_stage[stage] = [['/*']]
+            continue
+        
+        # Step 1: Consolidate index and default files
+        path_set = consolidate_index_and_default_files(path_set, stop_level, root_path)
+        
+        # Step 2: Recursively apply directory and sibling consolidation
+        path_set = consolidate_paths_recursive(path_set, directory_threshold, stop_level, root_path, sibling_threshold)
+        logger.debug(
+            f"After recursive consolidation for stage {stage}: {len(path_set)} paths",
+            extra={'extra_fields': {
+                'stage': stage,
+                'path_count': len(path_set)
+            }}
+        )
+        
+        # Convert back to sorted list for consistent output
+        consolidated_list = sorted(list(path_set))
+        
+        logger.info(
+            f"Path consolidation complete for stage {stage}: {len(stage_paths)} -> {len(consolidated_list)} paths",
+            extra={'extra_fields': {
+                'stage': stage,
+                'original_count': len(stage_paths),
+                'consolidated_count': len(consolidated_list),
+                'reduction_percent': round((1 - len(consolidated_list) / len(stage_paths)) * 100, 2) if stage_paths else 0
+            }}
+        )
+        
+        # Step 3: Split into chunks if needed
+        chunks = split_paths_for_invalidation(consolidated_list)
+        
+        if len(chunks) > 1:
+            logger.info(
+                f"Split paths for stage {stage} into {len(chunks)} invalidation requests",
+                extra={'extra_fields': {
+                    'stage': stage,
+                    'chunk_count': len(chunks),
+                    'paths_per_chunk': [len(chunk) for chunk in chunks]
+                }}
+            )
+        
+        consolidated_by_stage[stage] = chunks
+    
+    return consolidated_by_stage

@@ -172,13 +172,12 @@ def process_s3_record(record: Dict[str, Any], queue_url: str) -> Dict[str, Any]:
         # logger.info(
         #     "Step 4: Event filtering DEBUG",
         #     extra={'extra_fields': {
-        #         'filterInputStageId': stage_id,
         #         'filterInputObjectKey': object_key,
         #         'aboutToCallShouldProcessEvent': True
         #     }}
         # )
         
-        should_process, filter_reason = should_process_event(stage_id, object_key)
+        should_process, filter_reason = should_process_event(object_key)
         
         # DEBUG: Log filtering results
         # logger.info(

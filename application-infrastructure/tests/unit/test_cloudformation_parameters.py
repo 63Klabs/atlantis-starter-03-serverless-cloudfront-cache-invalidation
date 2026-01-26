@@ -184,6 +184,157 @@ class TestCloudFormationParameterIntegration(unittest.TestCase):
         self.assertIn('AGGREGATION_WINDOW_SECONDS: !Ref AggregationWindowSeconds', ingestor_env_section,
                      "Ingestor Lambda should have AGGREGATION_WINDOW_SECONDS environment variable")
 
+    def test_origin_path_pattern_parameter_exists(self):
+        """Test that OriginPathPattern parameter exists with correct default."""
+        with open(self.template_path, 'r') as f:
+            template_content = f.read()
+
+        # Test OriginPathPattern parameter exists
+        origin_pattern_param = r'OriginPathPattern:\s*\n\s*Type:\s*String'
+        self.assertIsNotNone(
+            re.search(origin_pattern_param, template_content),
+            "OriginPathPattern parameter should exist with Type: String"
+        )
+
+        # Test default value
+        origin_default_pattern = r'OriginPathPattern:\s*\n\s*Type:\s*String\s*\n.*?Default:\s*"/{stageId}/public"'
+        self.assertIsNotNone(
+            re.search(origin_default_pattern, template_content, re.DOTALL),
+            "OriginPathPattern parameter should have Default: /{stageId}/public"
+        )
+
+    def test_origin_path_pattern_validation_regex(self):
+        """Test that OriginPathPattern has proper validation regex."""
+        with open(self.template_path, 'r') as f:
+            template_content = f.read()
+
+        # Test AllowedPattern exists
+        allowed_pattern = r'OriginPathPattern:\s*\n.*?AllowedPattern:\s*"[^"]*"'
+        self.assertIsNotNone(
+            re.search(allowed_pattern, template_content, re.DOTALL),
+            "OriginPathPattern parameter should have AllowedPattern validation"
+        )
+
+        # Test ConstraintDescription exists
+        constraint_desc = r'OriginPathPattern:\s*\n.*?ConstraintDescription:\s*"[^"]*"'
+        self.assertIsNotNone(
+            re.search(constraint_desc, template_content, re.DOTALL),
+            "OriginPathPattern parameter should have ConstraintDescription"
+        )
+
+    def test_origin_path_pattern_invalid_patterns(self):
+        """Test that specific invalid patterns would be rejected by the regex."""
+        with open(self.template_path, 'r') as f:
+            template_content = f.read()
+
+        # Extract the AllowedPattern regex
+        pattern_match = re.search(
+            r'OriginPathPattern:\s*\n.*?AllowedPattern:\s*"([^"]*)"',
+            template_content,
+            re.DOTALL
+        )
+        self.assertIsNotNone(pattern_match, "Should find AllowedPattern")
+        
+        # The regex from CloudFormation (need to unescape)
+        cf_regex = pattern_match.group(1)
+        # Convert CloudFormation regex to Python regex (remove extra escaping)
+        python_regex = cf_regex.replace('\\\\', '\\')
+        
+        # Test invalid patterns that should NOT match
+        invalid_patterns = [
+            'public',  # Doesn't start with /
+            '/public/',  # Ends with /
+            '/{stage}/public',  # Wrong placeholder (not stageId)
+            '/public/!@#',  # Invalid characters
+            '/{stageId',  # Unclosed brace
+            '/stageId}/public',  # Unopened brace
+        ]
+        
+        for invalid in invalid_patterns:
+            match = re.fullmatch(python_regex, invalid)
+            # Empty string is allowed (uses default), so skip that check
+            if invalid != '':
+                self.assertIsNone(
+                    match,
+                    f"Pattern '{invalid}' should NOT match the AllowedPattern regex"
+                )
+
+    def test_origin_path_pattern_valid_patterns(self):
+        """Test that specific valid patterns would be accepted by the regex."""
+        with open(self.template_path, 'r') as f:
+            template_content = f.read()
+
+        # Extract the AllowedPattern regex
+        pattern_match = re.search(
+            r'OriginPathPattern:\s*\n.*?AllowedPattern:\s*"([^"]*)"',
+            template_content,
+            re.DOTALL
+        )
+        self.assertIsNotNone(pattern_match, "Should find AllowedPattern")
+        
+        # The regex from CloudFormation (need to unescape)
+        cf_regex = pattern_match.group(1)
+        # Convert CloudFormation regex to Python regex (remove extra escaping)
+        python_regex = cf_regex.replace('\\\\', '\\')
+        
+        # Test valid patterns that SHOULD match
+        valid_patterns = [
+            '',  # Empty (uses default)
+            '/{stageId}/public',  # Default pattern
+            '/public',  # No stage placeholder
+            '/{stageId}/assets',  # Different directory
+            '/content/{stageId}/public',  # Stage in middle
+            '/public/{stageId}',  # Stage at end
+            '/{stageId}',  # Just stage
+        ]
+        
+        for valid in valid_patterns:
+            match = re.fullmatch(python_regex, valid)
+            self.assertIsNotNone(
+                match,
+                f"Pattern '{valid}' SHOULD match the AllowedPattern regex"
+            )
+
+    def test_origin_path_pattern_in_application_parameters_metadata(self):
+        """Test that OriginPathPattern is in Application Parameters metadata group."""
+        with open(self.template_path, 'r') as f:
+            template_content = f.read()
+
+        # Extract the Application Parameters section from metadata
+        app_params_pattern = r'Label:\s*\n\s*default:\s*"Application Parameters"\s*\n\s*Parameters:\s*\n((?:\s*-\s*\w+\s*\n)*)'
+        match = re.search(app_params_pattern, template_content)
+        self.assertIsNotNone(match, "Application Parameters section should exist in metadata")
+        
+        app_params_section = match.group(1)
+        
+        # Check that OriginPathPattern is listed
+        self.assertIn('- OriginPathPattern', app_params_section,
+                     "OriginPathPattern should be in Application Parameters section")
+
+    def test_origin_path_pattern_environment_variable_ingestor(self):
+        """Test that Ingestor Lambda has ORIGIN_PATH_PATTERN environment variable."""
+        with open(self.template_path, 'r') as f:
+            template_content = f.read()
+
+        # Extract Ingestor environment section
+        ingestor_env_section = self._extract_ingestor_environment_section(template_content)
+        
+        # Test ORIGIN_PATH_PATTERN environment variable
+        self.assertIn('ORIGIN_PATH_PATTERN: !Ref OriginPathPattern', ingestor_env_section,
+                     "Ingestor Lambda should have ORIGIN_PATH_PATTERN environment variable")
+
+    def test_origin_path_pattern_environment_variable_processor(self):
+        """Test that Processor Lambda has ORIGIN_PATH_PATTERN environment variable."""
+        with open(self.template_path, 'r') as f:
+            template_content = f.read()
+
+        # Extract Processor environment section
+        processor_env_section = self._extract_processor_environment_section(template_content)
+        
+        # Test ORIGIN_PATH_PATTERN environment variable
+        self.assertIn('ORIGIN_PATH_PATTERN: !Ref OriginPathPattern', processor_env_section,
+                     "Processor Lambda should have ORIGIN_PATH_PATTERN environment variable")
+
     def _extract_processor_environment_section(self, template_content: str) -> str:
         """Extract the Processor Lambda environment variables section."""
         # Find ProcessorFunction section and extract environment variables

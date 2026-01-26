@@ -173,9 +173,9 @@ def test_property_5_bucket_specific_threshold_application(directory_and_files_an
     result = consolidate_paths(files, directory_threshold=custom_threshold, stop_level=stop_level)
     
     # Should return single chunk
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Since files are above the custom threshold, should consolidate to directory wildcard
     expected_wildcard = f"{directory}/*"
@@ -203,9 +203,9 @@ def test_property_9_root_consolidation_stop_level_zero(paths):
     result = consolidate_paths(paths, stop_level=0)
     
     # Should return single chunk with only root wildcard
-    assert len(result) == 1, "Should return single chunk"
-    assert len(result[0]) == 1, "Should consolidate to single path"
-    assert result[0][0] == '/*', f"Should consolidate to root wildcard, got {result[0]}"
+    assert len(result['default']) == 1, "Should return single chunk"
+    assert len(result['default'][0]) == 1, "Should consolidate to single path"
+    assert result['default'][0][0] == '/*', f"Should consolidate to root wildcard, got {result['default'][0]}"
 
 
 @settings(max_examples=5)  # Optimized for faster execution
@@ -226,9 +226,9 @@ def test_property_10_stop_level_consolidation_prevention(paths_at_depth, stop_le
     result = consolidate_paths(paths_at_depth, directory_threshold=3, stop_level=stop_level)
     
     # Should return single chunk
-    assert len(result) == 1, "Should return single chunk"
+    assert len(result['default']) == 1, "Should return single chunk"
     
-    consolidated = result[0]
+    consolidated = result['default'][0]
     
     # Calculate the depth of the parent directory that would be consolidated to
     first_path = paths_at_depth[0]
@@ -276,8 +276,8 @@ def test_property_11_index_file_stop_level_interaction(index_file_path, stop_lev
     result = consolidate_paths([index_file_path], stop_level=stop_level)
     
     # Should return single chunk
-    assert len(result) == 1, "Should return single chunk"
-    consolidated = result[0]
+    assert len(result['default']) == 1, "Should return single chunk"
+    consolidated = result['default'][0]
     
     if parent_depth < stop_level:
         # Stop level should prevent consolidation (depth < stop_level)
@@ -316,8 +316,8 @@ def test_property_12_sibling_directory_stop_level_interaction(parent_and_wildcar
     result = consolidate_paths(wildcards, stop_level=stop_level)
     
     # Should return single chunk
-    assert len(result) == 1, "Should return single chunk"
-    consolidated = result[0]
+    assert len(result['default']) == 1, "Should return single chunk"
+    consolidated = result['default'][0]
     
     if parent_depth < stop_level:
         # Stop level should prevent consolidation - should keep individual siblings (depth < stop_level)
@@ -381,7 +381,7 @@ def test_property_18_stop_level_prevention_logging(paths_at_depth, stop_level):
         result = consolidate_paths(paths_at_depth, directory_threshold=3, stop_level=stop_level)
         
         # Check if consolidation was prevented (paths remain unconsolidated)
-        consolidated = result[0]
+        consolidated = result['default'][0]
         consolidation_prevented = len(consolidated) == len(paths_at_depth)
         
         # For paths at depth 3, consolidation should be prevented only if stop_level > 3
@@ -438,7 +438,7 @@ def test_property_19_bucket_specific_threshold_logging(directory_and_files_and_t
             f"Should log bucket-specific threshold {custom_threshold} in consolidation info"
         
         # If consolidation occurred, should also log the consolidation decision
-        consolidated = result[0]
+        consolidated = result['default'][0]
         if f"{directory}/*" in consolidated:
             info_logged_consolidation = False
             for call in mock_logger.info.call_args_list:

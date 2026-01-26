@@ -27,6 +27,14 @@ Simply:
 
 > There can be multiple buckets and multiple distributions. The buckets only need to know the ARN of the endpoint to send an event to. This application will then dynamically determine what distribution to submit the invalidation to. (Uses resource tags as the look-up)
 
+### Advanced Features
+
+- **Configurable Origin Path Pattern**: Support for different S3 bucket structures beyond the default `/{stageId}/public` pattern
+- **Dynamic Consolidation Configuration**: Per-bucket consolidation settings via S3 bucket tags
+- **Consolidation Stop Level**: Control consolidation depth to prevent over-consolidation
+- **Stage Filtering**: Automatic filtering of non-production stages (dev, test)
+- **Multi-Stage Support**: Separate invalidation requests for each production stage
+
 For a complete architectural review, see [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ## Deployment

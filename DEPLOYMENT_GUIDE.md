@@ -442,6 +442,343 @@ public/
 
 When `clip-4` and `clip-5` are uploaded, the cache will be invalidated at `clip-4/*` and `clip-5/*` and will not affect any existing clips as consolidation stops before root. If `invalidator:ConsolidationStopLevel=1` then it would send an invalidation for ALL video directories at the root level `/*` due to the fact that the threshold was low (`2`) and there were two sibling directories to consolidate.
 
+## Advanced Configuration
+
+### Origin Path Pattern
+
+The origin path pattern feature allows you to configure the S3 bucket path structure that CloudFront uses as the content source. This advanced feature enables the invalidator to work with different directory structures beyond the default `/{stageId}/public` pattern.
+
+#### Default Pattern
+
+By default, the system expects S3 buckets to use the `/{stageId}/public` pattern:
+
+```
+bucket-name/
+├── prod/
+│   └── public/
+│       ├── index.html
+│       ├── styles.css
+│       └── images/
+├── stage/
+│   └── public/
+│       └── ...
+└── test/
+    └── public/
+        └── ...
+```
+
+This is the **recommended configuration** for most use cases as it:
+- Clearly separates production and non-production content
+- Automatically filters non-production stages (dev, test)
+- Works seamlessly with multi-stage deployments
+
+#### When to Use Custom Patterns
+
+Consider customizing the origin path pattern when:
+- Your S3 bucket uses a different directory structure
+- You have legacy buckets that can't be restructured
+- You need to support multiple deployment patterns in the same AWS account
+- Your CloudFront origin path differs from the default
+
+#### Configuration Methods
+
+There are two ways to configure the origin path pattern:
+
+**1. Application-Wide Configuration (CloudFormation Parameter)**
+
+Set the `OriginPathPattern` parameter during stack deployment to apply a pattern to all buckets:
+
+```json
+{
+  "Parameters": {
+    "OriginPathPattern": "/{stageId}/public",
+    "DirectoryConsolidationThreshold": "5",
+    "SiblingDirectoryConsolidationThreshold": "5"
+  }
+}
+```
+
+**2. Per-Bucket Configuration (S3 Bucket Tag)**
+
+Override the application-wide pattern for specific buckets using the `invalidator:OriginPathPattern` tag:
+
+```bash
+aws s3api put-bucket-tagging \
+  --bucket your-bucket-name \
+  --tagging 'TagSet=[
+    {Key=AllowInvalidationEvents,Value=true},
+    {Key=invalidator:OriginPathPattern,Value=/public}
+  ]'
+```
+
+Bucket tags take priority over the CloudFormation parameter, allowing you to handle buckets with different structures in the same AWS account.
+
+#### Valid Pattern Examples
+
+**Standard Multi-Stage Pattern** (default):
+```
+Pattern: /{stageId}/public
+Matches: /prod/public/*, /stage/public/*, /beta/public/*
+Filters: /dev/public/*, /test/public/*
+```
+
+**Single Public Directory**:
+```
+Pattern: /public
+Matches: /public/*
+Behavior: All content treated as production
+```
+
+**Custom Stage Location**:
+```
+Pattern: /{stageId}/assets
+Matches: /prod/assets/*, /stage/assets/*
+Filters: /dev/assets/*, /test/assets/*
+```
+
+**Root-Level Pattern**:
+```
+Pattern: /
+Matches: All paths in bucket
+Behavior: Entire bucket treated as production content
+```
+
+**Deep Nested Pattern**:
+```
+Pattern: /{stageId}/web/public
+Matches: /prod/web/public/*, /stage/web/public/*
+Filters: /dev/web/public/*, /test/web/public/*
+```
+
+#### Pattern Validation Rules
+
+Origin path patterns must follow these rules:
+
+1. **Must start with `/`** - Patterns must begin with a forward slash
+2. **Must not end with `/`** - Trailing slashes are not allowed
+3. **Valid characters only** - Use a-z, A-Z, 0-9, hyphens (-), underscores (_), and curly braces for placeholder
+4. **Placeholder format** - Only `{stageId}` is allowed as a placeholder (curly braces can only wrap the literal text "stageId")
+
+**Valid patterns**:
+- `/{stageId}/public`
+- `/public`
+- `/{stageId}/assets`
+- `/web/{stageId}/public`
+
+**Invalid patterns**:
+- `public` (missing leading slash)
+- `/public/` (trailing slash)
+- `/{stage}/public` (invalid placeholder)
+- `/{stageId}/{env}/public` (multiple placeholders not supported)
+
+#### Stage Filtering Behavior
+
+The `{stageId}` placeholder enables automatic stage filtering:
+
+**Production Stage Identifiers** (allowed):
+- `prod`
+- `beta`
+- `stage`
+- `staging`
+
+**Non-Production Stage Identifiers** (filtered):
+- `dev`
+- `test`
+
+When a pattern contains `{stageId}`:
+- Only production stages trigger cache invalidations
+- Non-production stages are filtered at the Ingestor function
+- Each stage is processed separately during consolidation
+
+When a pattern does NOT contain `{stageId}`:
+- All matching paths are treated as production
+- No stage-based filtering occurs
+- All content triggers cache invalidations
+
+#### Fallback Behavior
+
+If an S3 event path doesn't match the configured pattern, the system falls back to detecting the `public` segment:
+
+1. **Pattern Match Attempt**: First tries to match the configured pattern
+2. **Public Segment Detection**: If no match, looks for "public" directory in the path
+3. **Stage Filtering**: Filters non-production stages found before the "public" segment
+4. **Event Rejection**: If neither match, the event is filtered out
+
+This fallback ensures backward compatibility with existing deployments.
+
+#### Configuration Examples
+
+**Example 1: Legacy Bucket with Flat Structure**
+
+Your bucket stores all production content at the root:
+
+```
+bucket-name/
+├── index.html
+├── styles.css
+└── images/
+```
+
+Configuration:
+```json
+{
+  "Parameters": {
+    "OriginPathPattern": "/"
+  }
+}
+```
+
+Result: All files trigger invalidations, no stage filtering.
+
+**Example 2: Mixed Bucket Structures**
+
+You have multiple buckets with different structures:
+
+- Bucket A: Uses `/{stageId}/public`
+- Bucket B: Uses `/public`
+- Bucket C: Uses `/{stageId}/assets`
+
+Configuration:
+```json
+{
+  "Parameters": {
+    "OriginPathPattern": "/{stageId}/public"
+  }
+}
+```
+
+Then add bucket tags:
+```bash
+# Bucket B override
+aws s3api put-bucket-tagging --bucket bucket-b \
+  --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/public}]'
+
+# Bucket C override
+aws s3api put-bucket-tagging --bucket bucket-c \
+  --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/{stageId}/assets}]'
+```
+
+Result: Each bucket uses its specific pattern, Bucket A uses the default.
+
+**Example 3: Custom Assets Directory**
+
+Your CloudFront distribution uses `/assets` as the origin path:
+
+```
+bucket-name/
+├── prod/
+│   └── assets/
+│       ├── css/
+│       ├── js/
+│       └── images/
+└── stage/
+    └── assets/
+        └── ...
+```
+
+Configuration:
+```json
+{
+  "Parameters": {
+    "OriginPathPattern": "/{stageId}/assets"
+  }
+}
+```
+
+Result: System processes `/prod/assets/*` and `/stage/assets/*`, filters `/dev/assets/*` and `/test/assets/*`.
+
+#### Troubleshooting
+
+**Events Not Being Processed**:
+
+1. Check the pattern matches your S3 bucket structure
+2. Verify the pattern follows validation rules
+3. Review Ingestor Lambda logs for filtering decisions
+4. Confirm bucket tags are correctly formatted
+
+**Wrong Paths Being Invalidated**:
+
+1. Verify the pattern depth matches your CloudFront origin path
+2. Check for bucket tag overrides
+3. Review Processor Lambda logs for pattern resolution
+4. Confirm stage identifiers are correctly placed in paths
+
+**Non-Production Content Being Invalidated**:
+
+1. Ensure pattern includes `{stageId}` placeholder
+2. Verify stage identifiers match production list (prod, beta, stage, staging)
+3. Check that non-production stages (dev, test) are before the public/assets segment
+4. Review event filtering logs in Ingestor function
+
+**Pattern Validation Errors During Deployment**:
+
+1. Verify pattern starts with `/` and doesn't end with `/`
+2. Check that only `{stageId}` is used as placeholder
+3. Ensure no invalid characters in pattern
+4. Review CloudFormation error messages for specific constraint violations
+
+#### Monitoring Pattern Usage
+
+Check Lambda logs to verify pattern configuration:
+
+```bash
+# View Ingestor pattern matching decisions
+aws logs tail /aws/lambda/PREFIX-PROJECT-STAGE-ingestor --follow
+
+# View Processor pattern resolution
+aws logs tail /aws/lambda/PREFIX-PROJECT-STAGE-processor --follow
+
+# Query for pattern-related logs
+aws logs start-query \
+  --log-group-name /aws/lambda/PREFIX-PROJECT-STAGE-processor \
+  --start-time $(date -d '10 minutes ago' +%s) \
+  --end-time $(date +%s) \
+  --query-string 'fields @timestamp, bucketName, pattern, source | filter @message like /pattern/ | sort @timestamp desc'
+```
+
+#### Best Practices
+
+1. **Use Default When Possible**: The `/{stageId}/public` pattern is recommended for most deployments
+2. **Test Pattern Changes**: Verify pattern changes in a test environment before production
+3. **Document Custom Patterns**: Record why specific patterns were chosen for each bucket
+4. **Monitor After Changes**: Watch invalidation behavior after pattern updates
+5. **Use Bucket Tags for Exceptions**: Keep application-wide pattern simple, use tags for special cases
+6. **Consider Multiple Stacks**: For complex environments with many different patterns, deploy separate invalidator stacks
+
+#### Multiple Invalidator Stacks
+
+For complex environments with significantly different bucket structures, consider deploying multiple invalidator stacks:
+
+**When to Use Multiple Stacks**:
+- Different teams manage different bucket structures
+- Legacy and modern buckets coexist
+- Distinct environments require different processing rules
+- Simplified configuration management is preferred
+
+**Example Multi-Stack Setup**:
+
+```bash
+# Stack 1: Modern buckets with /{stageId}/public
+./cli/config.py pipeline PREFIX cdn-invalidator-modern test
+# Set OriginPathPattern: /{stageId}/public
+
+# Stack 2: Legacy buckets with /public
+./cli/config.py pipeline PREFIX cdn-invalidator-legacy test
+# Set OriginPathPattern: /public
+
+# Stack 3: Assets buckets with /{stageId}/assets
+./cli/config.py pipeline PREFIX cdn-invalidator-assets test
+# Set OriginPathPattern: /{stageId}/assets
+```
+
+Then configure each S3 bucket to send events to the appropriate invalidator stack ARN.
+
+This approach:
+- Simplifies configuration (no bucket tag overrides needed)
+- Provides clear separation of concerns
+- Enables independent scaling and monitoring
+- Reduces complexity in pattern resolution logic
+
 ## Validation
 
 ### Step 1: Verify Deployment

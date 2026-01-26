@@ -1,150 +1,120 @@
 """S3 event filtering module for validating events based on StageId and path patterns."""
 
 from typing import Tuple
-import os
 
-from common.constants import PRODUCTION_STAGE_PREFIXES, PUBLIC_PATH_SEGMENT  # pyright: ignore[reportMissingImports]
-from common.logger import setup_logger # pyright: ignore[reportMissingImports]
+from common.constants import (  # pyright: ignore[reportMissingImports]
+    ORIGIN_PATH_PATTERN,
+    PUBLIC_PATH_SEGMENT,
+    PRODUCTION_STAGE_IDENTIFIERS,
+    NON_PRODUCTION_STAGE_IDENTIFIERS
+)
+from common.path_utils import matches_pattern  # pyright: ignore[reportMissingImports]
+from common.logger import setup_logger  # pyright: ignore[reportMissingImports]
+
+logger = setup_logger(__name__)
 
 
-def is_production_stage(stage_id: str) -> bool:
-    """Check if a StageId represents a production environment.
+def should_process_event(event_path: str) -> Tuple[bool, str]:
+    """Determine if an S3 event should be queued for processing.
     
-    Production environments are identified by StageIds starting with 'p', 's', or 'b'
-    (case-insensitive).
+    Logic:
+    1. Try exact pattern match with production stages
+    2. Fall back to public segment detection
+    3. Filter non-production stages
     
     Args:
-        stage_id: The StageId to validate
-        
-    Returns:
-        True if the StageId starts with a production prefix, False otherwise
-        
-    **Feature: multi-bucket-cloudfront-invalidation, Property 4: Production StageId filter acceptance**
-    **Feature: multi-bucket-cloudfront-invalidation, Property 5: Non-production StageId filter rejection**
-    """
-    if not stage_id:
-        return False
-    
-    # Check if the first character (case-insensitive) matches any production prefix
-    first_char = stage_id[0].lower()
-    return first_char in PRODUCTION_STAGE_PREFIXES
-
-
-def matches_public_path_pattern(object_key: str) -> bool:
-    """Check if an object key matches the public path pattern.
-    
-    The pattern is: /<StageId>/public/*
-    This means the path must have at least 3 segments, with 'public' as the second segment.
-    
-    Args:
-        object_key: S3 object key path
-        
-    Returns:
-        True if the path matches the pattern, False otherwise
-        
-    **Feature: multi-bucket-cloudfront-invalidation, Property 6: Public path pattern acceptance**
-    **Feature: multi-bucket-cloudfront-invalidation, Property 7: Non-public path pattern rejection**
-    """
-    if not object_key:
-        return False
-    
-    # Split the path and remove empty segments
-    parts = object_key.lstrip('/').split('/')
-    non_empty_parts = [p for p in parts if p]
-    
-    # Must have at least 3 parts: stageId, 'public', and at least one file/folder
-    if len(non_empty_parts) < 3:
-        return False
-    
-    # Second segment (index 1) must be 'public'
-    return non_empty_parts[1] == PUBLIC_PATH_SEGMENT
-
-
-def should_process_event(stage_id: str, object_key: str) -> Tuple[bool, str]:
-    """Determine if an S3 event should be processed based on filtering rules.
-    
-    An event should be processed if:
-    1. The StageId represents a production environment (p*, s*, b*)
-    2. The object key matches the public path pattern (/<StageId>/public/*)
-    
-    Args:
-        stage_id: The extracted StageId
-        object_key: The S3 object key
+        event_path: S3 object key from event
         
     Returns:
         Tuple of (should_process: bool, reason: str)
         - should_process: True if event passes all filters
         - reason: Explanation of the decision (for logging)
+        
+    **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5**
     """
-    logger = setup_logger(__name__)
+    # Try exact pattern match
+    all_stages = PRODUCTION_STAGE_IDENTIFIERS + NON_PRODUCTION_STAGE_IDENTIFIERS
+    matches, stage = matches_pattern(event_path, ORIGIN_PATH_PATTERN, all_stages)
     
-    # DEBUG: Log filtering inputs
-    logger.info(
-        "Event filtering analysis",
+    if matches:
+        # If pattern has {stageId}, only allow production stages
+        if '{stageId}' in ORIGIN_PATH_PATTERN:
+            if stage in PRODUCTION_STAGE_IDENTIFIERS:
+                reason = f"Event matches pattern '{ORIGIN_PATH_PATTERN}' with production stage '{stage}'"
+                logger.debug(
+                    "Event accepted: pattern match with production stage",
+                    extra={'extra_fields': {
+                        'eventPath': event_path,
+                        'pattern': ORIGIN_PATH_PATTERN,
+                        'stage': stage,
+                        'reason': reason
+                    }}
+                )
+                return True, reason
+            else:
+                reason = f"Event matches pattern but stage '{stage}' is non-production"
+                logger.debug(
+                    "Event filtered: non-production stage",
+                    extra={'extra_fields': {
+                        'eventPath': event_path,
+                        'pattern': ORIGIN_PATH_PATTERN,
+                        'stage': stage,
+                        'reason': reason
+                    }}
+                )
+                return False, reason
+        else:
+            # No stage placeholder, treat as production
+            reason = f"Event matches pattern '{ORIGIN_PATH_PATTERN}' (no stage filtering)"
+            logger.debug(
+                "Event accepted: pattern match without stage placeholder",
+                extra={'extra_fields': {
+                    'eventPath': event_path,
+                    'pattern': ORIGIN_PATH_PATTERN,
+                    'reason': reason
+                }}
+            )
+            return True, reason
+    
+    # Fallback: Check for public segment
+    if PUBLIC_PATH_SEGMENT in event_path:
+        segments = event_path.strip('/').split('/')
+        try:
+            public_index = segments.index(PUBLIC_PATH_SEGMENT)
+            # Check if any non-prod stage appears before public
+            for i in range(public_index):
+                if segments[i] in NON_PRODUCTION_STAGE_IDENTIFIERS:
+                    reason = f"Event contains non-production stage '{segments[i]}' before public segment"
+                    logger.debug(
+                        "Event filtered: non-production stage before public segment",
+                        extra={'extra_fields': {
+                            'eventPath': event_path,
+                            'nonProdStage': segments[i],
+                            'reason': reason
+                        }}
+                    )
+                    return False, reason
+            
+            reason = f"Event contains public segment and no non-production stages"
+            logger.debug(
+                "Event accepted: public segment fallback",
+                extra={'extra_fields': {
+                    'eventPath': event_path,
+                    'reason': reason
+                }}
+            )
+            return True, reason
+        except ValueError:
+            pass
+    
+    # No match
+    reason = f"Event does not match pattern '{ORIGIN_PATH_PATTERN}' and does not contain public segment"
+    logger.debug(
+        "Event filtered: no pattern match or public segment",
         extra={'extra_fields': {
-            'inputStageId': stage_id,
-            'inputObjectKey': object_key,
-            'stageIdType': type(stage_id).__name__,
-            'objectKeyType': type(object_key).__name__,
-            'productionPrefixes': PRODUCTION_STAGE_PREFIXES,
-            'publicPathSegment': PUBLIC_PATH_SEGMENT
+            'eventPath': event_path,
+            'pattern': ORIGIN_PATH_PATTERN,
+            'reason': reason
         }}
     )
-    
-    # Check production stage filter
-    is_prod = is_production_stage(stage_id)
-    # logger.info(
-    #     "Production stage check DEBUG",
-    #     extra={'extra_fields': {
-    #         'stageId': stage_id,
-    #         'isProductionStage': is_prod,
-    #         'firstChar': stage_id[0].lower() if stage_id else None,
-    #         'matchesProductionPrefix': stage_id[0].lower() in PRODUCTION_STAGE_PREFIXES if stage_id else False
-    #     }}
-    # )
-    
-    if not is_prod:
-        reason = f"StageId '{stage_id}' is not a production environment (must start with p, s, or b)"
-        logger.info(
-            "Event filtered: non-production stage",
-            extra={'extra_fields': {
-                'filterReason': reason,
-                'stageId': stage_id
-            }}
-        )
-        return False, reason
-    
-    # Check public path pattern
-    matches_public = matches_public_path_pattern(object_key)
-    # logger.info(
-    #     "Public path pattern check DEBUG",
-    #     extra={'extra_fields': {
-    #         'objectKey': object_key,
-    #         'matchesPublicPattern': matches_public,
-    #         'pathParts': object_key.lstrip('/').split('/') if object_key else [],
-    #         'hasPublicSegment': 'public' in object_key.split('/') if object_key else False
-    #     }}
-    # )
-    
-    if not matches_public:
-        reason = f"Object key '{object_key}' does not match public path pattern (/<StageId>/public/*)"
-        logger.info(
-            "Event filtered: non-public path",
-            extra={'extra_fields': {
-                'filterReason': reason,
-                'objectKey': object_key
-            }}
-        )
-        return False, reason
-    
-    reason = "Event passes all filters"
-    logger.info(
-        "Event accepted: passes all filters",
-        extra={'extra_fields': {
-            'stageId': stage_id,
-            'objectKey': object_key,
-            'filterResult': reason
-        }}
-    )
-    
-    return True, reason
+    return False, reason

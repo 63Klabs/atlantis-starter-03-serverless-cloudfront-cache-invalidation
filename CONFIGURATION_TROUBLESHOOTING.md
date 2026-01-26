@@ -20,17 +20,20 @@ The system supports three levels of configuration:
    - SiblingDirectoryConsolidationThreshold: 10
    - ConsolidationStopLevel: 1
    - AggregationWindowSeconds: 300
+   - OriginPathPattern: `/{stageId}/public`
 
 2. **CloudFormation Parameters** (system-wide defaults)
    - DirectoryConsolidationThreshold: 1-1000
    - SiblingDirectoryConsolidationThreshold: 1-1000
    - ConsolidationStopLevel: 0-20
    - AggregationWindowSeconds: 60-900
+   - OriginPathPattern: Must start with `/`, not end with `/`, only `{stageId}` placeholder allowed
 
 3. **S3 Bucket Tags** (per-bucket overrides)
    - `invalidator:DirectoryConsolidationThreshold`: 1-1000
    - `invalidator:SiblingDirectoryConsolidationThreshold`: 1-1000
    - `invalidator:ConsolidationStopLevel`: 0-20
+   - `invalidator:OriginPathPattern`: Must follow same validation rules as CloudFormation parameter
 
 ## Common Issues
 
@@ -211,7 +214,201 @@ The system supports three levels of configuration:
 - Check path structure and root path calculation
 - Review consolidation algorithm documentation
 
-### Issue 5: Configuration Changes Not Taking Effect
+### Issue 5: Origin Path Pattern Not Matching Events
+
+**Symptoms**:
+- S3 events not being processed despite bucket configuration
+- Events filtered out at Ingestor function
+- No invalidations triggered for uploaded files
+- Logs show pattern mismatch messages
+
+**Diagnostic Steps**:
+
+1. **Verify the origin path pattern configuration**:
+   ```bash
+   # Check CloudFormation parameter
+   aws cloudformation describe-stacks \
+     --stack-name your-stack-name \
+     --query 'Stacks[0].Parameters[?ParameterKey==`OriginPathPattern`]'
+   
+   # Check bucket tag override
+   aws s3api get-bucket-tagging --bucket your-bucket-name \
+     --query 'TagSet[?Key==`invalidator:OriginPathPattern`]'
+   ```
+
+2. **Check Ingestor Lambda logs for pattern matching**:
+   ```
+   fields @timestamp, @message, eventPath, pattern
+   | filter @message like /pattern.*match/ or @message like /filtering.*event/
+   | sort @timestamp desc
+   ```
+
+3. **Verify S3 bucket structure matches pattern**:
+   ```bash
+   # List bucket structure
+   aws s3 ls s3://your-bucket-name/ --recursive | head -20
+   
+   # Compare with configured pattern
+   # Pattern: /{stageId}/public
+   # Expected: prod/public/*, stage/public/*, beta/public/*
+   ```
+
+4. **Check for stage filtering issues**:
+   ```
+   fields @timestamp, eventPath, stage, filtered
+   | filter @message like /stage.*filter/
+   | sort @timestamp desc
+   ```
+
+**Common Causes**:
+- Pattern doesn't match actual S3 bucket structure
+- Missing or incorrect `{stageId}` placeholder
+- Non-production stages (dev, test) being uploaded
+- Pattern validation errors during deployment
+- Bucket tag override not applied correctly
+
+**Solutions**:
+- Update `OriginPathPattern` parameter to match bucket structure
+- Use bucket tag `invalidator:OriginPathPattern` for per-bucket overrides
+- Verify pattern follows validation rules (starts with `/`, no trailing `/`)
+- Check that production stage identifiers (prod, beta, stage, staging) are used
+- Review pattern examples in deployment guide
+
+**Pattern Validation**:
+```bash
+# Valid patterns
+/{stageId}/public     # Multi-stage with public directory
+/public               # Single public directory
+/{stageId}/assets     # Multi-stage with assets directory
+/                     # Root level (all content)
+
+# Invalid patterns
+public                # Missing leading slash
+/public/              # Trailing slash
+/{stage}/public       # Wrong placeholder format
+/{stageId}/{env}/pub  # Multiple placeholders not supported
+```
+
+### Issue 6: Wrong Stage Being Processed
+
+**Symptoms**:
+- Non-production content (dev, test) triggering invalidations
+- Production content being filtered out
+- Unexpected stage filtering behavior
+
+**Diagnostic Steps**:
+
+1. **Check stage identifier in event paths**:
+   ```
+   fields @timestamp, eventPath, extractedStage, isProduction
+   | filter @message like /stage.*extract/
+   | sort @timestamp desc
+   ```
+
+2. **Verify production stage identifiers**:
+   - Production: prod, beta, stage, staging
+   - Non-production: dev, test
+
+3. **Check pattern placeholder usage**:
+   ```bash
+   # Pattern with {stageId} - filters non-production
+   OriginPathPattern: /{stageId}/public
+   
+   # Pattern without {stageId} - treats all as production
+   OriginPathPattern: /public
+   ```
+
+**Solutions**:
+- Use `{stageId}` placeholder in pattern for stage filtering
+- Ensure stage identifiers match production list
+- Use pattern without `{stageId}` to treat all content as production
+- Review stage filtering logic in design document
+
+### Issue 7: Bucket Tag Override Not Working
+
+**Symptoms**:
+- Bucket-specific pattern not being used
+- Application-wide pattern applied despite bucket tag
+- Pattern resolution logs show wrong source
+
+**Diagnostic Steps**:
+
+1. **Verify bucket tag exists and is correctly formatted**:
+   ```bash
+   aws s3api get-bucket-tagging --bucket your-bucket-name \
+     --query 'TagSet[?Key==`invalidator:OriginPathPattern`]'
+   ```
+
+2. **Check Processor Lambda logs for pattern resolution**:
+   ```
+   fields @timestamp, bucketName, resolvedPattern, patternSource
+   | filter @message like /pattern.*resolv/
+   | sort @timestamp desc
+   ```
+
+3. **Verify IAM permissions for tag reading**:
+   ```bash
+   aws iam simulate-principal-policy \
+     --policy-source-arn arn:aws:iam::ACCOUNT:role/PROCESSOR-ROLE \
+     --action-names s3:GetBucketTagging \
+     --resource-arns arn:aws:s3:::your-bucket-name
+   ```
+
+**Common Causes**:
+- Tag key misspelled (case-sensitive: `invalidator:OriginPathPattern`)
+- Missing IAM permission for `s3:GetBucketTagging`
+- Tag value doesn't follow validation rules
+- Bucket in different region than Lambda function
+
+**Solutions**:
+- Verify exact tag key spelling: `invalidator:OriginPathPattern`
+- Add `s3:GetBucketTagging` permission to Processor Lambda role
+- Ensure tag value is valid pattern (starts with `/`, no trailing `/`)
+- Check bucket and Lambda are in same region
+
+### Issue 8: Pattern Derivation from Public Segment
+
+**Symptoms**:
+- System deriving pattern instead of using configured pattern
+- Unexpected pattern being applied
+- Fallback behavior occurring when not expected
+
+**Diagnostic Steps**:
+
+1. **Check pattern derivation logs**:
+   ```
+   fields @timestamp, eventPath, derivedPattern, reason
+   | filter @message like /pattern.*deriv/
+   | sort @timestamp desc
+   ```
+
+2. **Verify event path structure**:
+   ```bash
+   # Check if event path contains "public" segment
+   # Example: /prod/public/file.html
+   # Derived pattern: /{stageId}/public
+   ```
+
+3. **Check pattern matching before derivation**:
+   ```
+   fields @timestamp, eventPath, configuredPattern, matched
+   | filter @message like /pattern.*match.*attempt/
+   | sort @timestamp desc
+   ```
+
+**Intended Behavior**:
+- Pattern derivation is a fallback mechanism
+- Occurs when event path doesn't match configured pattern
+- Looks for "public" segment in path
+- Replaces stage identifiers with `{stageId}` placeholder
+
+**Solutions**:
+- Configure pattern to match actual bucket structure (prevents fallback)
+- Use bucket tag to override pattern for specific buckets
+- Review pattern matching priority in design document
+- Ensure configured pattern matches CloudFront origin path
+
+### Issue 9: Configuration Changes Not Taking Effect
 
 **Symptoms**:
 - Updated bucket tags not reflected in behavior
@@ -357,6 +554,30 @@ fields @timestamp, bucketName, tagKey, tagValue, reason
 fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
 | filter @message like /effective configuration/
 | stats count() by directoryThresholdSource, stopLevelSource
+
+-- Find origin path pattern matching decisions
+fields @timestamp, eventPath, pattern, matched, stage
+| filter @message like /pattern.*match/
+| sort @timestamp desc
+| limit 100
+
+-- Find pattern resolution decisions
+fields @timestamp, bucketName, resolvedPattern, patternSource
+| filter @message like /pattern.*resolv/
+| sort @timestamp desc
+| limit 50
+
+-- Find stage filtering events
+fields @timestamp, eventPath, stage, filtered, reason
+| filter @message like /stage.*filter/
+| sort @timestamp desc
+| limit 100
+
+-- Find pattern derivation from public segment
+fields @timestamp, eventPath, derivedPattern, reason
+| filter @message like /pattern.*deriv/
+| sort @timestamp desc
+| limit 50
 ```
 
 ## Configuration Validation
@@ -368,6 +589,7 @@ fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
   - [ ] SiblingDirectoryConsolidationThreshold: 1-1000
   - [ ] ConsolidationStopLevel: 0-20
   - [ ] AggregationWindowSeconds: 60-900
+  - [ ] OriginPathPattern: Starts with `/`, no trailing `/`, valid placeholder format
   - [ ] Parameters applied to Lambda environment variables
 
 - [ ] **S3 Bucket Tags**
@@ -375,8 +597,9 @@ fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
   - [ ] invalidator:DirectoryConsolidationThreshold: 1-1000 (optional)
   - [ ] invalidator:SiblingDirectoryConsolidationThreshold: 1-1000 (optional)
   - [ ] invalidator:ConsolidationStopLevel: 0-20 (optional)
+  - [ ] invalidator:OriginPathPattern: Valid pattern format (optional)
   - [ ] Tag keys spelled correctly (case-sensitive)
-  - [ ] Tag values are numeric strings
+  - [ ] Tag values are numeric strings (except OriginPathPattern)
 
 - [ ] **IAM Permissions**
   - [ ] s3:GetBucketTagging on target buckets
@@ -388,6 +611,13 @@ fields @timestamp, bucketName, directoryThresholdSource, stopLevelSource
   - [ ] Environment variables match CloudFormation parameters
   - [ ] Function has sufficient timeout (300 seconds recommended)
   - [ ] Function has sufficient memory (512 MB recommended)
+
+- [ ] **Origin Path Pattern Configuration**
+  - [ ] Pattern matches S3 bucket structure
+  - [ ] Pattern matches CloudFront origin path configuration
+  - [ ] `{stageId}` placeholder used correctly (if multi-stage)
+  - [ ] Stage identifiers in paths match production list (prod, beta, stage, staging)
+  - [ ] Bucket tag overrides configured for exceptions (if needed)
 
 ### Testing Configuration
 
