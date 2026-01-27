@@ -322,7 +322,7 @@ class NestedStructureGenerator:
         Returns:
             Tuple containing:
             - List of tuples (s3_key, filename) where:
-              - s3_key is the full S3 path including base_path and nested structure
+              - s3_key is the full S3 path WITHOUT leading slash (S3 standard format)
               - filename is the original filename for logging
               Total of 50 files (10 files per level × 5 levels)
             - NestedStructureInfo object with structure details
@@ -330,11 +330,14 @@ class NestedStructureGenerator:
         paths = []
         levels = []
         
+        # Remove leading slash from base_path to generate S3-compliant keys
+        clean_base = base_path.strip('/')
+        
         # Generate root directory name
         root_dir = self.generate_root_directory_name()
         
         # Build the nested structure level by level
-        current_path = f"{base_path.rstrip('/')}/{root_dir}"
+        current_path = f"{clean_base}/{root_dir}" if clean_base else root_dir
         
         for level in range(1, 6):  # Levels 1-5
             # Generate 10 files at this level
@@ -356,7 +359,7 @@ class NestedStructureGenerator:
                 
                 level_files.append(filename)
                 
-                # Create full S3 path
+                # Create full S3 path without leading slash
                 s3_key = f"{current_path}/{filename}"
                 paths.append((s3_key, filename))
             
@@ -464,7 +467,7 @@ class PathGenerator:
             
         Returns:
             List of tuples (s3_key, filename) where:
-            - s3_key is the full S3 path including base_path
+            - s3_key is the full S3 path WITHOUT leading slash (S3 standard format)
             - filename is the original filename for logging
         """
         if count != 12:
@@ -472,6 +475,9 @@ class PathGenerator:
         
         paths = []
         used_paths = set()
+        
+        # Remove leading slash from base_path to generate S3-compliant keys
+        clean_base = base_path.strip('/')
         
         # Ensure we have files at different directory depths (1-4 levels)
         # Use deterministic approach to guarantee all depths are covered
@@ -514,14 +520,14 @@ class PathGenerator:
                 # Use random filename
                 filename = self._generate_random_filename()
             
-            # Construct full path
+            # Construct full path without leading slash (S3 standard format)
             if depth == 1:
                 # For depth 1, only one directory level
-                s3_key = f"{base_path.rstrip('/')}/{dirs[0]}/{filename}"
+                s3_key = f"{clean_base}/{dirs[0]}/{filename}" if clean_base else f"{dirs[0]}/{filename}"
             else:
                 # For deeper levels, use all directories
                 dir_path = '/'.join(dirs)
-                s3_key = f"{base_path.rstrip('/')}/{dir_path}/{filename}"
+                s3_key = f"{clean_base}/{dir_path}/{filename}" if clean_base else f"{dir_path}/{filename}"
             
             # Ensure uniqueness
             attempt = 0
@@ -530,10 +536,10 @@ class PathGenerator:
                 # Retry with different filename
                 retry_filename = self._generate_random_filename()
                 if depth == 1:
-                    s3_key = f"{base_path.rstrip('/')}/{dirs[0]}/{retry_filename}"
+                    s3_key = f"{clean_base}/{dirs[0]}/{retry_filename}" if clean_base else f"{dirs[0]}/{retry_filename}"
                 else:
                     dir_path = '/'.join(dirs)
-                    s3_key = f"{base_path.rstrip('/')}/{dir_path}/{retry_filename}"
+                    s3_key = f"{clean_base}/{dir_path}/{retry_filename}" if clean_base else f"{dir_path}/{retry_filename}"
                 filename = retry_filename
                 attempt += 1
             
@@ -859,7 +865,7 @@ class S3Uploader:
         
         Args:
             bucket: S3 bucket name
-            key: S3 object key (path)
+            key: S3 object key (path) - will be stripped of leading slashes
             content: File content to upload
             
         Returns:
@@ -874,8 +880,17 @@ class S3Uploader:
                 )
                 return False
             
-            # Remove leading slash from key if present
+            # Remove leading slash from key if present (S3 standard format)
             clean_key = key.lstrip('/')
+            
+            # Validate that key doesn't start with slash after cleaning
+            if clean_key != key:
+                self.logger.debug(f"Stripped leading slash from key: {key} -> {clean_key}")
+            
+            # Additional validation: ensure clean_key doesn't start with slash
+            if clean_key.startswith('/'):
+                self.logger.error(f"Key still has leading slash after stripping: {clean_key}")
+                return False
             
             self.s3_client.put_object(
                 Bucket=bucket,
@@ -884,7 +899,9 @@ class S3Uploader:
                 ContentType='text/html'
             )
             
-            self.logger_component.log_upload_success(bucket, key)
+            # Log with actual S3 key format (no leading slash)
+            self.logger.debug(f"Uploaded to S3 with key: {clean_key}")
+            self.logger_component.log_upload_success(bucket, clean_key)
             return True
             
         except Exception as e:
@@ -897,7 +914,7 @@ class S3Uploader:
         
         Args:
             bucket: S3 bucket name
-            key: S3 object key (path)
+            key: S3 object key (path) - will be stripped of leading slashes
             content: File content to upload
             max_retries: Maximum number of retry attempts (default: 3)
             
@@ -914,8 +931,13 @@ class S3Uploader:
         
         for attempt in range(max_retries + 1):  # +1 for initial attempt
             try:
-                # Remove leading slash from key if present
+                # Remove leading slash from key if present (S3 standard format)
                 clean_key = key.lstrip('/')
+                
+                # Validate that key doesn't start with slash after cleaning
+                if clean_key.startswith('/'):
+                    self.logger.error(f"Key still has leading slash after stripping: {clean_key}")
+                    return False
                 
                 self.s3_client.put_object(
                     Bucket=bucket,
@@ -927,7 +949,9 @@ class S3Uploader:
                 if attempt > 0:
                     self.logger.info(f"Upload successful on retry {attempt}: s3://{bucket}/{clean_key}")
                 else:
-                    self.logger_component.log_upload_success(bucket, key)
+                    # Log with actual S3 key format (no leading slash)
+                    self.logger.debug(f"Uploaded to S3 with key: {clean_key}")
+                    self.logger_component.log_upload_success(bucket, clean_key)
                 return True
                 
             except Exception as e:

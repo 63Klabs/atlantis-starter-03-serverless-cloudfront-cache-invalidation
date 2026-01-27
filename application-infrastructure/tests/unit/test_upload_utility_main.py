@@ -182,9 +182,11 @@ class TestPathGeneratorIntegration:
         path_gen = PathGenerator(config)
         paths = path_gen.generate_upload_paths('/staging/public/')
         
-        # All paths should start with base path
+        # All paths should NOT start with leading slash (S3 standard format)
+        # but should contain the base path components
         for s3_key, filename in paths:
-            assert s3_key.startswith('/staging/public/')
+            assert not s3_key.startswith('/'), f"Key should not have leading slash: {s3_key}"
+            assert 'staging/public/' in s3_key
             assert filename.endswith('.html')
     
     def test_generate_upload_paths_invalid_count(self):
@@ -267,3 +269,217 @@ class TestUploadResultIntegration:
 
 if __name__ == '__main__':
     pytest.main([__file__])
+
+
+class TestS3KeyNormalization:
+    """Test S3 key normalization to ensure keys don't have leading slashes"""
+    
+    def test_generate_upload_paths_no_leading_slash(self):
+        """Test that generated keys don't have leading slashes (S3 standard format)"""
+        config = Configuration(
+            buckets=['test'],
+            stages=['prod'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/prod/public/',
+            source_file_path='test.html'
+        )
+        
+        path_gen = PathGenerator(config)
+        paths = path_gen.generate_upload_paths('/prod/public/')
+        
+        # All paths should NOT start with leading slash (S3 standard format)
+        for s3_key, filename in paths:
+            assert not s3_key.startswith('/'), f"Key should not have leading slash: {s3_key}"
+            assert filename.endswith('.html')
+            # Verify key format: should be like "prod/public/dir/file.html"
+            assert 'prod/public/' in s3_key
+    
+    def test_generate_nested_structure_no_leading_slash(self):
+        """Test that nested structure keys don't have leading slashes"""
+        config = Configuration(
+            buckets=['test'],
+            stages=['staging'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/staging/public/',
+            source_file_path='test.html'
+        )
+        
+        path_gen = PathGenerator(config)
+        nested_paths, structure_info = path_gen.nested_generator.generate_nested_structure('/staging/public/')
+        
+        # All nested paths should NOT start with leading slash
+        for s3_key, filename in nested_paths:
+            assert not s3_key.startswith('/'), f"Nested key should not have leading slash: {s3_key}"
+            assert filename.startswith('nested-')
+            assert filename.endswith('.html')
+            # Verify key format includes base path without leading slash
+            assert 'staging/public/' in s3_key
+    
+    def test_generate_all_upload_paths_no_leading_slash(self):
+        """Test that combined legacy and nested paths don't have leading slashes"""
+        config = Configuration(
+            buckets=['test'],
+            stages=['prod'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/prod/public/',
+            source_file_path='test.html'
+        )
+        
+        path_gen = PathGenerator(config)
+        all_paths = path_gen.generate_all_upload_paths('/prod/public/')
+        
+        # Should have 62 total paths (12 legacy + 50 nested)
+        assert len(all_paths) == 62
+        
+        # None should have leading slashes
+        for s3_key, filename in all_paths:
+            assert not s3_key.startswith('/'), f"Key should not have leading slash: {s3_key}"
+            assert 'prod/public/' in s3_key
+    
+    def test_upload_file_strips_leading_slash(self):
+        """Test that upload function strips any leading slashes"""
+        config = Configuration(
+            buckets=['test-bucket'],
+            stages=['prod'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/prod/public/',
+            source_file_path='test.html'
+        )
+        
+        mock_session = Mock()
+        mock_s3_client = Mock()
+        mock_session.client.return_value = mock_s3_client
+        
+        logger_component = Logger(config)
+        uploader = S3Uploader(mock_session, config, logger_component)
+        
+        # Test with key that has leading slash
+        key_with_slash = '/prod/public/test/file.html'
+        uploader.upload_file('test-bucket', key_with_slash, '<html>test</html>')
+        
+        # Verify put_object was called with key WITHOUT leading slash
+        mock_s3_client.put_object.assert_called_once()
+        call_args = mock_s3_client.put_object.call_args
+        actual_key = call_args[1]['Key']
+        
+        assert not actual_key.startswith('/'), f"Uploaded key should not have leading slash: {actual_key}"
+        assert actual_key == 'prod/public/test/file.html'
+    
+    def test_upload_file_preserves_no_leading_slash(self):
+        """Test that upload function preserves keys without leading slashes"""
+        config = Configuration(
+            buckets=['test-bucket'],
+            stages=['prod'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/prod/public/',
+            source_file_path='test.html'
+        )
+        
+        mock_session = Mock()
+        mock_s3_client = Mock()
+        mock_session.client.return_value = mock_s3_client
+        
+        logger_component = Logger(config)
+        uploader = S3Uploader(mock_session, config, logger_component)
+        
+        # Test with key that already has no leading slash
+        key_without_slash = 'prod/public/test/file.html'
+        uploader.upload_file('test-bucket', key_without_slash, '<html>test</html>')
+        
+        # Verify put_object was called with same key (no leading slash)
+        mock_s3_client.put_object.assert_called_once()
+        call_args = mock_s3_client.put_object.call_args
+        actual_key = call_args[1]['Key']
+        
+        assert not actual_key.startswith('/'), f"Uploaded key should not have leading slash: {actual_key}"
+        assert actual_key == 'prod/public/test/file.html'
+    
+    def test_upload_with_retry_strips_leading_slash(self):
+        """Test that upload_with_retry strips leading slashes"""
+        config = Configuration(
+            buckets=['test-bucket'],
+            stages=['staging'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/staging/public/',
+            source_file_path='test.html'
+        )
+        
+        mock_session = Mock()
+        mock_s3_client = Mock()
+        mock_session.client.return_value = mock_s3_client
+        
+        logger_component = Logger(config)
+        uploader = S3Uploader(mock_session, config, logger_component)
+        
+        # Test with key that has leading slash
+        key_with_slash = '/staging/public/assets/file.html'
+        uploader.upload_with_retry('test-bucket', key_with_slash, '<html>test</html>')
+        
+        # Verify put_object was called with key WITHOUT leading slash
+        mock_s3_client.put_object.assert_called_once()
+        call_args = mock_s3_client.put_object.call_args
+        actual_key = call_args[1]['Key']
+        
+        assert not actual_key.startswith('/'), f"Uploaded key should not have leading slash: {actual_key}"
+        assert actual_key == 'staging/public/assets/file.html'
+    
+    def test_key_format_validation(self):
+        """Test that generated keys match S3 standard format"""
+        config = Configuration(
+            buckets=['test'],
+            stages=['prod'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/prod/public/',
+            source_file_path='test.html'
+        )
+        
+        path_gen = PathGenerator(config)
+        paths = path_gen.generate_upload_paths('/prod/public/')
+        
+        for s3_key, filename in paths:
+            # Key should not start with slash
+            assert not s3_key.startswith('/')
+            # Key should not have double slashes
+            assert '//' not in s3_key
+            # Key should be reasonable length (< 1024 chars)
+            assert len(s3_key) < 1024
+            # Key should contain the base path components
+            assert 'prod' in s3_key
+            assert 'public' in s3_key
+    
+    def test_nested_structure_key_format(self):
+        """Test that nested structure keys match S3 standard format"""
+        config = Configuration(
+            buckets=['test'],
+            stages=['staging'],
+            aws_profile=None,
+            verbose=False,
+            base_path='/staging/public/',
+            source_file_path='test.html'
+        )
+        
+        path_gen = PathGenerator(config)
+        nested_paths, structure_info = path_gen.nested_generator.generate_nested_structure('/staging/public/')
+        
+        # Verify structure info
+        assert structure_info.total_files == 50
+        assert structure_info.total_directories == 4
+        assert len(structure_info.root_directory) == 8  # 8 random chars
+        
+        for s3_key, filename in nested_paths:
+            # Key should not start with slash
+            assert not s3_key.startswith('/')
+            # Key should not have double slashes
+            assert '//' not in s3_key
+            # Key should contain root directory
+            assert structure_info.root_directory in s3_key
+            # Key should contain base path components
+            assert 'staging' in s3_key
+            assert 'public' in s3_key

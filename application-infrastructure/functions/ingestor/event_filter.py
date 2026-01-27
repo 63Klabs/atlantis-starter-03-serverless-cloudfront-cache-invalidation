@@ -47,7 +47,9 @@ def should_process_event(event_path: str) -> Tuple[bool, str]:
                         'eventPath': event_path,
                         'pattern': ORIGIN_PATH_PATTERN,
                         'stage': stage,
-                        'reason': reason
+                        'reason': reason,
+                        'filter_result': 'accepted',
+                        'operation': 'event_filtering'
                     }}
                 )
                 return True, reason
@@ -59,7 +61,9 @@ def should_process_event(event_path: str) -> Tuple[bool, str]:
                         'eventPath': event_path,
                         'pattern': ORIGIN_PATH_PATTERN,
                         'stage': stage,
-                        'reason': reason
+                        'reason': reason,
+                        'filter_result': 'rejected',
+                        'operation': 'event_filtering'
                     }}
                 )
                 return False, reason
@@ -71,7 +75,9 @@ def should_process_event(event_path: str) -> Tuple[bool, str]:
                 extra={'extra_fields': {
                     'eventPath': event_path,
                     'pattern': ORIGIN_PATH_PATTERN,
-                    'reason': reason
+                    'reason': reason,
+                    'filter_result': 'accepted',
+                    'operation': 'event_filtering'
                 }}
             )
             return True, reason
@@ -90,7 +96,9 @@ def should_process_event(event_path: str) -> Tuple[bool, str]:
                         extra={'extra_fields': {
                             'eventPath': event_path,
                             'nonProdStage': segments[i],
-                            'reason': reason
+                            'reason': reason,
+                            'filter_result': 'rejected',
+                            'operation': 'event_filtering'
                         }}
                     )
                     return False, reason
@@ -100,7 +108,9 @@ def should_process_event(event_path: str) -> Tuple[bool, str]:
                 "Event accepted: public segment fallback",
                 extra={'extra_fields': {
                     'eventPath': event_path,
-                    'reason': reason
+                    'reason': reason,
+                    'filter_result': 'accepted',
+                    'operation': 'event_filtering'
                 }}
             )
             return True, reason
@@ -114,7 +124,9 @@ def should_process_event(event_path: str) -> Tuple[bool, str]:
         extra={'extra_fields': {
             'eventPath': event_path,
             'pattern': ORIGIN_PATH_PATTERN,
-            'reason': reason
+            'reason': reason,
+            'filter_result': 'rejected',
+            'operation': 'event_filtering'
         }}
     )
     return False, reason
