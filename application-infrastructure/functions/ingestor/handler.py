@@ -440,46 +440,46 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             - body: Summary of processing results
     """
     # DEBUG: Log the complete incoming event
-    # logger.info(
-    #     "Ingestor Lambda invoked - FULL EVENT DEBUG",
-    #     extra={'extra_fields': {
-    #         'requestId': context.aws_request_id if context else 'unknown',
-    #         'recordCount': len(event.get('Records', [])),
-    #         'fullEvent': event,
-    #         'contextInfo': {
-    #             'functionName': context.function_name if context else 'unknown',
-    #             'functionVersion': context.function_version if context else 'unknown',
-    #             'memoryLimitInMB': context.memory_limit_in_mb if context else 'unknown',
-    #             'remainingTimeInMillis': context.get_remaining_time_in_millis() if context else 'unknown'
-    #         }
-    #     }}
-    # )
+    logger.info(
+        "Ingestor Lambda invoked - FULL EVENT DEBUG",
+        extra={'extra_fields': {
+            'requestId': context.aws_request_id if context else 'unknown',
+            'recordCount': len(event.get('Records', [])),
+            'fullEvent': event,
+            'contextInfo': {
+                'functionName': context.function_name if context else 'unknown',
+                'functionVersion': context.function_version if context else 'unknown',
+                'memoryLimitInMB': context.memory_limit_in_mb if context else 'unknown',
+                'remainingTimeInMillis': context.get_remaining_time_in_millis() if context else 'unknown'
+            }
+        }}
+    )
     
     try:
         # Get queue URL from environment
         queue_url = get_queue_url()
         
         # DEBUG: Log environment variables and configuration
-        # logger.info(
-        #     "Environment configuration DEBUG",
-        #     extra={'extra_fields': {
-        #         'queueUrl': queue_url,
-        #         'allEnvVars': dict(os.environ)
-        #     }}
-        # )
+        logger.info(
+            "Environment configuration DEBUG",
+            extra={'extra_fields': {
+                'queueUrl': queue_url,
+                'allEnvVars': dict(os.environ)
+            }}
+        )
         
         # Process each S3 event record
         records = event.get('Records', [])
         
         # DEBUG: Log detailed record information
-        # logger.info(
-        #     "Records analysis DEBUG",
-        #     extra={'extra_fields': {
-        #         'recordCount': len(records),
-        #         'recordTypes': [record.get('eventSource', 'unknown') for record in records],
-        #         'recordEventNames': [record.get('eventName', 'unknown') for record in records]
-        #     }}
-        # )
+        logger.info(
+            "Records analysis DEBUG",
+            extra={'extra_fields': {
+                'recordCount': len(records),
+                'recordTypes': [record.get('eventSource', 'unknown') for record in records],
+                'recordEventNames': [record.get('eventName', 'unknown') for record in records]
+            }}
+        )
         
         if not records:
             logger.warning("No records found in event - DEBUG: This means no S3 events to process")
@@ -491,28 +491,28 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         results = []
         for i, record in enumerate(records):
             # DEBUG: Log each record before processing
-            # logger.info(
-            #     f"Processing record {i+1}/{len(records)} DEBUG",
-            #     extra={'extra_fields': {
-            #         'recordIndex': i,
-            #         'fullRecord': record,
-            #         'recordEventSource': record.get('eventSource'),
-            #         'recordEventName': record.get('eventName'),
-            #         'recordEventTime': record.get('eventTime'),
-            #         's3Info': record.get('s3', {})
-            #     }}
-            # )
+            logger.info(
+                f"Processing record {i+1}/{len(records)} DEBUG",
+                extra={'extra_fields': {
+                    'recordIndex': i,
+                    'fullRecord': record,
+                    'recordEventSource': record.get('eventSource'),
+                    'recordEventName': record.get('eventName'),
+                    'recordEventTime': record.get('eventTime'),
+                    's3Info': record.get('s3', {})
+                }}
+            )
             
             result = process_s3_record(record, queue_url)
             
             # DEBUG: Log processing result
-            # logger.info(
-            #     f"Record {i+1} processing result DEBUG",
-            #     extra={'extra_fields': {
-            #         'recordIndex': i,
-            #         'processingResult': result
-            #     }}
-            # )
+            logger.info(
+                f"Record {i+1} processing result DEBUG",
+                extra={'extra_fields': {
+                    'recordIndex': i,
+                    'processingResult': result
+                }}
+            )
             
             results.append(result)
         
@@ -520,14 +520,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         successful = sum(1 for r in results if r['success'])
         failed = len(results) - successful
         
-        # logger.info(
-        #     "Ingestor Lambda completed",
-        #     extra={'extra_fields': {
-        #         'totalRecords': len(results),
-        #         'successful': successful,
-        #         'failed': failed
-        #     }}
-        # )
+        logger.info(
+            "Ingestor Lambda completed",
+            extra={'extra_fields': {
+                'totalRecords': len(results),
+                'successful': successful,
+                'failed': failed
+            }}
+        )
         
         # Return success if at least one record was processed successfully
         if successful > 0:

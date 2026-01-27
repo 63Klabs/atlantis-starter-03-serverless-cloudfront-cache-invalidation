@@ -130,19 +130,37 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
 
 
 def extract_stage_id(object_key: str) -> Optional[str]:
-    """Extract StageId from the first path segment of an object key.
+    """Extract StageId from object key using the configured pattern.
     
-    The StageId is expected to be the first non-empty segment after the leading slash.
-    For example, from "/prod/public/images/logo.png", extracts "prod".
+    Uses ORIGIN_PATH_PATTERN to determine where the stage ID is located.
+    For root pattern (/), returns "prod" as default (no stage filtering).
+    For patterns without {stageId}, returns "prod" as default.
+    For patterns with {stageId}, extracts the stage from the matching position.
     
     Args:
-        object_key: S3 object key path
+        object_key: S3 object key path (e.g., "/prod/public/images/logo.png")
         
     Returns:
-        StageId string, or None if the path has no segments
+        StageId string, or None if unable to extract
+        
+    Examples:
+        >>> # With ORIGIN_PATH_PATTERN = "/{stageId}/public"
+        >>> extract_stage_id("/prod/public/images/logo.png")
+        'prod'
+        
+        >>> # With ORIGIN_PATH_PATTERN = "/"
+        >>> extract_stage_id("/any/path/file.html")
+        'prod'
         
     **Feature: multi-bucket-cloudfront-invalidation, Property 2: StageId extraction from object key**
     """
+    from common.constants import (  # pyright: ignore[reportMissingImports]
+        ORIGIN_PATH_PATTERN,
+        PRODUCTION_STAGE_IDENTIFIERS,
+        NON_PRODUCTION_STAGE_IDENTIFIERS
+    )
+    from common.path_utils import extract_stage_from_path  # pyright: ignore[reportMissingImports]
+    
     logger = setup_logger(__name__)
     
     # DEBUG: Log StageId extraction
@@ -159,74 +177,100 @@ def extract_stage_id(object_key: str) -> Optional[str]:
         logger.info("StageId extraction: empty object key")
         return None
     
-    # Remove leading slash and split by '/'
+    # Special case: root pattern or pattern without {stageId}
+    if ORIGIN_PATH_PATTERN == '/' or '{stageId}' not in ORIGIN_PATH_PATTERN:
+        # No stage filtering, treat as production
+        return 'prod'
+    
+    # Extract stage using the pattern
+    stage = extract_stage_from_path(object_key, ORIGIN_PATH_PATTERN)
+    
+    if stage:
+        return stage
+    
+    # Fallback: try to extract from first segment (backward compatibility)
     path_segments = object_key.lstrip('/').split('/')
-    
-    # DEBUG: Log path analysis
-    # logger.info(
-    #     "Path segments analysis DEBUG",
-    #     extra={'extra_fields': {
-    #         'originalKey': object_key,
-    #         'afterLstrip': object_key.lstrip('/'),
-    #         'pathSegments': path_segments,
-    #         'segmentCount': len(path_segments)
-    #     }}
-    # )
-    
-    # Filter out empty segments and return the first one
     non_empty_segments = [seg for seg in path_segments if seg]
     
-    # DEBUG: Log filtering results
-    # logger.info(
-    #     "Segment filtering results DEBUG",
-    #     extra={'extra_fields': {
-    #         'nonEmptySegments': non_empty_segments,
-    #         'nonEmptyCount': len(non_empty_segments),
-    #         'firstSegment': non_empty_segments[0] if non_empty_segments else None
-    #     }}
-    # )
-    
     if not non_empty_segments:
-        # logger.info("StageId extraction: no non-empty segments")
         return None
     
-    result = non_empty_segments[0]
-    # logger.info(
-    #     "StageId extraction result",
-    #     extra={'extra_fields': {
-    #         'extractedStageId': result
-    #     }}
-    # )
+    first_segment = non_empty_segments[0]
     
-    return result
+    # Check if first segment is a known stage identifier
+    all_stages = PRODUCTION_STAGE_IDENTIFIERS + NON_PRODUCTION_STAGE_IDENTIFIERS
+    if first_segment in all_stages:
+        return first_segment
+    
+    # If not a known stage, treat as production (no stage filtering)
+    return 'prod'
 
 
 def extract_origin_path(object_key: str) -> Optional[str]:
-    """Extract origin path from object key.
+    """Extract origin path from object key using the configured pattern.
     
-    The origin path is structured as /<StageId>/public.
-    For example, from "/prod/public/images/logo.png", extracts "/prod/public".
+    Uses ORIGIN_PATH_PATTERN to determine the origin path structure.
+    For root pattern (/), returns "/" for all paths.
+    For pattern-based paths, extracts the matching origin path.
     
     Args:
         object_key: S3 object key path
         
     Returns:
-        Origin path string (/<StageId>/public), or None if pattern doesn't match
+        Origin path string, or None if pattern doesn't match
+        
+    Examples:
+        >>> # With ORIGIN_PATH_PATTERN = "/{stageId}/public"
+        >>> extract_origin_path("/prod/public/images/logo.png")
+        '/prod/public'
+        
+        >>> # With ORIGIN_PATH_PATTERN = "/"
+        >>> extract_origin_path("/any/path/file.html")
+        '/'
     """
+    from common.constants import (  # pyright: ignore[reportMissingImports]
+        ORIGIN_PATH_PATTERN,
+        PUBLIC_PATH_SEGMENT,
+        PRODUCTION_STAGE_IDENTIFIERS,
+        NON_PRODUCTION_STAGE_IDENTIFIERS
+    )
+    from common.path_utils import matches_pattern, derive_pattern_from_path  # pyright: ignore[reportMissingImports]
+    
     if not object_key:
         return None
     
-    # Split the path
-    parts = object_key.lstrip('/').split('/')
+    # Special case: root pattern matches everything
+    if ORIGIN_PATH_PATTERN == '/':
+        return '/'
     
-    # We need at least 2 segments: stageId and 'public'
-    if len(parts) < 2:
-        return None
+    # Try to match against the configured pattern
+    all_stages = PRODUCTION_STAGE_IDENTIFIERS + NON_PRODUCTION_STAGE_IDENTIFIERS
+    matches, stage = matches_pattern(object_key, ORIGIN_PATH_PATTERN, all_stages)
     
-    stage_id = parts[0]
+    if matches:
+        # Extract the origin path by replacing {stageId} with actual stage
+        if '{stageId}' in ORIGIN_PATH_PATTERN and stage:
+            return ORIGIN_PATH_PATTERN.replace('{stageId}', stage)
+        else:
+            return ORIGIN_PATH_PATTERN
     
-    # Check if second segment is 'public'
-    if parts[1] != 'public':
-        return None
+    # Fallback: Try to derive pattern from public segment
+    if PUBLIC_PATH_SEGMENT in object_key:
+        derived_pattern = derive_pattern_from_path(
+            object_key,
+            PUBLIC_PATH_SEGMENT,
+            PRODUCTION_STAGE_IDENTIFIERS,
+            NON_PRODUCTION_STAGE_IDENTIFIERS
+        )
+        
+        if derived_pattern:
+            # Extract the actual origin path from the object key
+            segments = object_key.strip('/').split('/')
+            try:
+                public_index = segments.index(PUBLIC_PATH_SEGMENT)
+                origin_segments = segments[:public_index + 1]
+                return '/' + '/'.join(origin_segments)
+            except ValueError:
+                pass
     
-    return f"/{stage_id}/public"
+    return None

@@ -30,10 +30,11 @@ An **Origin Path** is a specific subfolder or directory within an S3 bucket that
 1. THE CloudFormation_Template SHALL define a parameter named OriginPathPattern with default value `/{stageId}/public`
 2. WHEN OriginPathPattern is empty, THE Invalidator_Application SHALL use the default value from constants.py
 3. THE OriginPathPattern_Parameter SHALL validate that non-empty values start with `/`
-4. THE OriginPathPattern_Parameter SHALL validate that non-empty values do not end with `/`
+4. THE OriginPathPattern_Parameter SHALL validate that non-empty values do not end with `/` unless the value is exactly `/`
 5. THE OriginPathPattern_Parameter SHALL validate that curly braces only wrap the literal text `stageId`
 6. THE OriginPathPattern_Parameter SHALL allow valid path characters in the pattern
-7. THE CloudFormation_Template SHALL include OriginPathPattern in the Application Parameters metadata group
+7. THE OriginPathPattern_Parameter SHALL accept `/` as a valid pattern
+8. THE CloudFormation_Template SHALL include OriginPathPattern in the Application Parameters metadata group
 
 ### Requirement 2: Lambda Environment Variables
 
@@ -147,7 +148,7 @@ An **Origin Path** is a specific subfolder or directory within an S3 bucket that
 #### Acceptance Criteria
 
 1. WHEN OriginPathPattern does not start with `/`, THE CloudFormation_Template SHALL reject the parameter with a descriptive error
-2. WHEN OriginPathPattern ends with `/`, THE CloudFormation_Template SHALL reject the parameter with a descriptive error
+2. WHEN OriginPathPattern ends with `/` and is not exactly `/`, THE CloudFormation_Template SHALL reject the parameter with a descriptive error
 3. WHEN OriginPathPattern contains curly braces not wrapping `stageId`, THE CloudFormation_Template SHALL reject the parameter with a descriptive error
 4. WHEN OriginPathPattern contains invalid path characters, THE CloudFormation_Template SHALL reject the parameter with a descriptive error
 5. THE validation_errors SHALL include constraint descriptions explaining the valid format

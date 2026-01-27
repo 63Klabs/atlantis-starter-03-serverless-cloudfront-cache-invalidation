@@ -164,20 +164,21 @@ Each task builds on previous work, ensuring no orphaned code. The implementation
     - Set Type to String
     - Set Default to `/{stageId}/public`
     - Add Description explaining usage and examples
-    - Add AllowedPattern regex for validation
+    - Add AllowedPattern regex for validation: `^$|^\/$|^/([a-zA-Z0-9\-_{}]+(/[a-zA-Z0-9\-_{}]+)*)?$`
     - Add ConstraintDescription with validation rules
-    - _Requirements: 1.1, 1.3, 1.4, 1.5, 1.6, 11.1, 11.2, 11.3, 11.4_
+    - _Requirements: 1.1, 1.3, 1.4, 1.5, 1.6, 1.7, 11.1, 11.2, 11.3, 11.4_
 
   - [x] 7.2 Write property test for pattern validation
     - **Property 1: Pattern Validation Completeness**
-    - **Validates: Requirements 1.3, 1.4, 1.5, 1.6, 11.1, 11.2, 11.3, 11.4**
+    - **Validates: Requirements 1.3, 1.4, 1.5, 1.6, 1.7, 11.1, 11.2, 11.3, 11.4**
     - Generate random pattern strings
-    - Verify validation accepts/rejects according to rules
+    - Verify validation accepts/rejects according to rules (including `/` as valid)
     - Run with 20 iterations
 
   - [x] 7.3 Write unit tests for CloudFormation template
     - Parse template and verify parameter exists
     - Test specific invalid patterns are rejected
+    - Test that `/` is accepted as a valid pattern
     - Verify default value is correct
     - Verify parameter is in Application Parameters metadata group
     - _Requirements: 1.1, 1.7, 11.1, 11.2, 11.3, 11.4_
@@ -197,7 +198,7 @@ Each task builds on previous work, ensuring no orphaned code. The implementation
   - [x] 7.6 Add OriginPathPattern to Application Parameters metadata
     - Add to ParameterGroups in Metadata section
     - Include in Application Parameters group
-    - _Requirements: 1.7_
+    - _Requirements: 1.8_
 
 - [x] 8. Checkpoint - Ensure template validation passes
   - Ensure all tests pass, ask the user if questions arise.

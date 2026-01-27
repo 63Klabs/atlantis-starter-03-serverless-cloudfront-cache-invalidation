@@ -170,10 +170,13 @@ def _matches_bucket_origin(origin: Dict, bucket_name: str, origin_path: str) -> 
     Compares the origin's domain name and path against the expected values
     for the S3 bucket. Handles both regional and global S3 domain formats.
     
+    Note: CloudFront uses empty string "" for root origin path, while our
+    code uses "/". Both are normalized to "" for comparison.
+    
     Args:
         origin: CloudFront origin configuration dictionary
         bucket_name: S3 bucket name to match
-        origin_path: Origin path to match (e.g., /prod/public)
+        origin_path: Origin path to match (e.g., /prod/public or /)
         
     Returns:
         True if the origin matches both bucket and path, False otherwise
@@ -194,14 +197,21 @@ def _matches_bucket_origin(origin: Dict, bucket_name: str, origin_path: str) -> 
     # Get origin path (may be empty string)
     origin_origin_path = origin.get('OriginPath', '')
     
+    # Normalize origin paths: CloudFront uses "" for root, we use "/"
+    # Treat both as equivalent
+    normalized_origin_path = origin_origin_path if origin_origin_path != '' else '/'
+    normalized_expected_path = origin_path if origin_path != '' else '/'
+    
     # DEBUG: Log extracted values
     # logger.info(
     #     "Origin values extraction DEBUG",
     #     extra={'extra_fields': {
     #         'extractedDomainName': domain_name,
     #         'extractedOriginPath': origin_origin_path,
+    #         'normalizedOriginPath': normalized_origin_path,
     #         'bucketName': bucket_name,
-    #         'expectedOriginPath': origin_path
+    #         'expectedOriginPath': origin_path,
+    #         'normalizedExpectedPath': normalized_expected_path
     #     }}
     # )
     
@@ -246,17 +256,18 @@ def _matches_bucket_origin(origin: Dict, bucket_name: str, origin_path: str) -> 
     #         }}
     #     )
     
-    # Check if origin path matches
-    path_matches = origin_origin_path == origin_path
+    # Check if origin path matches (after normalization)
+    path_matches = normalized_origin_path == normalized_expected_path
     
     # DEBUG: Log path matching
     # logger.info(
     #     "Path matching analysis DEBUG",
     #     extra={'extra_fields': {
     #         'originOriginPath': origin_origin_path,
+    #         'normalizedOriginPath': normalized_origin_path,
     #         'expectedOriginPath': origin_path,
-    #         'pathMatches': path_matches,
-    #         'pathsEqual': origin_origin_path == origin_path
+    #         'normalizedExpectedPath': normalized_expected_path,
+    #         'pathMatches': path_matches
     #     }}
     # )
     
@@ -267,8 +278,10 @@ def _matches_bucket_origin(origin: Dict, bucket_name: str, origin_path: str) -> 
                 'origin_id': origin.get('Id'),
                 'domain_name': domain_name,
                 'origin_path': origin_origin_path,
+                'normalized_origin_path': normalized_origin_path,
                 'bucket_name': bucket_name,
-                'expected_origin_path': origin_path
+                'expected_origin_path': origin_path,
+                'normalized_expected_path': normalized_expected_path
             }}
         )
     

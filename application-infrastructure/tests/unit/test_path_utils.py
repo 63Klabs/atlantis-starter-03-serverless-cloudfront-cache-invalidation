@@ -117,6 +117,33 @@ class TestMatchesPattern:
         )
         assert matches is False
         assert stage is None
+    
+    def test_root_pattern_matches_everything(self):
+        """Test that root pattern '/' matches all paths."""
+        # Root pattern should match any path
+        matches, stage = matches_pattern(
+            '/file.html',
+            '/',
+            ['prod', 'dev']
+        )
+        assert matches is True
+        assert stage is None
+        
+        matches, stage = matches_pattern(
+            '/prod/public/file.html',
+            '/',
+            ['prod', 'dev']
+        )
+        assert matches is True
+        assert stage is None
+        
+        matches, stage = matches_pattern(
+            '/any/path/structure/file.html',
+            '/',
+            ['prod', 'dev']
+        )
+        assert matches is True
+        assert stage is None
 
 
 class TestDerivePatternFromPath:

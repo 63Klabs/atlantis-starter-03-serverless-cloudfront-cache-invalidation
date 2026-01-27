@@ -102,6 +102,23 @@ class TestShouldProcessEvent:
         assert should_process is True
         assert 'public segment' in reason.lower()
     
+    @patch('functions.ingestor.event_filter.ORIGIN_PATH_PATTERN', '/')
+    def test_root_pattern_accepts_all_paths(self):
+        """Test root pattern '/' accepts all paths without filtering."""
+        # Root pattern should match any path
+        test_paths = [
+            '/file.html',
+            '/prod/public/file.html',
+            '/assets/images/logo.png',
+            '/any/nested/path/structure/file.txt'
+        ]
+        
+        for event_path in test_paths:
+            should_process, reason = should_process_event(event_path)
+            
+            assert should_process is True, f"Path {event_path} should be accepted with root pattern"
+            assert 'no stage filtering' in reason.lower()
+    
     # Test public segment fallback (Requirement 5.3)
     
     @patch('functions.ingestor.event_filter.ORIGIN_PATH_PATTERN', '/assets/{stageId}/public')

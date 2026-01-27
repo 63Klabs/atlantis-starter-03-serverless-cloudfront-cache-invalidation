@@ -47,7 +47,13 @@ def matches_pattern(event_path: str, pattern: str, stage_ids: List[str]) -> Tupl
         (True, None)
         >>> matches_pattern('/dev/public/file.html', '/{stageId}/public', ['prod'])
         (False, None)
+        >>> matches_pattern('/file.html', '/', ['prod'])
+        (True, None)
     """
+    # Special case: root pattern matches everything
+    if pattern == '/':
+        return True, None
+    
     # If pattern has {stageId}, try to match with each stage identifier
     if '{stageId}' in pattern:
         for stage_id in stage_ids:

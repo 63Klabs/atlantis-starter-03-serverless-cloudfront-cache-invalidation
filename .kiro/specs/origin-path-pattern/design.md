@@ -71,11 +71,11 @@ Parameters:
     Default: "/{stageId}/public"
     Description: >
       Origin path pattern for S3 bucket structure. Use {stageId} as placeholder 
-      for stage identifiers. Must start with / and not end with /. 
-      Examples: /{stageId}/public, /public, /{stageId}/assets
-    AllowedPattern: ^$|^/([a-zA-Z0-9\-_{}]+(/[a-zA-Z0-9\-_{}]+)*)?$
+      for stage identifiers. Must start with / and not end with / (except for root /). 
+      Examples: /{stageId}/public, /public, /{stageId}/assets, /
+    AllowedPattern: ^$|^\/$|^/([a-zA-Z0-9\-_{}]+(/[a-zA-Z0-9\-_{}]+)*)?$
     ConstraintDescription: >
-      Must start with /, not end with /, and only use {stageId} placeholder. 
+      Must start with /, not end with / (except root /), and only use {stageId} placeholder. 
       Valid characters: a-z, A-Z, 0-9, -, _, {, }
 ```
 
@@ -447,9 +447,9 @@ class PatternMatchResult:
 
 ### Property 1: Pattern Validation Completeness
 
-*For any* origin path pattern string, the CloudFormation parameter validation should accept it if and only if it: starts with `/`, does not end with `/`, contains only valid path characters (a-z, A-Z, 0-9, -, _, {, }), and any curly braces only wrap the literal text `stageId`.
+*For any* origin path pattern string, the CloudFormation parameter validation should accept it if and only if it: starts with `/`, does not end with `/` (unless it is exactly `/`), contains only valid path characters (a-z, A-Z, 0-9, -, _, {, }), and any curly braces only wrap the literal text `stageId`.
 
-**Validates: Requirements 1.3, 1.4, 1.5, 1.6, 11.1, 11.2, 11.3, 11.4**
+**Validates: Requirements 1.3, 1.4, 1.5, 1.6, 1.7, 11.1, 11.2, 11.3, 11.4**
 
 ### Property 2: Environment Variable Precedence
 
@@ -529,7 +529,7 @@ class PatternMatchResult:
 
 **Pattern Validation Failures**:
 - Pattern not starting with `/`: Return constraint description with valid format
-- Pattern ending with `/`: Return constraint description with valid format
+- Pattern ending with `/` (except root `/`): Return constraint description with valid format
 - Invalid curly brace usage: Return constraint description explaining `{stageId}` requirement
 - Invalid path characters: Return constraint description with allowed characters
 
@@ -571,6 +571,7 @@ Unit tests focus on specific examples, edge cases, and error conditions:
 **CloudFormation Template Tests**:
 - Verify parameter exists with correct default
 - Test specific invalid patterns (e.g., `public`, `/public/`, `/{stage}/public`)
+- Test that `/` is accepted as a valid pattern
 - Verify environment variable mapping to both Lambda functions
 
 **Constants Module Tests**:
@@ -608,7 +609,7 @@ Property tests verify universal properties across randomized inputs. Given the t
 
 1. **Pattern Validation Completeness** (Property 1)
    - Generate random pattern strings
-   - Verify validation accepts/rejects according to rules
+   - Verify validation accepts/rejects according to rules (including `/` as valid)
    - **Iterations**: 20 (minimal, covers validation logic)
 
 2. **Path Depth Calculation** (Property 3)

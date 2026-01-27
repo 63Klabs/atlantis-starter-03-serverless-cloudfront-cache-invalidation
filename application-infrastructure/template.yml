@@ -266,10 +266,10 @@ Parameters:
 
   OriginPathPattern:
     Type: String
-    Description: "Origin path pattern for S3 bucket structure. Use {stageId} as placeholder for stage identifiers (prod, beta, stage, dev, test). Must start with / and not end with /. Examples: /{stageId}/public (default), /public, /{stageId}/assets, /content/{stageId}/public"
+    Description: "Origin path pattern for S3 bucket structure. Use {stageId} as placeholder for stage identifiers (prod, beta, stage, dev, test). Must start with / and not end with / (except for root /). Examples: /{stageId}/public (default), /public, /{stageId}/assets, /content/{stageId}/public, /"
     Default: "/{stageId}/public"
-    AllowedPattern: "^$|^/([a-zA-Z0-9\\-_]+|\\{stageId\\})(/([a-zA-Z0-9\\-_]+|\\{stageId\\}))*$"
-    ConstraintDescription: "Must be empty (uses default), start with /, not end with /, and only use {stageId} placeholder. Valid characters: a-z, A-Z, 0-9, -, _, {, }. Curly braces may only wrap the literal text 'stageId'."
+    AllowedPattern: "^$|^/|/([a-zA-Z0-9\\-_]+|\\{stageId\\})(/([a-zA-Z0-9\\-_]+|\\{stageId\\}))*$"
+    ConstraintDescription: "Must be empty (uses default), start with /, not end with / (except root /), and only use {stageId} placeholder. Valid characters: a-z, A-Z, 0-9, -, _, {, }. Curly braces may only wrap the literal text 'stageId'."
 
 # =============================================================================
 # CONDITIONS
