@@ -47,7 +47,7 @@ class TestCalculatePathDepth:
 class TestMatchesPattern:
     """Tests for matches_pattern function."""
     
-    def test_exact_match_with@stageId@placeholder(self):
+    def test_exact_match_with_stageId_placeholder(self):
         """Test exact pattern match with {stageId} placeholder."""
         # Production stage should match
         matches, stage = matches_pattern(

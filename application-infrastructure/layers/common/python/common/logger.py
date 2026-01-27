@@ -99,8 +99,28 @@ def setup_logger(name: str) -> logging.Logger:
         
         # Prevent propagation to root logger
         logger.propagate = False
+        
+        # Configure boto3/botocore logging to reduce verbosity
+        # These libraries log extensively at DEBUG level, which clutters logs
+        _configure_aws_sdk_logging()
     
     return logger
+
+
+def _configure_aws_sdk_logging() -> None:
+    """Configure AWS SDK (boto3/botocore) logging to reduce verbosity.
+    
+    Sets boto3, botocore, and urllib3 loggers to WARNING level to prevent
+    excessive debug output from AWS SDK operations (S3, SQS, DynamoDB, etc.).
+    This is called automatically by setup_logger().
+    """
+    # Suppress verbose boto3/botocore debug logs
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    logging.getLogger('botocore').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    
+    # Also suppress the connectionpool logs from urllib3 used by botocore
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 
 
 def log_with_context(logger: logging.Logger, level: str, message: str, 

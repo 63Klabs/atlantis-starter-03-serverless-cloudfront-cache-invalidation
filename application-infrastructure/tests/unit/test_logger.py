@@ -222,6 +222,17 @@ class TestSetupLogger:
         
         assert logger1 is logger2
         assert len(logger2.handlers) == handler_count
+    
+    def test_aws_sdk_logging_configured(self):
+        """Test that AWS SDK logging is configured to WARNING level."""
+        # Setup a logger to trigger AWS SDK logging configuration
+        setup_logger('test_aws_sdk_logging')
+        
+        # Verify boto3/botocore loggers are set to WARNING
+        assert logging.getLogger('boto3').level == logging.WARNING
+        assert logging.getLogger('botocore').level == logging.WARNING
+        assert logging.getLogger('urllib3').level == logging.WARNING
+        assert logging.getLogger('urllib3.connectionpool').level == logging.WARNING
 
 
 class TestLogWithContext:

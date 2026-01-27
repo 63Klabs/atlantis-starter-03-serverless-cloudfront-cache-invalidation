@@ -5,7 +5,7 @@
 # Atlantis for AWS SAM Deployments
 # Starter 03 - CloudFront Cache Invalidator
 # Author: Chad Kluck - 63klabs.net
-# Version: v0.0.1/2025-12-23
+# Version: v0.0.2/2026-01-27
 
 # Documentation, Issues/Feature Requests, Latest Updates, and Security Reports on GitHub:
 # https://github.com/63Klabs/atlantis-starter-03-serverless-cloudfront-cache-invalidation
