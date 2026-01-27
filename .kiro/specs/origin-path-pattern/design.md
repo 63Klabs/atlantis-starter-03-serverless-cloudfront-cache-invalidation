@@ -44,8 +44,12 @@ graph TD
 
 ```
 1. Bucket Tag (invalidator:OriginPathPattern) - Highest Priority
+   Note: Use @stageId@ in tag values (AWS tags don't allow curly braces)
+   Example: /@stageId@/public (normalized to /{stageId}/public internally)
    ↓
 2. CloudFormation Parameter (OriginPathPattern)
+   Note: Use {stageId} in parameter values
+   Example: /{stageId}/public
    ↓
 3. Constants.py Default (/{stageId}/public) - Lowest Priority
 ```
@@ -276,6 +280,9 @@ def resolve_bucket_pattern(bucket_name: str, sample_event_path: str) -> str:
     1. Bucket tag (invalidator:OriginPathPattern)
     2. Pattern match with ORIGIN_PATH_PATTERN
     3. Derive from public segment placement
+    
+    Note: AWS tags do not allow curly braces, so bucket tags use @stageId@
+    which is normalized to {stageId} immediately after reading.
     """
     from constants import (
         ORIGIN_PATH_PATTERN,
@@ -291,7 +298,9 @@ def resolve_bucket_pattern(bucket_name: str, sample_event_path: str) -> str:
         response = s3_client.get_bucket_tagging(Bucket=bucket_name)
         for tag in response.get('TagSet', []):
             if tag['Key'] == 'invalidator:OriginPathPattern':
-                return tag['Value']
+                # Normalize @stageId@ to {stageId} for internal use
+                tag_value = tag['Value'].replace('@stageId@', '{stageId}')
+                return tag_value
     except ClientError as e:
         if e.response['Error']['Code'] != 'NoSuchTagSet':
             raise

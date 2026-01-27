@@ -500,7 +500,9 @@ Set the `OriginPathPattern` parameter during stack deployment to apply a pattern
 
 **2. Per-Bucket Configuration (S3 Bucket Tag)**
 
-Override the application-wide pattern for specific buckets using the `invalidator:OriginPathPattern` tag:
+Override the application-wide pattern for specific buckets using the `invalidator:OriginPathPattern` tag.
+
+**Important**: AWS tags do not allow curly braces `{}`, so use `@stageId@` instead of `{stageId}` in bucket tag values. The processor will automatically normalize `@stageId@` to `{stageId}` internally.
 
 ```bash
 aws s3api put-bucket-tagging \
@@ -508,6 +510,16 @@ aws s3api put-bucket-tagging \
   --tagging 'TagSet=[
     {Key=AllowInvalidationEvents,Value=true},
     {Key=invalidator:OriginPathPattern,Value=/public}
+  ]'
+```
+
+Example with stage placeholder:
+```bash
+aws s3api put-bucket-tagging \
+  --bucket your-bucket-name \
+  --tagging 'TagSet=[
+    {Key=AllowInvalidationEvents,Value=true},
+    {Key=invalidator:OriginPathPattern,Value=/@stageId@/public}
   ]'
 ```
 
@@ -653,9 +665,9 @@ Then add bucket tags:
 aws s3api put-bucket-tagging --bucket bucket-b \
   --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/public}]'
 
-# Bucket C override
+# Bucket C override (note: use @stageId@ in bucket tags, not {stageId})
 aws s3api put-bucket-tagging --bucket bucket-c \
-  --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/{stageId}/assets}]'
+  --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/@stageId@/assets}]'
 ```
 
 Result: Each bucket uses its specific pattern, Bucket A uses the default.

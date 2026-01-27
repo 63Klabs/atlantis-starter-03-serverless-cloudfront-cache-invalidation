@@ -165,6 +165,43 @@ class TestResolveBucketPattern:
         assert result == '/my/pattern'
     
     @patch('pattern_resolver.boto3.client')
+    def test_bucket_tag_normalizes_underscore_stageid(self, mock_boto3_client):
+        """Test that @stageId@ in bucket tag is normalized to {stageId}."""
+        # Mock S3 client to return tag with @stageId@ (AWS tags don't allow {})
+        mock_s3 = MagicMock()
+        mock_boto3_client.return_value = mock_s3
+        mock_s3.get_bucket_tagging.return_value = {
+            'TagSet': [
+                {'Key': 'invalidator:OriginPathPattern', 'Value': '/@stageId@/public'}
+            ]
+        }
+        
+        # Call function
+        result = resolve_bucket_pattern('test-bucket', '/prod/public/file.html')
+        
+        # Should normalize @stageId@ to {stageId}
+        assert result == '/{stageId}/public'
+        mock_s3.get_bucket_tagging.assert_called_once_with(Bucket='test-bucket')
+    
+    @patch('pattern_resolver.boto3.client')
+    def test_bucket_tag_normalizes_complex_pattern(self, mock_boto3_client):
+        """Test normalization of @stageId@ in complex patterns."""
+        # Mock S3 client to return tag with @stageId@ in complex pattern
+        mock_s3 = MagicMock()
+        mock_boto3_client.return_value = mock_s3
+        mock_s3.get_bucket_tagging.return_value = {
+            'TagSet': [
+                {'Key': 'invalidator:OriginPathPattern', 'Value': '/site1/@stageId@/public'}
+            ]
+        }
+        
+        # Call function
+        result = resolve_bucket_pattern('test-bucket', '/site1/prod/public/file.html')
+        
+        # Should normalize @stageId@ to {stageId}
+        assert result == '/site1/{stageId}/public'
+    
+    @patch('pattern_resolver.boto3.client')
     @patch('pattern_resolver.ORIGIN_PATH_PATTERN', '/public')
     def test_pattern_without_stage_placeholder(self, mock_boto3_client):
         """Test pattern matching when ORIGIN_PATH_PATTERN has no {stageId}."""

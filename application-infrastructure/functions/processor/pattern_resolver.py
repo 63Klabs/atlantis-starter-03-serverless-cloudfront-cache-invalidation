@@ -47,15 +47,21 @@ def resolve_bucket_pattern(bucket_name: str, sample_event_path: str) -> str:
         for tag in response.get('TagSet', []):
             if tag['Key'] == 'invalidator:OriginPathPattern':
                 tag_value = tag['Value']
+                
+                # Normalize: AWS tags don't allow {}, so users use @stageId@
+                # Convert @stageId@ to {stageId} for internal use
+                normalized_value = tag_value.replace('@stageId@', '{stageId}')
+                
                 logger.info(
                     f"Using bucket tag pattern for {bucket_name}",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'pattern': tag_value,
+                        'tag_value': tag_value,
+                        'normalized_pattern': normalized_value,
                         'pattern_source': 'bucket_tag'
                     }}
                 )
-                return tag_value
+                return normalized_value
     except ClientError as e:
         if e.response['Error']['Code'] != 'NoSuchTagSet':
             logger.warning(

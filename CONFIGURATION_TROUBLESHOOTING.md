@@ -33,7 +33,7 @@ The system supports three levels of configuration:
    - `invalidator:DirectoryConsolidationThreshold`: 1-1000
    - `invalidator:SiblingDirectoryConsolidationThreshold`: 1-1000
    - `invalidator:ConsolidationStopLevel`: 0-20
-   - `invalidator:OriginPathPattern`: Must follow same validation rules as CloudFormation parameter
+   - `invalidator:OriginPathPattern`: Must follow same validation rules as CloudFormation parameter, but use `@stageId@` instead of `{stageId}` (AWS tags don't allow curly braces)
 
 ## Common Issues
 
@@ -358,12 +358,14 @@ public                # Missing leading slash
 - Tag key misspelled (case-sensitive: `invalidator:OriginPathPattern`)
 - Missing IAM permission for `s3:GetBucketTagging`
 - Tag value doesn't follow validation rules
+- Tag value uses `{stageId}` instead of `@stageId@` (AWS tags don't allow curly braces)
 - Bucket in different region than Lambda function
 
 **Solutions**:
 - Verify exact tag key spelling: `invalidator:OriginPathPattern`
 - Add `s3:GetBucketTagging` permission to Processor Lambda role
 - Ensure tag value is valid pattern (starts with `/`, no trailing `/`)
+- Use `@stageId@` in bucket tag values instead of `{stageId}` (e.g., `/@stageId@/public`)
 - Check bucket and Lambda are in same region
 
 ### Issue 8: Pattern Derivation from Public Segment

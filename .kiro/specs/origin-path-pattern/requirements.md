@@ -70,7 +70,8 @@ An **Origin Path** is a specific subfolder or directory within an S3 bucket that
 1. THE Processor_Function SHALL check for bucket tag named `invalidator:OriginPathPattern`
 2. WHEN `invalidator:OriginPathPattern` tag exists, THE Processor_Function SHALL use it as the Bucket_Origin_Path_Pattern
 3. WHEN `invalidator:OriginPathPattern` tag does not exist, THE Processor_Function SHALL fall back to ORIGIN_PATH_PATTERN from constants.py
-4. THE `invalidator:OriginPathPattern` tag SHALL follow the same validation rules as the CloudFormation parameter
+4. THE `invalidator:OriginPathPattern` tag SHALL follow the same validation rules as the CloudFormation parameter, except that `{stageId}` placeholder SHALL be represented as `@stageId@` in the tag value (AWS tags do not allow curly braces)
+5. THE Processor_Function SHALL normalize `@stageId@` to `{stageId}` immediately after reading the tag value for internal processing
 
 ### Requirement 5: Ingestor Function Pattern Matching
 
@@ -165,4 +166,6 @@ An **Origin Path** is a specific subfolder or directory within an S3 bucket that
 4. THE Documentation SHALL explain the behavior when OriginPathPattern is set to `/`
 5. THE Documentation SHALL recommend using multiple invalidator stacks for complex environments
 6. THE Documentation SHALL explain the relationship between application-wide pattern and bucket tags
-7. THE Documentation SHALL include troubleshooting guidance for common configuration issues
+7. THE Documentation SHALL explain that bucket tags must use `@stageId@` instead of `{stageId}` because AWS tags do not allow curly braces
+8. THE Documentation SHALL provide examples of bucket tag values (e.g., `/@stageId@/public`, `/public`, `/@stageId@/assets`)
+9. THE Documentation SHALL include troubleshooting guidance for common configuration issues
