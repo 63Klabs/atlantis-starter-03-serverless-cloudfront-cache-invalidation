@@ -28,7 +28,7 @@ def resolve_bucket_pattern(bucket_name: str, sample_event_path: str) -> str:
     
     Args:
         bucket_name: S3 bucket name
-        sample_event_path: Sample S3 object key from an event
+        sample_event_path: Sample S3 object key from an event (normalized with leading slash)
         
     Returns:
         Resolved bucket pattern string
@@ -40,6 +40,16 @@ def resolve_bucket_pattern(bucket_name: str, sample_event_path: str) -> str:
         >>> resolve_bucket_pattern('my-bucket', '/public/file.html')
         '/public'  # If tag not present and derived from public segment
     """
+    logger.debug(
+        "Resolving bucket pattern with normalized path",
+        extra={'extra_fields': {
+            'bucket_name': bucket_name,
+            'sample_event_path': sample_event_path,
+            'path_has_leading_slash': sample_event_path.startswith('/'),
+            'operation': 'bucket_pattern_resolution'
+        }}
+    )
+    
     # Check bucket tag
     s3_client = boto3.client('s3')
     try:
@@ -82,7 +92,8 @@ def resolve_bucket_pattern(bucket_name: str, sample_event_path: str) -> str:
             extra={'extra_fields': {
                 'bucket_name': bucket_name,
                 'pattern': ORIGIN_PATH_PATTERN,
-                'pattern_source': 'environment_variable'
+                'pattern_source': 'environment_variable',
+                'sample_path': sample_event_path
             }}
         )
         return ORIGIN_PATH_PATTERN
@@ -149,6 +160,16 @@ def filter_events_by_pattern(events: list, bucket_pattern: str) -> list:
     filtered = []
     all_stages = PRODUCTION_STAGE_IDENTIFIERS + NON_PRODUCTION_STAGE_IDENTIFIERS
     
+    logger.debug(
+        "Starting pattern matching with normalized paths",
+        extra={'extra_fields': {
+            'bucket_pattern': bucket_pattern,
+            'event_count': len(events),
+            'pattern_has_stage_placeholder': '{stageId}' in bucket_pattern,
+            'operation': 'pattern_matching'
+        }}
+    )
+    
     for event in events:
         parsed_body = event.get('parsed_body', {})
         event_path = parsed_body.get('objectKey', '')
@@ -158,20 +179,33 @@ def filter_events_by_pattern(events: list, bucket_pattern: str) -> list:
                 "Event missing objectKey, skipping",
                 extra={'extra_fields': {
                     'event': event,
-                    'filter_reason': 'missing_object_key'
+                    'filter_reason': 'missing_object_key',
+                    'operation': 'event_filtering'
                 }}
             )
             continue
+        
+        # Log normalized path being matched (Requirement 7.2)
+        logger.debug(
+            "Matching normalized path against pattern",
+            extra={'extra_fields': {
+                'normalized_path': event_path,
+                'bucket_pattern': bucket_pattern,
+                'path_has_leading_slash': event_path.startswith('/'),
+                'operation': 'pattern_matching'
+            }}
+        )
         
         # Check pattern match
         matches, stage = matches_pattern(event_path, bucket_pattern, all_stages)
         if not matches:
             logger.debug(
-                f"Event path does not match bucket pattern, filtering out",
+                "Event path does not match bucket pattern, filtering out",
                 extra={'extra_fields': {
                     'event_path': event_path,
                     'bucket_pattern': bucket_pattern,
-                    'filter_reason': 'pattern_mismatch'
+                    'filter_reason': 'pattern_mismatch',
+                    'operation': 'event_filtering'
                 }}
             )
             continue
@@ -181,30 +215,33 @@ def filter_events_by_pattern(events: list, bucket_pattern: str) -> list:
             if stage and stage in PRODUCTION_STAGE_IDENTIFIERS:
                 filtered.append(event)
                 logger.debug(
-                    f"Event passed stage filtering (production stage)",
+                    "Event passed stage filtering (production stage)",
                     extra={'extra_fields': {
                         'event_path': event_path,
                         'stage': stage,
-                        'filter_result': 'passed'
+                        'filter_result': 'passed',
+                        'operation': 'stage_filtering'
                     }}
                 )
             else:
                 logger.debug(
-                    f"Event filtered out (non-production stage)",
+                    "Event filtered out (non-production stage)",
                     extra={'extra_fields': {
                         'event_path': event_path,
                         'stage': stage,
-                        'filter_reason': 'non_production_stage'
+                        'filter_reason': 'non_production_stage',
+                        'operation': 'stage_filtering'
                     }}
                 )
         else:
             # No stage placeholder, treat as production
             filtered.append(event)
             logger.debug(
-                f"Event passed filtering (no stage placeholder)",
+                "Event passed filtering (no stage placeholder)",
                 extra={'extra_fields': {
                     'event_path': event_path,
-                    'filter_result': 'passed'
+                    'filter_result': 'passed',
+                    'operation': 'stage_filtering'
                 }}
             )
     
@@ -213,7 +250,8 @@ def filter_events_by_pattern(events: list, bucket_pattern: str) -> list:
         extra={'extra_fields': {
             'original_count': len(events),
             'filtered_count': len(filtered),
-            'bucket_pattern': bucket_pattern
+            'bucket_pattern': bucket_pattern,
+            'operation': 'event_filtering_summary'
         }}
     )
     

@@ -67,7 +67,7 @@ class TestMatchesPattern:
         assert matches is True
         assert stage == 'beta'
     
-    def test_no_match_with@stageId@placeholder(self):
+    def test_no_match_with_stageId_placeholder(self):
         """Test non-matching path with {stageId} placeholder."""
         matches, stage = matches_pattern(
             '/test/public/file.html',

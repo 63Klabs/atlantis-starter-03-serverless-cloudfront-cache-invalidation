@@ -343,3 +343,236 @@ class TestFilterEventsByPattern:
         # Should only include site1 prod events
         assert len(result) == 1
         assert result[0]['parsed_body']['objectKey'] == '/site1/prod/public/file1.html'
+
+
+class TestPatternMatchingWithNormalizedPaths:
+    """Tests for pattern matching with normalized paths (leading slashes).
+    
+    These tests verify that the pattern matching logic works correctly with
+    normalized S3 object keys that have leading slashes added by the event parser.
+    
+    Requirements tested: 2.1, 2.2, 2.3, 2.4, 5.2
+    """
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod', 'production'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev', 'test'])
+    def test_normalized_paths_match_pattern_with_stage(self):
+        """Test that normalized paths (with leading slash) match patterns correctly.
+        
+        Validates: Requirement 2.1, 2.2
+        """
+        from pattern_resolver import filter_events_by_pattern
+        
+        # All paths have leading slashes (normalized)
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/assets/file1.html'}},
+            {'parsed_body': {'objectKey': '/production/public/js/file2.js'}},
+            {'parsed_body': {'objectKey': '/dev/public/css/file3.css'}},
+        ]
+        
+        result = filter_events_by_pattern(events, '/{stageId}/public')
+        
+        # Should match prod and production (production stages)
+        assert len(result) == 2
+        assert result[0]['parsed_body']['objectKey'] == '/prod/public/assets/file1.html'
+        assert result[1]['parsed_body']['objectKey'] == '/production/public/js/file2.js'
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev'])
+    def test_stage_extraction_from_normalized_paths(self):
+        """Test that stage identifiers are correctly extracted from normalized paths.
+        
+        Validates: Requirement 2.3
+        """
+        from pattern_resolver import filter_events_by_pattern
+        from common.path_utils import extract_stage_from_path
+        
+        # Normalized paths with leading slashes
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/file1.html'}},
+            {'parsed_body': {'objectKey': '/dev/public/file2.html'}},
+        ]
+        
+        result = filter_events_by_pattern(events, '/{stageId}/public')
+        
+        # Should only include prod
+        assert len(result) == 1
+        
+        # Verify stage extraction works
+        stage = extract_stage_from_path('/prod/public/file1.html', '/{stageId}/public')
+        assert stage == 'prod'
+        
+        stage = extract_stage_from_path('/dev/public/file2.html', '/{stageId}/public')
+        assert stage == 'dev'
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev'])
+    def test_root_pattern_matches_all_normalized_paths(self):
+        """Test that root pattern (/) matches all normalized paths.
+        
+        Validates: Requirement 2.4
+        """
+        from pattern_resolver import filter_events_by_pattern
+        
+        # Various normalized paths
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/file1.html'}},
+            {'parsed_body': {'objectKey': '/dev/assets/file2.css'}},
+            {'parsed_body': {'objectKey': '/public/file3.js'}},
+            {'parsed_body': {'objectKey': '/site1/prod/public/file4.html'}},
+        ]
+        
+        result = filter_events_by_pattern(events, '/')
+        
+        # Root pattern should match all paths
+        assert len(result) == 4
+    
+    @patch('pattern_resolver.boto3.client')
+    def test_bucket_tag_conversion_at_sign_to_braces(self, mock_boto3_client):
+        """Test that @stageId@ in bucket tags is converted to {stageId}.
+        
+        Validates: Requirement 5.2
+        """
+        # Mock S3 client to return tag with @stageId@
+        mock_s3 = MagicMock()
+        mock_boto3_client.return_value = mock_s3
+        mock_s3.get_bucket_tagging.return_value = {
+            'TagSet': [
+                {'Key': 'invalidator:OriginPathPattern', 'Value': '/@stageId@/public'}
+            ]
+        }
+        
+        result = resolve_bucket_pattern('test-bucket', '/prod/public/file.html')
+        
+        # Should convert @stageId@ to {stageId}
+        assert result == '/{stageId}/public'
+        assert '@stageId@' not in result
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev'])
+    def test_normalized_paths_with_various_depths(self):
+        """Test pattern matching with normalized paths at various depths.
+        
+        Validates: Requirement 2.2
+        """
+        from pattern_resolver import filter_events_by_pattern
+        
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/file.html'}},
+            {'parsed_body': {'objectKey': '/prod/public/assets/file.html'}},
+            {'parsed_body': {'objectKey': '/prod/public/assets/js/file.html'}},
+            {'parsed_body': {'objectKey': '/prod/public/assets/js/vendor/file.html'}},
+        ]
+        
+        result = filter_events_by_pattern(events, '/{stageId}/public')
+        
+        # All should match regardless of depth after pattern
+        assert len(result) == 4
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev'])
+    def test_normalized_paths_with_special_characters(self):
+        """Test pattern matching with normalized paths containing special characters.
+        
+        Validates: Requirement 2.2
+        """
+        from pattern_resolver import filter_events_by_pattern
+        
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/file-name.html'}},
+            {'parsed_body': {'objectKey': '/prod/public/file_name.html'}},
+            {'parsed_body': {'objectKey': '/prod/public/file.name.html'}},
+            {'parsed_body': {'objectKey': '/prod/public/file name.html'}},  # Space
+        ]
+        
+        result = filter_events_by_pattern(events, '/{stageId}/public')
+        
+        # All should match
+        assert len(result) == 4
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev'])
+    def test_normalized_paths_without_leading_slash_filtered(self):
+        """Test that paths without leading slashes don't match (shouldn't happen after normalization).
+        
+        Validates: Requirement 2.1
+        """
+        from pattern_resolver import filter_events_by_pattern
+        
+        # Mix of normalized and non-normalized paths (edge case)
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/file1.html'}},  # Normalized
+            {'parsed_body': {'objectKey': 'prod/public/file2.html'}},   # Not normalized
+        ]
+        
+        result = filter_events_by_pattern(events, '/{stageId}/public')
+        
+        # Only normalized path should match
+        assert len(result) == 1
+        assert result[0]['parsed_body']['objectKey'] == '/prod/public/file1.html'
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod', 'production', 'prd'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev', 'development', 'test'])
+    def test_multiple_production_stage_identifiers(self):
+        """Test pattern matching with multiple production stage identifiers.
+        
+        Validates: Requirement 2.3
+        """
+        from pattern_resolver import filter_events_by_pattern
+        
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/file1.html'}},
+            {'parsed_body': {'objectKey': '/production/public/file2.html'}},
+            {'parsed_body': {'objectKey': '/prd/public/file3.html'}},
+            {'parsed_body': {'objectKey': '/dev/public/file4.html'}},
+            {'parsed_body': {'objectKey': '/development/public/file5.html'}},
+        ]
+        
+        result = filter_events_by_pattern(events, '/{stageId}/public')
+        
+        # Should include all production stages
+        assert len(result) == 3
+        assert result[0]['parsed_body']['objectKey'] == '/prod/public/file1.html'
+        assert result[1]['parsed_body']['objectKey'] == '/production/public/file2.html'
+        assert result[2]['parsed_body']['objectKey'] == '/prd/public/file3.html'
+    
+    @patch('pattern_resolver.PRODUCTION_STAGE_IDENTIFIERS', ['prod'])
+    @patch('pattern_resolver.NON_PRODUCTION_STAGE_IDENTIFIERS', ['dev'])
+    def test_pattern_matching_with_trailing_slashes(self):
+        """Test that normalized paths with trailing slashes match correctly.
+        
+        Validates: Requirement 2.2
+        """
+        from pattern_resolver import filter_events_by_pattern
+        
+        events = [
+            {'parsed_body': {'objectKey': '/prod/public/dir/'}},  # Trailing slash
+            {'parsed_body': {'objectKey': '/prod/public/file.html'}},  # No trailing slash
+        ]
+        
+        result = filter_events_by_pattern(events, '/{stageId}/public')
+        
+        # Both should match
+        assert len(result) == 2
+    
+    @patch('pattern_resolver.boto3.client')
+    def test_bucket_tag_with_complex_at_sign_pattern(self, mock_boto3_client):
+        """Test conversion of @stageId@ in complex bucket tag patterns.
+        
+        Validates: Requirement 5.2
+        """
+        # Mock S3 client to return complex tag with @stageId@
+        mock_s3 = MagicMock()
+        mock_boto3_client.return_value = mock_s3
+        mock_s3.get_bucket_tagging.return_value = {
+            'TagSet': [
+                {'Key': 'invalidator:OriginPathPattern', 'Value': '/app/@stageId@/public'}
+            ]
+        }
+        
+        result = resolve_bucket_pattern('test-bucket', '/app/prod/public/file.html')
+        
+        # Should convert @stageId@ to {stageId}
+        assert result == '/app/{stageId}/public'
+        assert '@stageId@' not in result
+        assert '{stageId}' in result

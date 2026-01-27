@@ -801,3 +801,383 @@ class TestProcessorHandler:
         assert call_args[1]['directory_threshold'] == 5
         assert call_args[1]['stop_level'] == 2
         assert call_args[1]['sibling_threshold'] == 7  # Verify sibling threshold is passed
+
+
+class TestInvalidationPathGeneration:
+    """Tests for CloudFront invalidation path generation from normalized S3 object keys.
+    
+    Requirements: 3.1, 3.2, 3.3
+    """
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    def test_invalidation_path_preserves_leading_slash(
+        self, mock_filter, mock_resolve_pattern, mock_close_window, mock_delete, 
+        mock_invalidate, mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test that invalidation paths preserve leading slashes from normalized object keys.
+        
+        Requirement 3.1: When creating a CloudFront invalidation path from a normalized path,
+        THE System SHALL preserve the leading slash.
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': '/prod/public/assets/file.js',  # Normalized with leading slash
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/assets/file.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify consolidate_paths was called with paths that have leading slashes
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args[0][0]
+        assert len(call_args) == 1
+        assert call_args[0] == '/assets/file.js'
+        assert call_args[0].startswith('/')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    def test_root_origin_path_generates_correct_invalidation_paths(
+        self, mock_filter, mock_resolve_pattern, mock_close_window, mock_delete, 
+        mock_invalidate, mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test that root origin path (/) generates correct invalidation paths.
+        
+        Requirement 3.2: When the origin path is root (/), THE System SHALL use / 
+        as the invalidation path prefix.
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/',  # Root origin path
+                    'objectKey': '/content/file.js',  # Normalized with leading slash
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/content/file.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify consolidate_paths was called with the full path (since origin is root)
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args[0][0]
+        assert len(call_args) == 1
+        assert call_args[0] == '/content/file.js'
+        assert call_args[0].startswith('/')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    def test_non_root_origin_path_generates_correct_invalidation_paths(
+        self, mock_filter, mock_resolve_pattern, mock_close_window, mock_delete, 
+        mock_invalidate, mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test that non-root origin paths generate correct invalidation paths.
+        
+        Requirement 3.3: When the origin path is non-root, THE System SHALL ensure 
+        the invalidation path starts with the origin path including its leading slash.
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/app/prod/public',  # Non-root origin path
+                    'objectKey': '/app/prod/public/assets/file.js',  # Normalized with leading slash
+                    'stageId': 'prod'
+                }
+            },
+            {
+                'MessageId': 'msg2',
+                'ReceiptHandle': 'handle2',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/app/prod/public',
+                    'objectKey': '/app/prod/public/css/style.css',  # Normalized with leading slash
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/app/{stageId}/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/assets/file.js', '/css/style.css']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1', 'handle2'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify consolidate_paths was called with relative paths (origin prefix removed)
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args[0][0]
+        assert len(call_args) == 2
+        assert '/assets/file.js' in call_args
+        assert '/css/style.css' in call_args
+        # All paths should start with /
+        for path in call_args:
+            assert path.startswith('/')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    def test_fallback_path_generation_with_leading_slash(
+        self, mock_filter, mock_resolve_pattern, mock_close_window, mock_delete, 
+        mock_invalidate, mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test fallback path generation when object key doesn't start with origin path.
+        
+        Requirement 3.1: Fallback paths should also preserve leading slashes.
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': '/different/path/file.js',  # Doesn't start with origin path
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/different/path/file.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify consolidate_paths was called with fallback path that has leading slash
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args[0][0]
+        assert len(call_args) == 1
+        assert call_args[0] == '/different/path/file.js'
+        assert call_args[0].startswith('/')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    def test_multiple_paths_all_preserve_leading_slashes(
+        self, mock_filter, mock_resolve_pattern, mock_close_window, mock_delete, 
+        mock_invalidate, mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test that multiple paths all preserve leading slashes.
+        
+        Requirement 3.1: All invalidation paths should preserve leading slashes.
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': f'msg{i}',
+                'ReceiptHandle': f'handle{i}',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/prod/public',
+                    'objectKey': f'/prod/public/dir{i}/file{i}.js',
+                    'stageId': 'prod'
+                }
+            }
+            for i in range(1, 6)  # 5 messages
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        # Return paths as-is for this test
+        mock_consolidate.return_value = {'prod': [[f'/dir{i}/file{i}.js' for i in range(1, 6)]]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': [f'handle{i}' for i in range(1, 6)], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify all paths passed to consolidate_paths have leading slashes
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args[0][0]
+        assert len(call_args) == 5
+        for path in call_args:
+            assert path.startswith('/'), f"Path {path} should start with /"

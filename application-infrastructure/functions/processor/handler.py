@@ -780,16 +780,40 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 if object_key:
                     # Remove the origin path prefix to get the relative path for invalidation
                     # CloudFront invalidation paths should be relative to the origin
+                    # Note: objectKey should already have leading slash from normalization
                     if object_key.startswith(origin_path):
                         relative_path = object_key[len(origin_path):]
                         # Ensure path starts with /
                         if not relative_path.startswith('/'):
                             relative_path = '/' + relative_path
                         
+                        # Log invalidation path generation for debugging
+                        logger.debug(
+                            "Generated invalidation path from object key",
+                            extra={'extra_fields': {
+                                'object_key': object_key,
+                                'origin_path': origin_path,
+                                'relative_path': relative_path,
+                                'path_generation_method': 'origin_prefix_removal'
+                            }}
+                        )
+                        
                         object_paths.append(relative_path)
                     else:
                         # Fallback: use full object key with leading slash
                         fallback_path = object_key if object_key.startswith('/') else '/' + object_key
+                        
+                        # Log fallback path generation
+                        logger.debug(
+                            "Generated invalidation path using fallback method",
+                            extra={'extra_fields': {
+                                'object_key': object_key,
+                                'origin_path': origin_path,
+                                'fallback_path': fallback_path,
+                                'path_generation_method': 'fallback_full_key'
+                            }}
+                        )
+                        
                         object_paths.append(fallback_path)
             
             if not object_paths:

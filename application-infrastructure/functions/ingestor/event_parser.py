@@ -12,10 +12,53 @@ class S3EventParseError(Exception):
     pass
 
 
+def normalize_s3_path(object_key: str) -> str:
+    """
+    Normalize an S3 object key by ensuring it has a leading slash.
+    
+    S3 object keys do not include leading slashes, but internal processing
+    requires them for pattern matching and CloudFront invalidation paths.
+    
+    Args:
+        object_key: S3 object key from event (e.g., "app/prod/content/js/file.html")
+        
+    Returns:
+        Normalized path with leading slash (e.g., "/app/prod/content/js/file.html")
+        
+    Examples:
+        >>> normalize_s3_path("app/prod/content/js/file.html")
+        "/app/prod/content/js/file.html"
+        
+        >>> normalize_s3_path("/app/prod/content/js/file.html")
+        "/app/prod/content/js/file.html"
+        
+        >>> normalize_s3_path("")
+        ""
+        
+        >>> normalize_s3_path("//double/slash")
+        "/double/slash"
+    """
+    if not object_key:
+        return object_key
+    
+    # Add leading slash if not present
+    if not object_key.startswith('/'):
+        normalized = '/' + object_key
+    else:
+        normalized = object_key
+    
+    # Collapse multiple consecutive slashes to single slash
+    while '//' in normalized:
+        normalized = normalized.replace('//', '/')
+    
+    return normalized
+
+
 def extract_event_metadata(record: Dict) -> Dict[str, str]:
     """Extract metadata from an S3 event record.
     
     Extracts bucketName, objectKey, eventTime, and eventType from an S3 event notification.
+    Normalizes the objectKey by adding a leading slash for internal processing.
     
     Args:
         record: S3 event record from the Records array
@@ -23,7 +66,7 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
     Returns:
         Dictionary containing:
             - bucketName: Name of the S3 bucket
-            - objectKey: Full S3 object key
+            - objectKey: Normalized S3 object key with leading slash
             - eventTime: ISO 8601 timestamp of the event
             - eventType: S3 event type (e.g., ObjectCreated:Put)
             
@@ -47,6 +90,16 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
     # )
     
     try:
+        # Validate record is a dictionary
+        if not isinstance(record, dict):
+            logger.error(
+                "Invalid record type",
+                extra={'extra_fields': {
+                    'recordType': type(record).__name__
+                }}
+            )
+            raise S3EventParseError(f"Invalid S3 event structure: expected dict, got {type(record).__name__}")
+        
         # DEBUG: Log S3 section analysis
         s3_section = record.get('s3', {})
         # logger.info(
@@ -60,9 +113,33 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
         # )
         
         bucket_name = record['s3']['bucket']['name']
-        object_key = record['s3']['object']['key']
+        raw_object_key = record['s3']['object']['key']
         event_time = record['eventTime']
         event_type = record['eventName']
+        
+        # Normalize the object key by adding leading slash
+        object_key = normalize_s3_path(raw_object_key)
+        
+        # Log normalization for debugging (Requirement 7.1)
+        if raw_object_key != object_key:
+            logger.debug(
+                "Normalized S3 object key",
+                extra={'extra_fields': {
+                    'raw_key': raw_object_key,
+                    'normalized_key': object_key,
+                    'normalization_applied': True,
+                    'operation': 'path_normalization'
+                }}
+            )
+        else:
+            logger.debug(
+                "S3 object key already normalized",
+                extra={'extra_fields': {
+                    'object_key': object_key,
+                    'normalization_applied': False,
+                    'operation': 'path_normalization'
+                }}
+            )
         
         # DEBUG: Log extracted values
         # logger.info(
@@ -94,7 +171,7 @@ def extract_event_metadata(record: Dict) -> Dict[str, str]:
         
         result = {
             'bucketName': bucket_name,
-            'objectKey': object_key,
+            'objectKey': object_key,  # Now normalized with leading slash
             'eventTime': event_time,
             'eventType': event_type
         }
