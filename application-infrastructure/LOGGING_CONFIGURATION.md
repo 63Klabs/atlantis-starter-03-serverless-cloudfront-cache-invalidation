@@ -1,8 +1,12 @@
-# Boto3 Logging Configuration
+# Logging Configuration
 
 ## Overview
 
 The common logger module automatically configures boto3, botocore, and urllib3 logging to reduce verbosity. This prevents excessive DEBUG-level logs from AWS SDK operations cluttering your application logs.
+
+Refer to template.yml for each Lambda function's `LOG_LEVEL` and `AWS_LAMBDA_LOG_LEVEL` settings. Typical settings rely on environment conditionals set in the template: `!If [ IsProduction, "INFO",  "DEBUG"]`
+
+You can modify the common logger if you want more verbose AWS SDK logs.
 
 ## Implementation
 
