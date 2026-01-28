@@ -532,6 +532,47 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }}
             )
             
+            # Step 3.7: Resolve origin path for distribution lookup
+            # Extract stage ID from first filtered event
+            first_filtered_message = filtered_messages[0]
+            first_filtered_body = first_filtered_message.get('parsed_body', {})
+            stage_id = first_filtered_body.get('stageId', '')
+            
+            # Construct resolved origin path for distribution lookup
+            if '{stageId}' in bucket_pattern:
+                if not stage_id:
+                    logger.warning(
+                        f"Pattern contains {{stageId}} but no stage found for bucket {bucket_name}, skipping",
+                        extra={'extra_fields': {
+                            'bucket_name': bucket_name,
+                            'bucket_pattern': bucket_pattern,
+                            'origin_path': origin_path,
+                            'operation': 'origin_path_resolution',
+                            'skip_reason': 'missing_stage_id'
+                        }}
+                    )
+                    messages_to_delete.extend(messages)
+                    continue
+                resolved_origin_path = bucket_pattern.replace('{stageId}', stage_id)
+            else:
+                resolved_origin_path = bucket_pattern
+            
+            # Convert root path to empty string for CloudFront
+            if resolved_origin_path == '/':
+                resolved_origin_path = ''
+            
+            logger.info(
+                f"Resolved origin path for distribution lookup",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'bucket_pattern': bucket_pattern,
+                    'stage_id': stage_id,
+                    'resolved_origin_path': resolved_origin_path,
+                    'event_origin_path': origin_path,
+                    'operation': 'origin_path_resolution'
+                }}
+            )
+            
             # DEBUG: Log bucket validation success
             # logger.info(
             #     f"Step 3: Bucket {bucket_name} validation passed DEBUG",
@@ -602,36 +643,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 messages_to_delete.extend(messages)
                 continue
             
-            # Extract stageId from first message (all messages in group have same stageId)
-            # DEBUG: Log stageId extraction
-            first_message = messages[0] if messages else {}
-            parsed_body = first_message.get('parsed_body', {})
-            stage_id = parsed_body.get('stageId', '')
-            
-            # logger.info(
-            #     f"Step 3: StageId extraction DEBUG",
-            #     extra={'extra_fields': {
-            #         'bucketName': bucket_name,
-            #         'firstMessage': first_message,
-            #         'parsedBody': parsed_body,
-            #         'extractedStageId': stage_id,
-            #         'hasStageId': bool(stage_id)
-            #     }}
-            # )
-            
-            if not stage_id:
-                logger.error(
-                    f"Missing stageId in messages for bucket {bucket_name}, skipping",
-                    extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'origin_path': origin_path,
-                        'missingStageId': True,
-                        'firstMessageParsedBody': parsed_body
-                    }}
-                )
-                messages_to_delete.extend(messages)
-                continue
-            
             # Step 4: Find matching CloudFront distributions
             # DEBUG: Log distribution search
             logger.info(
@@ -639,11 +650,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'originPath': origin_path,
+                    'resolvedOriginPath': resolved_origin_path,
                     'aboutToCallFindMatchingDistributions': True
                 }}
             )
             
-            distribution_ids = find_matching_distributions(bucket_name, origin_path)
+            distribution_ids = find_matching_distributions(bucket_name, resolved_origin_path)
             
             # DEBUG: Log distribution search results
             logger.info(
@@ -651,6 +663,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'originPath': origin_path,
+                    'resolvedOriginPath': resolved_origin_path,
                     'distributionIds': distribution_ids,
                     'distributionCount': len(distribution_ids) if distribution_ids else 0,
                     'distributionsFound': bool(distribution_ids)

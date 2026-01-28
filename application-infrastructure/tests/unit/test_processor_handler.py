@@ -1181,3 +1181,440 @@ class TestInvalidationPathGeneration:
         assert len(call_args) == 5
         for path in call_args:
             assert path.startswith('/'), f"Path {path} should start with /"
+
+
+class TestOriginPathResolution:
+    """Tests for origin path resolution logic in handler.
+    
+    These tests verify that the handler correctly resolves the origin path
+    from bucket patterns and uses it when searching for CloudFront distributions.
+    """
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_bucket_with_stage_specific_pattern(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test bucket with stage-specific pattern.
+        
+        Mock bucket with tag invalidator:OriginPathPattern=/app/@stageId@
+        Create events with stageId='prod'
+        Verify find_matching_distributions() called with /app/prod
+        
+        Requirements: 1.1, 1.2, 1.3
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/',
+                    'objectKey': '/app/prod/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        # Bucket has pattern with {stageId} placeholder
+        mock_resolve_pattern.return_value = '/app/{stageId}'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with resolved origin path
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_bucket_with_root_pattern(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test bucket with root pattern.
+        
+        Mock bucket with tag invalidator:OriginPathPattern=/
+        Verify find_matching_distributions() called with empty string ""
+        
+        Requirements: 5.2
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/',
+                    'objectKey': '/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        # Bucket has root pattern
+        mock_resolve_pattern.return_value = '/'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with empty string (CloudFront root convention)
+        mock_find_dist.assert_called_once_with('test-bucket', '')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue', 'ORIGIN_PATH_PATTERN': '/'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_bucket_without_pattern_tag(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test bucket without pattern tag.
+        
+        Mock bucket without invalidator:OriginPathPattern tag
+        Verify find_matching_distributions() called with default ORIGIN_PATH_PATTERN
+        
+        Requirements: 1.5, 5.1
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/',
+                    'objectKey': '/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        # Bucket uses default pattern (no tag)
+        mock_resolve_pattern.return_value = '/'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with empty string (root converted)
+        mock_find_dist.assert_called_once_with('test-bucket', '')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_pattern_without_stage_placeholder(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test pattern without stage placeholder.
+        
+        Mock bucket with tag invalidator:OriginPathPattern=/public
+        Verify find_matching_distributions() called with /public
+        
+        Requirements: 4.1
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/',
+                    'objectKey': '/public/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        # Bucket has static pattern without placeholder
+        mock_resolve_pattern.return_value = '/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with static pattern
+        mock_find_dist.assert_called_once_with('test-bucket', '/public')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_missing_stageid_with_stage_placeholder(
+        self, mock_close_window, mock_delete, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test missing stageId with stage placeholder.
+        
+        Mock bucket with pattern containing {stageId}
+        Create events missing stageId field
+        Verify warning logged and events skipped without crash
+        
+        Requirements: 4.2
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/',
+                    'objectKey': '/app/prod/public/file1.js',
+                    # Missing stageId field
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        # Bucket has pattern with {stageId} placeholder
+        mock_resolve_pattern.return_value = '/app/{stageId}'
+        mock_filter.return_value = messages
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was NOT called (events skipped)
+        mock_find_dist.assert_not_called()
+        
+        # Verify messages were deleted (processed, just skipped)
+        mock_delete.assert_called_once()
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_multiple_placeholders_in_pattern(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test multiple placeholders in pattern.
+        
+        Mock bucket with pattern containing multiple {stageId} occurrences
+        Verify all placeholders are replaced with the same stage value
+        
+        Requirements: 4.5
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'originPath': '/',
+                    'objectKey': '/app/prod/data/prod/file1.js',
+                    'stageId': 'prod'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        # Bucket has pattern with multiple {stageId} placeholders
+        mock_resolve_pattern.return_value = '/app/{stageId}/data/{stageId}'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with all placeholders replaced
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod/data/prod')
