@@ -1,4 +1,2 @@
-- [ ] Clean up debug output
 - [ ] Clean up documentation
 - [ ] Create overall Specs document
-- [ ] Remove Kiro specs directory from .gitignore
