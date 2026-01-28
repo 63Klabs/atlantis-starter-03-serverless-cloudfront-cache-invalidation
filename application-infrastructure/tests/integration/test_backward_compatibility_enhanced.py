@@ -361,6 +361,80 @@ class TestBackwardCompatibilityEnhanced:
                                     pytest.fail(f"Unexpected error: {e}")
         
         print("✅ Error handling backward compatibility verified")
+    
+    def test_origin_path_backward_compatibility(self):
+        """
+        Test that default behavior is maintained when --origin_path is not specified
+        
+        **Validates: upload-utility-origin-path-option Requirements 6.1, 6.2, 6.3**
+        """
+        # Create a temporary test.html file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+            f.write('<html><body>Test backward compatibility</body></html>')
+            test_html_path = f.name
+        
+        try:
+            with patch('boto3.Session') as mock_session:
+                mock_s3_client = MagicMock()
+                mock_session.return_value.client.return_value = mock_s3_client
+                
+                # Mock successful S3 operations
+                mock_s3_client.head_bucket.return_value = {}
+                mock_s3_client.put_object.return_value = {}
+                
+                # Mock the source file path
+                with patch.object(Path, 'exists', return_value=True):
+                    with patch('builtins.open', mock_open_with_content('<html><body>Test</body></html>')):
+                        # Test WITHOUT --origin_path option (should use default)
+                        with patch('sys.argv', ['upload-test-files.py', '--buckets', 'test-bucket', '--stages', 'prod']):
+                            with patch('sys.exit') as mock_exit:
+                                try:
+                                    main()
+                                    mock_exit.assert_called_with(0)
+                                except SystemExit as e:
+                                    assert e.code == 0, f"Should succeed with exit code 0, got {e.code}"
+                
+                # Verify files were uploaded to default path /{stage}/public/
+                put_object_calls = mock_s3_client.put_object.call_args_list
+                assert len(put_object_calls) == 62, f"Expected 62 uploads, got {len(put_object_calls)}"
+                
+                # Check that all paths use default pattern
+                for call in put_object_calls:
+                    s3_key = call[1]['Key']
+                    assert s3_key.startswith('/prod/public/'), \
+                        f"Default behavior should upload to /prod/public/, got {s3_key}"
+                
+                print("✅ Origin path backward compatibility verified:")
+                print("   - Default pattern /{stageId}/public maintained ✓")
+                print("   - All 62 files uploaded to /prod/public/ ✓")
+        
+        finally:
+            # Clean up temporary file
+            if os.path.exists(test_html_path):
+                os.unlink(test_html_path)
+    
+    def test_origin_path_validation(self):
+        """
+        Test that --origin_path validation works correctly
+        
+        **Validates: upload-utility-origin-path-option Requirements 3.1, 3.2**
+        """
+        # Test invalid origin path (missing leading slash)
+        with patch('sys.argv', ['upload-test-files.py', '--buckets', 'test-bucket', '--origin_path', 'app/{stageId}']):
+            with patch('sys.exit') as mock_exit:
+                try:
+                    parser = ArgumentParser()
+                    args = parser.parse_args(['--buckets', 'test-bucket', '--origin_path', 'app/{stageId}'])
+                    # This should raise ValueError during validation
+                    pytest.fail("Should have raised ValueError for invalid origin path")
+                except ValueError as e:
+                    # Expected error
+                    assert "must start with '/'" in str(e).lower(), \
+                        f"Error message should mention leading slash requirement, got: {e}"
+                    print("✅ Origin path validation correctly rejects invalid patterns")
+                except SystemExit:
+                    # Also acceptable if it exits with error code
+                    pass
 
 
 def mock_open_with_content(content):

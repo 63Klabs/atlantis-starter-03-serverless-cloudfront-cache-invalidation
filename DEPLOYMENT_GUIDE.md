@@ -267,6 +267,80 @@ aws s3 cp test.html s3://BUCKET_NAME/prod/public/test-2.html
 # Test a bunch of files at once:
 cd application-infrastructure/build-scripts
 python3 ./upload-test-files.py --buckets BUCKET_NAME
+
+# Test with custom origin path pattern (if your bucket uses a non-standard structure):
+python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path /app/{stageId}
+
+# Test with static origin path (no stage placeholder):
+python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path /static --stages prod
+```
+
+#### Upload Test Files Utility Options
+
+The `upload-test-files.py` utility supports several options for testing different bucket configurations:
+
+**Basic Usage**:
+```bash
+python3 ./upload-test-files.py --buckets BUCKET_NAME
+```
+
+**Custom Origin Path Pattern**:
+
+Use the `--origin_path` option to test buckets with non-standard directory structures:
+
+```bash
+# Test with custom pattern using stage placeholder
+python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path /app/{stageId}
+# Uploads to: /app/prod/, /app/stage/, /app/beta/
+
+# Test with static path (no stage placeholder)
+python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path /static --stages prod
+# Uploads to: /static/
+
+# Test with custom assets directory
+python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path /{stageId}/assets
+# Uploads to: /prod/assets/, /stage/assets/, /beta/assets/
+```
+
+**Pattern Format Rules**:
+- Must start with `/` (e.g., `/app/{stageId}`)
+- Can include `{stageId}` placeholder for dynamic stage substitution
+- Trailing slash is optional (automatically added)
+- Default pattern: `/{stageId}/public`
+
+**Common Test Scenarios**:
+
+```bash
+# Test default pattern (current behavior)
+python3 ./upload-test-files.py --buckets BUCKET_NAME
+
+# Test legacy bucket with flat structure
+python3 ./upload-test-files.py --buckets LEGACY_BUCKET --origin_path /public --stages prod
+
+# Test multiple buckets with different patterns
+python3 ./upload-test-files.py --buckets BUCKET_A --origin_path /{stageId}/public
+python3 ./upload-test-files.py --buckets BUCKET_B --origin_path /static --stages prod
+python3 ./upload-test-files.py --buckets BUCKET_C --origin_path /{stageId}/assets
+
+# Test specific stages with custom pattern
+python3 ./upload-test-files.py --buckets BUCKET_NAME --stages prod,stage --origin_path /app/{stageId}
+
+# Verbose output for debugging
+python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path /app/{stageId} --verbose
+```
+
+**Validation**:
+
+The utility validates the origin path pattern before uploading:
+- Pattern must start with `/`
+- Invalid patterns display clear error messages with examples
+- Validation occurs before any S3 operations
+
+**Example Error**:
+```bash
+$ python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path app/{stageId}
+Error: Origin path must start with '/'. Invalid value: 'app/{stageId}'.
+Examples: /app/{stageId}, /static, /{stageId}/public
 ```
 
 ### Step 8: Move to Production
@@ -833,6 +907,9 @@ aws s3 cp test.html s3://BUCKET_NAME/prod/public/test-2.html
 # Test a bunch of files at once:
 cd application-infrastructure/build-scripts
 python3 ./upload-test-files.py --buckets BUCKET_NAME
+
+# Test with custom origin path pattern (if your bucket uses a non-standard structure):
+python3 ./upload-test-files.py --buckets BUCKET_NAME --origin_path /app/{stageId}
 
 # Monitor Ingestor Lambda logs
 aws logs tail /aws/lambda/atlantis-cloudfront-invalidation-prod-ingestor --follow

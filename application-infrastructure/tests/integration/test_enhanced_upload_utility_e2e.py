@@ -402,6 +402,146 @@ class TestEnhancedUploadUtilityE2E:
             print(f"   - 62 total files (12 legacy + 50 nested) ✓")
             print(f"   - 5-level nested structure with 10 files per level ✓")
             print(f"   - Correct naming patterns and path structures ✓")
+    
+    def test_custom_origin_path_option(self):
+        """
+        Test that --origin_path option works correctly with custom patterns
+        
+        **Validates: upload-utility-origin-path-option Requirements 1.1, 1.2, 2.1, 2.2**
+        """
+        # Create a temporary test.html file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+            f.write('<html><body>Test custom origin path</body></html>')
+            test_html_path = f.name
+        
+        try:
+            # Test custom origin path with stage placeholder
+            with patch('boto3.Session') as mock_session:
+                mock_s3_client = MagicMock()
+                mock_session.return_value.client.return_value = mock_s3_client
+                
+                # Mock successful S3 operations
+                mock_s3_client.head_bucket.return_value = {}
+                mock_s3_client.put_object.return_value = {}
+                
+                # Setup test configuration with custom origin path
+                config = Configuration(
+                    buckets=["test-bucket"],
+                    stages=["prod"],
+                    aws_profile=None,
+                    verbose=True,
+                    base_path="",
+                    source_file_path=test_html_path,
+                    origin_path_pattern="/app/{stageId}"
+                )
+                
+                # Initialize components
+                env_manager = EnvironmentManager()
+                file_generator = FileGenerator(config)
+                path_generator = PathGenerator(config)
+                logger_component = Logger(config)
+                session = mock_session.return_value
+                s3_uploader = S3Uploader(session, config, logger_component)
+                
+                # Generate upload tasks
+                upload_tasks = []
+                source_content = file_generator.get_source_content()
+                
+                for bucket in config.buckets:
+                    for stage in config.stages:
+                        # Use custom origin path pattern
+                        base_path = env_manager.determine_base_path(stage, config.origin_path_pattern)
+                        
+                        # Verify custom base path
+                        assert base_path == "/app/prod/", f"Expected /app/prod/, got {base_path}"
+                        
+                        upload_paths, nested_info = path_generator.generate_all_upload_paths_with_info(base_path)
+                        
+                        for s3_key, filename in upload_paths:
+                            # Verify all paths start with custom base path
+                            assert s3_key.startswith("/app/prod/"), \
+                                f"Path should start with /app/prod/, got {s3_key}"
+                            
+                            task = UploadTask(
+                                bucket=bucket,
+                                key=s3_key,
+                                content=source_content,
+                                filename=filename
+                            )
+                            upload_tasks.append(task)
+                
+                # Execute uploads
+                results = s3_uploader.execute_enhanced_upload_tasks(upload_tasks, nested_info)
+                
+                # Validate results
+                assert len(results) == 1, "Expected results for 1 bucket"
+                result = results["test-bucket"]
+                assert result.successful_uploads == 62, f"Expected 62 uploads, got {result.successful_uploads}"
+                
+                # Verify S3 operations used custom paths
+                put_object_calls = mock_s3_client.put_object.call_args_list
+                for call in put_object_calls:
+                    s3_key = call[1]['Key']
+                    assert s3_key.startswith('/app/prod/'), \
+                        f"All uploaded files should use custom origin path, got {s3_key}"
+                
+                print("✅ Custom origin path option test completed:")
+                print("   - Custom pattern /app/{stageId} resolved to /app/prod/ ✓")
+                print("   - All 62 files uploaded to correct custom path ✓")
+        
+        finally:
+            # Clean up temporary file
+            if os.path.exists(test_html_path):
+                os.unlink(test_html_path)
+    
+    def test_static_origin_path_without_placeholder(self):
+        """
+        Test that --origin_path option works with static paths (no {stageId})
+        
+        **Validates: upload-utility-origin-path-option Requirements 1.2, 2.2**
+        """
+        # Create a temporary test.html file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+            f.write('<html><body>Test static origin path</body></html>')
+            test_html_path = f.name
+        
+        try:
+            with patch('boto3.Session') as mock_session:
+                mock_s3_client = MagicMock()
+                mock_session.return_value.client.return_value = mock_s3_client
+                
+                # Mock successful S3 operations
+                mock_s3_client.head_bucket.return_value = {}
+                mock_s3_client.put_object.return_value = {}
+                
+                # Setup test configuration with static origin path
+                config = Configuration(
+                    buckets=["test-bucket"],
+                    stages=["prod"],
+                    aws_profile=None,
+                    verbose=False,
+                    base_path="",
+                    source_file_path=test_html_path,
+                    origin_path_pattern="/static"
+                )
+                
+                # Initialize components
+                env_manager = EnvironmentManager()
+                
+                # Test static path (no stage placeholder)
+                base_path = env_manager.determine_base_path("prod", config.origin_path_pattern)
+                
+                # Verify static base path (stage is ignored)
+                assert base_path == "/static/", f"Expected /static/, got {base_path}"
+                
+                print("✅ Static origin path test completed:")
+                print("   - Static pattern /static resolved correctly ✓")
+                print("   - Stage placeholder not required ✓")
+        
+        finally:
+            # Clean up temporary file
+            if os.path.exists(test_html_path):
+                os.unlink(test_html_path)
 
 
 if __name__ == "__main__":

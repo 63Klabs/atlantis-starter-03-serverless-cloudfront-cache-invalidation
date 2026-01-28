@@ -70,6 +70,66 @@ class TestArgumentParserIntegration:
         assert args.stages == 'custom-stage'
 
 
+class TestArgumentParserValidation:
+    """Test ArgumentParser validation for origin_path parameter"""
+    
+    def test_valid_origin_path_default(self):
+        """Test valid origin path with default pattern /{stageId}/public"""
+        parser = ArgumentParser()
+        args = parser.parse_args(['--stages', 'prod'])
+        
+        # Default origin_path should be /{stageId}/public
+        assert args.origin_path == '/{stageId}/public'
+    
+    def test_valid_origin_path_with_stage_placeholder(self):
+        """Test valid origin path with stage placeholder /app/{stageId}"""
+        parser = ArgumentParser()
+        args = parser.parse_args([
+            '--stages', 'prod',
+            '--origin_path', '/app/{stageId}'
+        ])
+        
+        assert args.origin_path == '/app/{stageId}'
+    
+    def test_valid_origin_path_static(self):
+        """Test valid origin path without stage placeholder /static"""
+        parser = ArgumentParser()
+        args = parser.parse_args([
+            '--stages', 'prod',
+            '--origin_path', '/static'
+        ])
+        
+        assert args.origin_path == '/static'
+    
+    def test_valid_origin_path_stage_only(self):
+        """Test valid origin path with only stage placeholder /{stageId}"""
+        parser = ArgumentParser()
+        args = parser.parse_args([
+            '--stages', 'prod',
+            '--origin_path', '/{stageId}'
+        ])
+        
+        assert args.origin_path == '/{stageId}'
+    
+    def test_invalid_origin_path_missing_leading_slash(self):
+        """Test invalid origin path without leading slash raises ValueError"""
+        parser = ArgumentParser()
+        
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse_args([
+                '--stages', 'prod',
+                '--origin_path', 'app/{stageId}'
+            ])
+        
+        # Verify error message is clear and includes examples
+        error_message = str(exc_info.value)
+        assert "Origin path must start with '/'" in error_message
+        assert "app/{stageId}" in error_message
+        assert "Examples:" in error_message
+        assert "/app/{stageId}" in error_message or "/app/{{stageId}}" in error_message
+        assert "/static" in error_message
+
+
 class TestEnvironmentManagerIntegration:
     """Test environment manager integration"""
     

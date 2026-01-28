@@ -31,6 +31,7 @@ class Configuration:
     verbose: bool
     base_path: str
     source_file_path: str
+    origin_path_pattern: str = '/{stageId}/public'
 
 
 @dataclass
@@ -119,6 +120,17 @@ class ArgumentParser:
             help='Enable verbose logging with detailed AWS and bucket information'
         )
         
+        parser.add_argument(
+            '--origin_path',
+            type=str,
+            default='/{stageId}/public',
+            help=(
+                'Origin path pattern for S3 uploads (default: /{stageId}/public). '
+                'Must start with "/". Can include {stageId} placeholder for dynamic substitution. '
+                'Examples: /app/{stageId}, /static, /{stageId}/public'
+            )
+        )
+        
         return parser
     
     def parse_args(self, args: Optional[List[str]] = None) -> argparse.Namespace:
@@ -129,6 +141,14 @@ class ArgumentParser:
     
     def _validate_args(self, args: argparse.Namespace) -> None:
         """Validate argument combinations and requirements"""
+        # Validate origin_path format
+        if not args.origin_path.startswith('/'):
+            raise ValueError(
+                "Origin path must start with '/'. "
+                f"Invalid value: '{args.origin_path}'. "
+                "Examples: /app/{{stageId}}, /static, /{{stageId}}/public"
+            )
+        
         # Bucket validation will be handled by EnvironmentManager
         # since it needs to check environment variables
         pass
@@ -202,17 +222,42 @@ class EnvironmentManager:
             self.logger.info("Using default AWS profile (CI/CD mode)")
             return boto3.Session()
     
-    def determine_base_path(self, stage: str) -> str:
+    def determine_base_path(self, stage: str, origin_path_pattern: str = '/{stageId}/public') -> str:
         """
-        Determine S3 base path based on stage
+        Determine S3 base path based on stage and origin path pattern
         
         Args:
             stage: Target stage name
+            origin_path_pattern: Origin path pattern with optional {stageId} placeholder
             
         Returns:
-            Base S3 path for uploads
+            Base S3 path for uploads (always starts and ends with '/')
+            
+        Examples:
+            >>> determine_base_path('prod', '/{stageId}/public')
+            '/prod/public/'
+            
+            >>> determine_base_path('prod', '/app/{stageId}')
+            '/app/prod/'
+            
+            >>> determine_base_path('prod', '/static')
+            '/static/'
+            
+            >>> determine_base_path('prod', '/{stageId}')
+            '/prod/'
         """
-        return f'/{stage}/public/'
+        # Replace {stageId} placeholder with actual stage value
+        base_path = origin_path_pattern.replace('{stageId}', stage)
+        
+        # Ensure path starts with '/'
+        if not base_path.startswith('/'):
+            base_path = '/' + base_path
+        
+        # Ensure path ends with '/'
+        if not base_path.endswith('/'):
+            base_path = base_path + '/'
+        
+        return base_path
 
 class FileGenerator:
     """Generates test file content and random naming"""
@@ -581,6 +626,7 @@ class Logger:
         self.logger.info(f"Source file: {source_file_path}")
         self.logger.info(f"Target buckets: {', '.join(buckets)}")
         self.logger.info(f"Target stages: {', '.join(self.config.stages)}")
+        self.logger.info(f"Origin path pattern: {self.config.origin_path_pattern}")
         self.logger.info(f"Base path: {self.config.base_path}")
         
         if self.config.verbose:
@@ -1187,7 +1233,8 @@ def main():
             aws_profile=args.profile,
             verbose=args.verbose,
             base_path="",  # Will be calculated per stage
-            source_file_path=str(source_file_path)
+            source_file_path=str(source_file_path),
+            origin_path_pattern=args.origin_path
         )
         
         # Initialize Logger component
@@ -1206,7 +1253,12 @@ def main():
         
         for bucket in buckets:
             for stage in stages:
-                base_path = env_manager.determine_base_path(stage)
+                base_path = env_manager.determine_base_path(stage, config.origin_path_pattern)
+                
+                # Log resolved base path in verbose mode
+                if config.verbose:
+                    logger.info(f"Resolved base path for {bucket}/{stage}: {base_path}")
+                
                 upload_paths, nested_info = path_generator.generate_all_upload_paths_with_info(base_path)
                 
                 # Store structure info for enhanced logging (same for all buckets/stages)

@@ -43,4 +43,19 @@ fi
 # Run upload-test-files.py with proper path and Python interpreter
 echo "=== RUNNING UPLOAD UTILITY ==="
 echo "Running test file upload utility from post-deploy script"
+
+# Note: The upload utility supports an optional --origin_path parameter to specify
+# custom origin path patterns for testing buckets with non-standard directory structures.
+# 
+# Default pattern: /{stageId}/public (used when --origin_path is not specified)
+# 
+# Examples:
+#   --origin_path /app/{stageId}        # Custom pattern with stage placeholder
+#   --origin_path /static               # Static path without stage placeholder
+#   --origin_path /{stageId}/assets     # Custom assets directory
+# 
+# The pattern must start with '/' and can include {stageId} for dynamic substitution.
+# If your CloudFront distribution uses a non-standard origin path, add the --origin_path
+# option to the command below.
+
 python "${SCRIPT_DIR}/upload-test-files.py" --stages "stage,prod" --verbose
