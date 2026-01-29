@@ -41,28 +41,28 @@ except ImportError:
 logger = setup_logger(__name__)
 
 
-def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[Tuple[str, str], List[Dict[str, Any]]]:
-    """Group SQS messages by bucketName and originPath.
+def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[Tuple[str, str, str], List[Dict[str, Any]]]:
+    """Group SQS messages by bucketName, originPath, and stageId.
     
     Groups events to enable batch processing of invalidations for the same
-    bucket and origin combination. This allows efficient path consolidation
-    and reduces the number of CloudFront API calls.
+    bucket, origin, and stage combination. This ensures different stages
+    are processed independently with their own distribution searches.
     
     Args:
         messages: List of SQS messages with parsed_body containing:
             - bucketName: S3 bucket name
             - objectKey: Full S3 object key
             - originPath: Origin path (/<StageId>/public)
-            - stageId: Stage identifier
+            - stageId: Stage identifier (may be empty string for root-level buckets)
             - eventTime: ISO 8601 timestamp
             - eventType: S3 event type
             
     Returns:
         Dictionary where:
-            - Keys are tuples of (bucketName, originPath)
+            - Keys are tuples of (bucketName, originPath, stageId)
             - Values are lists of messages belonging to that group
         
-    **Feature: multi-bucket-cloudfront-invalidation, Property 12: Event grouping by bucket and origin**
+    **Feature: multi-bucket-cloudfront-invalidation, Property 12: Event grouping by bucket, origin, and stage**
     """
     # DEBUG: Log grouping function entry
     logger.info(
@@ -74,7 +74,7 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
         }}
     )
     
-    grouped: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    grouped: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
     skipped_messages = []
     
     for i, message in enumerate(messages):
@@ -106,6 +106,7 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
         # Get grouping keys
         bucket_name = parsed_body.get('bucketName')
         origin_path = parsed_body.get('originPath')
+        stage_id = parsed_body.get('stageId', '')  # Default to empty string for root-level buckets
         
         # DEBUG: Log grouping key extraction
         # logger.info(
@@ -138,8 +139,8 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
             )
             continue
         
-        # Create group key
-        group_key = (bucket_name, origin_path)
+        # Create group key (bucket, origin, stage)
+        group_key = (bucket_name, origin_path, stage_id)
         
         # DEBUG: Log group assignment
         # logger.info(
@@ -180,7 +181,7 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
     # )
     
     # logger.info(
-    #     f"Grouped {len(messages)} messages into {len(grouped)} bucket/origin combinations",
+    #     f"Grouped {len(messages)} messages into {len(grouped)} bucket/origin/stage combinations",
     #     extra={'extra_fields': {
     #         'total_messages': len(messages),
     #         'group_count': len(grouped),
@@ -188,9 +189,10 @@ def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[
     #             {
     #                 'bucket': bucket,
     #                 'origin': origin,
+    #                 'stage': stage,
     #                 'message_count': len(msgs)
     #             }
-    #             for (bucket, origin), msgs in grouped.items()
+    #             for (bucket, origin, stage), msgs in grouped.items()
     #         ]
     #     }}
     # )
@@ -407,10 +409,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     {
                         'bucketName': bucket,
                         'originPath': origin,
+                        'stageId': stage,
                         'messageCount': len(msgs),
                         'messageIds': [msg.get('MessageId', 'no_id') for msg in msgs[:3]]  # First 3 IDs
                     }
-                    for (bucket, origin), msgs in grouped_messages.items()
+                    for (bucket, origin, stage), msgs in grouped_messages.items()
                 ]
             }}
         )
@@ -420,7 +423,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Step 3-8: Process each group
         group_index = 0
-        for (bucket_name, origin_path), messages in grouped_messages.items():
+        for (bucket_name, origin_path, stage_id), messages in grouped_messages.items():
             group_index += 1
             
             # DEBUG: Log group processing start
@@ -431,6 +434,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'totalGroups': len(grouped_messages),
                     'bucket_name': bucket_name,
                     'origin_path': origin_path,
+                    'stage_id': stage_id,
                     'message_count': len(messages),
                     'messageIds': [msg.get('MessageId', 'no_id') for msg in messages],
                     'firstMessageBody': messages[0].get('parsed_body', {}) if messages else {}
@@ -533,10 +537,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
             
             # Step 3.7: Resolve origin path for distribution lookup
-            # Extract stage ID from first filtered event
-            first_filtered_message = filtered_messages[0]
-            first_filtered_body = first_filtered_message.get('parsed_body', {})
-            stage_id = first_filtered_body.get('stageId', '')
+            # (stage_id already available from group key)
             
             # Construct resolved origin path for distribution lookup
             if '{stageId}' in bucket_pattern:
@@ -650,6 +651,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'originPath': origin_path,
+                    'stageId': stage_id,
                     'resolvedOriginPath': resolved_origin_path,
                     'aboutToCallFindMatchingDistributions': True
                 }}
@@ -663,6 +665,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'originPath': origin_path,
+                    'stageId': stage_id,
                     'resolvedOriginPath': resolved_origin_path,
                     'distributionIds': distribution_ids,
                     'distributionCount': len(distribution_ids) if distribution_ids else 0,
@@ -709,7 +712,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         extra={'extra_fields': {
                             'distribution_id': dist_id,
                             'bucket_name': bucket_name,
-                            'origin_path': origin_path
+                            'origin_path': origin_path,
+                            'stage_id': stage_id
                         }}
                     )
                     summary['distributions_rejected'] += 1
@@ -879,6 +883,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
                         'stage': stage,
+                        'stage_id': stage_id,
                         'chunk_count': len(consolidated_path_chunks)
                     }}
                 )

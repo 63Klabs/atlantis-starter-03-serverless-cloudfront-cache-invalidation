@@ -52,10 +52,10 @@ class TestGroupMessagesByBucketAndOrigin:
         
         # Assert
         assert len(grouped) == 2
-        assert ('bucket-a', '/prod/public') in grouped
-        assert ('bucket-b', '/stage/public') in grouped
-        assert len(grouped[('bucket-a', '/prod/public')]) == 2
-        assert len(grouped[('bucket-b', '/stage/public')]) == 1
+        assert ('bucket-a', '/prod/public', 'prod') in grouped
+        assert ('bucket-b', '/stage/public', 'stage') in grouped
+        assert len(grouped[('bucket-a', '/prod/public', 'prod')]) == 2
+        assert len(grouped[('bucket-b', '/stage/public', 'stage')]) == 1
     
     def test_skips_messages_with_missing_fields(self):
         """Test that messages with missing bucketName or originPath are skipped."""
@@ -89,8 +89,8 @@ class TestGroupMessagesByBucketAndOrigin:
         
         # Assert
         assert len(grouped) == 1
-        assert ('bucket-a', '/prod/public') in grouped
-        assert len(grouped[('bucket-a', '/prod/public')]) == 1
+        assert ('bucket-a', '/prod/public', '') in grouped  # Empty string for missing stageId
+        assert len(grouped[('bucket-a', '/prod/public', '')]) == 1
 
 
 class TestProcessorHandler:
