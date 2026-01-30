@@ -41,161 +41,79 @@ except ImportError:
 logger = setup_logger(__name__)
 
 
-def group_messages_by_bucket_and_origin(messages: List[Dict[str, Any]]) -> Dict[Tuple[str, str, str], List[Dict[str, Any]]]:
-    """Group SQS messages by bucketName, originPath, and stageId.
+def group_messages_by_bucket(messages: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Group SQS messages by bucketName only.
     
-    Groups events to enable batch processing of invalidations for the same
-    bucket, origin, and stage combination. This ensures different stages
-    are processed independently with their own distribution searches.
+    Groups events by bucket to enable batch processing. Stage and origin path
+    will be determined later from bucket tags after reading the bucket's
+    OriginPathPattern tag.
     
     Args:
         messages: List of SQS messages with parsed_body containing:
             - bucketName: S3 bucket name
             - objectKey: Full S3 object key
-            - originPath: Origin path (/<StageId>/public)
-            - stageId: Stage identifier (may be empty string for root-level buckets)
             - eventTime: ISO 8601 timestamp
             - eventType: S3 event type
             
     Returns:
         Dictionary where:
-            - Keys are tuples of (bucketName, originPath, stageId)
-            - Values are lists of messages belonging to that group
+            - Keys are bucket names (strings)
+            - Values are lists of messages belonging to that bucket
         
-    **Feature: multi-bucket-cloudfront-invalidation, Property 12: Event grouping by bucket, origin, and stage**
+    **Feature: multi-bucket-cloudfront-invalidation, Property 12: Event grouping by bucket**
     """
-    # DEBUG: Log grouping function entry
     logger.info(
-        "Starting message grouping",
+        "Starting message grouping by bucket",
         extra={'extra_fields': {
-            'totalMessages': len(messages),
-            'messageTypes': [type(msg).__name__ for msg in messages[:5]],  # First 5 types
-            'messageKeys': [list(msg.keys()) if isinstance(msg, dict) else 'not_dict' for msg in messages[:3]]  # First 3 key sets
+            'totalMessages': len(messages)
         }}
     )
     
-    grouped: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
     skipped_messages = []
     
     for i, message in enumerate(messages):
-        # DEBUG: Log each message processing
-        # logger.info(
-        #     f"Processing message {i+1}/{len(messages)} for grouping DEBUG",
-        #     extra={'extra_fields': {
-        #         'messageIndex': i,
-        #         'messageId': message.get('MessageId', 'no_id'),
-        #         'messageKeys': list(message.keys()) if isinstance(message, dict) else 'not_dict',
-        #         'hasParsedBody': 'parsed_body' in message if isinstance(message, dict) else False
-        #     }}
-        # )
-        
         # Extract parsed body
         parsed_body = message.get('parsed_body', {})
         
-        # DEBUG: Log parsed body analysis
-        # logger.info(
-        #     f"Message {i+1} parsed body analysis DEBUG",
-        #     extra={'extra_fields': {
-        #         'messageIndex': i,
-        #         'parsedBody': parsed_body,
-        #         'parsedBodyType': type(parsed_body).__name__,
-        #         'parsedBodyKeys': list(parsed_body.keys()) if isinstance(parsed_body, dict) else 'not_dict'
-        #     }}
-        # )
-        
-        # Get grouping keys
+        # Get bucket name
         bucket_name = parsed_body.get('bucketName')
-        origin_path = parsed_body.get('originPath')
-        stage_id = parsed_body.get('stageId', '')  # Default to empty string for root-level buckets
         
-        # DEBUG: Log grouping key extraction
-        # logger.info(
-        #     f"Message {i+1} grouping keys DEBUG",
-        #     extra={'extra_fields': {
-        #         'messageIndex': i,
-        #         'bucketName': bucket_name,
-        #         'originPath': origin_path,
-        #         'bucketNameType': type(bucket_name).__name__,
-        #         'originPathType': type(origin_path).__name__,
-        #         'hasBucket': bool(bucket_name),
-        #         'hasOrigin': bool(origin_path)
-        #     }}
-        # )
-        
-        # Skip messages with missing required fields
-        if not bucket_name or not origin_path:
+        # Skip messages with missing bucket name
+        if not bucket_name:
             skip_info = {
                 'message_id': message.get('MessageId'),
-                'has_bucket': bool(bucket_name),
-                'has_origin': bool(origin_path),
-                'bucket_value': bucket_name,
-                'origin_value': origin_path
+                'reason': 'missing_bucket_name'
             }
             skipped_messages.append(skip_info)
             
             logger.warning(
-                f"Skipping message {i+1} with missing bucketName or originPath",
+                f"Skipping message {i+1} with missing bucketName",
                 extra={'extra_fields': skip_info}
             )
             continue
         
-        # Create group key (bucket, origin, stage)
-        group_key = (bucket_name, origin_path, stage_id)
+        # Add message to bucket group
+        if bucket_name not in grouped:
+            grouped[bucket_name] = []
         
-        # DEBUG: Log group assignment
-        # logger.info(
-        #     f"Message {i+1} group assignment DEBUG",
-        #     extra={'extra_fields': {
-        #         'messageIndex': i,
-        #         'groupKey': group_key,
-        #         'groupExists': group_key in grouped,
-        #         'currentGroupSize': len(grouped.get(group_key, []))
-        #     }}
-        # )
-        
-        # Add message to group
-        if group_key not in grouped:
-            grouped[group_key] = []
-        
-        grouped[group_key].append(message)
+        grouped[bucket_name].append(message)
     
-    # DEBUG: Log final grouping results
-    # logger.info(
-    #     f"Message grouping complete DEBUG",
-    #     extra={'extra_fields': {
-    #         'total_messages': len(messages),
-    #         'messages_grouped': len(messages) - len(skipped_messages),
-    #         'messages_skipped': len(skipped_messages),
-    #         'skipped_details': skipped_messages,
-    #         'group_count': len(grouped),
-    #         'groups_detailed': [
-    #             {
-    #                 'bucket': bucket,
-    #                 'origin': origin,
-    #                 'message_count': len(msgs),
-    #                 'message_ids': [msg.get('MessageId', 'no_id') for msg in msgs]
-    #             }
-    #             for (bucket, origin), msgs in grouped.items()
-    #         ]
-    #     }}
-    # )
-    
-    # logger.info(
-    #     f"Grouped {len(messages)} messages into {len(grouped)} bucket/origin/stage combinations",
-    #     extra={'extra_fields': {
-    #         'total_messages': len(messages),
-    #         'group_count': len(grouped),
-    #         'groups': [
-    #             {
-    #                 'bucket': bucket,
-    #                 'origin': origin,
-    #                 'stage': stage,
-    #                 'message_count': len(msgs)
-    #             }
-    #             for (bucket, origin, stage), msgs in grouped.items()
-    #         ]
-    #     }}
-    # )
+    logger.info(
+        f"Grouped {len(messages)} messages into {len(grouped)} bucket(s)",
+        extra={'extra_fields': {
+            'total_messages': len(messages),
+            'messages_skipped': len(skipped_messages),
+            'bucket_count': len(grouped),
+            'buckets': [
+                {
+                    'bucket': bucket,
+                    'message_count': len(msgs)
+                }
+                for bucket, msgs in grouped.items()
+            ]
+        }}
+    )
     
     return grouped
 
@@ -387,33 +305,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }}
         )
         
-        # Step 2: Group messages by bucket and origin path
-        # DEBUG: Log grouping start
+        # Step 2: Group messages by bucket
         logger.info(
-            "Step 2: Starting message grouping",
+            "Step 2: Starting message grouping by bucket",
             extra={'extra_fields': {
                 'totalMessagesToGroup': len(all_messages),
                 'aboutToCallGroupMessages': True
             }}
         )
         
-        grouped_messages = group_messages_by_bucket_and_origin(all_messages)
+        grouped_messages = group_messages_by_bucket(all_messages)
         summary['groups_processed'] = len(grouped_messages)
         
-        # DEBUG: Log grouping results
         logger.info(
             "Step 2: Message grouping complete",
             extra={'extra_fields': {
-                'totalGroups': len(grouped_messages),
-                'groupDetails': [
+                'totalBuckets': len(grouped_messages),
+                'bucketDetails': [
                     {
                         'bucketName': bucket,
-                        'originPath': origin,
-                        'stageId': stage,
                         'messageCount': len(msgs),
                         'messageIds': [msg.get('MessageId', 'no_id') for msg in msgs[:3]]  # First 3 IDs
                     }
-                    for (bucket, origin, stage), msgs in grouped_messages.items()
+                    for bucket, msgs in grouped_messages.items()
                 ]
             }}
         )
@@ -421,28 +335,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Track messages to delete (successfully processed)
         messages_to_delete = []
         
-        # Step 3-8: Process each group
-        group_index = 0
-        for (bucket_name, origin_path, stage_id), messages in grouped_messages.items():
-            group_index += 1
+        # Step 3-8: Process each bucket group
+        bucket_index = 0
+        for bucket_name, messages in grouped_messages.items():
+            bucket_index += 1
             
-            # DEBUG: Log group processing start
             logger.info(
-                f"Step 3-8: Processing group {group_index}/{len(grouped_messages)}",
+                f"Step 3-8: Processing bucket {bucket_index}/{len(grouped_messages)}",
                 extra={'extra_fields': {
-                    'groupIndex': group_index,
-                    'totalGroups': len(grouped_messages),
+                    'bucketIndex': bucket_index,
+                    'totalBuckets': len(grouped_messages),
                     'bucket_name': bucket_name,
-                    'origin_path': origin_path,
-                    'stage_id': stage_id,
                     'message_count': len(messages),
-                    'messageIds': [msg.get('MessageId', 'no_id') for msg in messages],
-                    'firstMessageBody': messages[0].get('parsed_body', {}) if messages else {}
+                    'messageIds': [msg.get('MessageId', 'no_id') for msg in messages]
                 }}
             )
             
             # Step 3: Validate bucket tags
-            # DEBUG: Log bucket validation start
             logger.info(
                 f"Step 3: Validating bucket tags for {bucket_name}",
                 extra={'extra_fields': {
@@ -453,7 +362,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             bucket_validation_result = validate_bucket_tags(bucket_name)
             
-            # DEBUG: Log bucket validation result
             logger.info(
                 f"Step 3: Bucket validation result",
                 extra={'extra_fields': {
@@ -468,7 +376,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     f"Bucket {bucket_name} failed tag validation, skipping",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path,
                         'bucketValidationFailed': True,
                         'messagesBeingDeleted': len(messages)
                     }}
@@ -479,6 +386,34 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 continue
             
             summary['buckets_validated'] += 1
+            
+            # Get bucket tags for later use
+            bucket_tags = get_bucket_tags(bucket_name)
+            
+            if not bucket_tags:
+                logger.error(
+                    f"Failed to retrieve bucket tags for {bucket_name}, skipping",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'bucketTagsRetrievalFailed': True
+                    }}
+                )
+                messages_to_delete.extend(messages)
+                continue
+            
+            bucket_app_tag = bucket_tags.get('atlantis:Application', '')
+            
+            if not bucket_app_tag:
+                logger.warning(
+                    f"Bucket {bucket_name} missing atlantis:Application tag, skipping",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'missingApplicationTag': True,
+                        'availableTags': list(bucket_tags.keys())
+                    }}
+                )
+                messages_to_delete.extend(messages)
+                continue
             
             # Step 3.5: Resolve bucket pattern
             # Get sample event path from first message
@@ -491,7 +426,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     f"Missing objectKey in first message for bucket {bucket_name}, skipping",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path,
                         'missingObjectKey': True
                     }}
                 )
@@ -536,355 +470,317 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }}
             )
             
-            # Step 3.7: Resolve origin path for distribution lookup
-            # (stage_id already available from group key)
+            # Step 3.7: Group filtered messages by stage
+            # Now that we have the bucket pattern, we can extract stage from each message
+            # and group them by stage for separate processing
+            messages_by_stage: Dict[str, List[Dict[str, Any]]] = {}
             
-            # Construct resolved origin path for distribution lookup
-            if '{stageId}' in bucket_pattern:
-                if not stage_id:
-                    logger.warning(
-                        f"Pattern contains {{stageId}} but no stage found for bucket {bucket_name}, skipping",
-                        extra={'extra_fields': {
-                            'bucket_name': bucket_name,
-                            'bucket_pattern': bucket_pattern,
-                            'origin_path': origin_path,
-                            'operation': 'origin_path_resolution',
-                            'skip_reason': 'missing_stage_id'
-                        }}
-                    )
-                    messages_to_delete.extend(messages)
-                    continue
-                resolved_origin_path = bucket_pattern.replace('{stageId}', stage_id)
-            else:
-                resolved_origin_path = bucket_pattern
-            
-            # Convert root path to empty string for CloudFront
-            if resolved_origin_path == '/':
-                resolved_origin_path = ''
+            for message in filtered_messages:
+                parsed_body = message.get('parsed_body', {})
+                object_key = parsed_body.get('objectKey', '')
+                
+                # Extract stage from object key using the bucket pattern
+                stage_id = ''
+                if '{stageId}' in bucket_pattern:
+                    # Extract stage from object key
+                    # Pattern: /{stageId}/public -> extract first path segment
+                    parts = [p for p in object_key.split('/') if p]
+                    if len(parts) >= 1:
+                        # First non-empty segment is the stage
+                        stage_id = parts[0]
+                # else: no stage in pattern, use empty string
+                
+                # Group by stage
+                if stage_id not in messages_by_stage:
+                    messages_by_stage[stage_id] = []
+                messages_by_stage[stage_id].append(message)
             
             logger.info(
-                f"Resolved origin path for distribution lookup",
+                f"Grouped bucket {bucket_name} messages into {len(messages_by_stage)} stage(s)",
                 extra={'extra_fields': {
                     'bucket_name': bucket_name,
                     'bucket_pattern': bucket_pattern,
-                    'stage_id': stage_id,
-                    'resolved_origin_path': resolved_origin_path,
-                    'event_origin_path': origin_path,
-                    'operation': 'origin_path_resolution'
+                    'stage_count': len(messages_by_stage),
+                    'stages': [
+                        {
+                            'stage_id': stage,
+                            'message_count': len(stage_msgs)
+                        }
+                        for stage, stage_msgs in messages_by_stage.items()
+                    ]
                 }}
             )
             
-            # DEBUG: Log bucket validation success
-            # logger.info(
-            #     f"Step 3: Bucket {bucket_name} validation passed DEBUG",
-            #     extra={'extra_fields': {
-            #         'bucketName': bucket_name,
-            #         'bucketValidationPassed': True
-            #     }}
-            # )
-            
-            # Get bucket's Application tag for distribution validation
-            # DEBUG: Log bucket tags retrieval
-            # logger.info(
-            #     f"Step 3: Getting bucket tags for {bucket_name} DEBUG",
-            #     extra={'extra_fields': {
-            #         'bucketName': bucket_name,
-            #         'aboutToCallGetBucketTags': True
-            #     }}
-            # )
-            
-            bucket_tags = get_bucket_tags(bucket_name)
-            
-            # DEBUG: Log bucket tags result
-            # logger.info(
-            #     f"Step 3: Bucket tags retrieval result DEBUG",
-            #     extra={'extra_fields': {
-            #         'bucketName': bucket_name,
-            #         'bucketTags': bucket_tags,
-            #         'bucketTagsType': type(bucket_tags).__name__,
-            #         'bucketTagsKeys': list(bucket_tags.keys()) if isinstance(bucket_tags, dict) else 'not_dict',
-            #         'hasApplicationTag': 'atlantis:Application' in bucket_tags if isinstance(bucket_tags, dict) else False
-            #     }}
-            # )
-            
-            if not bucket_tags:
-                logger.error(
-                    f"Failed to retrieve bucket tags for {bucket_name}, skipping",
-                    extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'origin_path': origin_path,
-                        'bucketTagsRetrievalFailed': True
-                    }}
-                )
-                messages_to_delete.extend(messages)
-                continue
-            
-            bucket_app_tag = bucket_tags.get('atlantis:Application', '')
-            
-            # DEBUG: Log application tag extraction
-            # logger.info(
-            #     f"Step 3: Application tag extraction DEBUG",
-            #     extra={'extra_fields': {
-            #         'bucketName': bucket_name,
-            #         'bucketAppTag': bucket_app_tag,
-            #         'hasAppTag': bool(bucket_app_tag)
-            #     }}
-            # )
-            
-            if not bucket_app_tag:
-                logger.warning(
-                    f"Bucket {bucket_name} missing atlantis:Application tag, skipping",
-                    extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'origin_path': origin_path,
-                        'missingApplicationTag': True,
-                        'availableTags': list(bucket_tags.keys())
-                    }}
-                )
-                messages_to_delete.extend(messages)
-                continue
-            
-            # Step 4: Find matching CloudFront distributions
-            # DEBUG: Log distribution search
-            logger.info(
-                f"Step 4: Finding CloudFront distributions",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'originPath': origin_path,
-                    'stageId': stage_id,
-                    'resolvedOriginPath': resolved_origin_path,
-                    'aboutToCallFindMatchingDistributions': True
-                }}
-            )
-            
-            distribution_ids = find_matching_distributions(bucket_name, resolved_origin_path)
-            
-            # DEBUG: Log distribution search results
-            logger.info(
-                f"Step 4: Distribution search results",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'originPath': origin_path,
-                    'stageId': stage_id,
-                    'resolvedOriginPath': resolved_origin_path,
-                    'distributionIds': distribution_ids,
-                    'distributionCount': len(distribution_ids) if distribution_ids else 0,
-                    'distributionsFound': bool(distribution_ids)
-                }}
-            )
-            
-            if not distribution_ids:
+            # Step 4-8: Process each stage within this bucket
+            for stage_id, stage_messages in messages_by_stage.items():
                 logger.info(
-                    f"No distributions found for bucket {bucket_name} with origin {origin_path}",
+                    f"Processing stage '{stage_id}' for bucket {bucket_name}",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'origin_path': origin_path,
-                        'noDistributionsFound': True,
-                        'messagesBeingDeleted': len(messages)
+                        'stage_id': stage_id,
+                        'message_count': len(stage_messages),
+                        'bucket_pattern': bucket_pattern
                     }}
                 )
-                # Delete messages even if no distributions found
-                messages_to_delete.extend(messages)
-                continue
-            
-            summary['distributions_found'] += len(distribution_ids)
-            
-            # DEBUG: Log distributions found
-            logger.info(
-                f"Step 4: Found {len(distribution_ids)} distributions",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'originPath': origin_path,
-                    'distributionIds': distribution_ids,
-                    'distributionCount': len(distribution_ids)
-                }}
-            )
-            
-            # Step 5: Validate distribution tags and filter
-            valid_distributions = []
-            for dist_id in distribution_ids:
-                if validate_distribution_tags(dist_id, bucket_app_tag, stage_id):
-                    valid_distributions.append(dist_id)
-                    summary['distributions_validated'] += 1
+                
+                # Step 3.8: Resolve origin path for distribution lookup
+                # IMPORTANT: The origin path for distribution lookup should match what's configured
+                # in CloudFront. If the bucket pattern contains {stageId}, we need to substitute it
+                # with the actual stage to match the CloudFront distribution's origin path.
+                # For example: bucket_pattern="/{stageId}/public" + stage_id="prod" -> "/prod/public"
+                
+                # Resolve the origin path by substituting {stageId} in the bucket pattern
+                if '{stageId}' in bucket_pattern:
+                    if not stage_id:
+                        logger.warning(
+                            f"Pattern contains {{stageId}} but no stage found for bucket {bucket_name}, skipping stage group",
+                            extra={'extra_fields': {
+                                'bucket_name': bucket_name,
+                                'bucket_pattern': bucket_pattern,
+                                'operation': 'origin_path_resolution',
+                                'skip_reason': 'missing_stage_id'
+                            }}
+                        )
+                        # Still mark these messages for deletion
+                        messages_to_delete.extend(stage_messages)
+                        continue
+                    resolved_origin_path = bucket_pattern.replace('{stageId}', stage_id)
                 else:
-                    logger.warning(
-                        f"Distribution {dist_id} failed tag validation",
+                    # No stage placeholder, use the bucket pattern as-is
+                    resolved_origin_path = bucket_pattern
+                
+                # Convert root path to empty string for CloudFront
+                if resolved_origin_path == '/':
+                    resolved_origin_path = ''
+                
+                logger.info(
+                    f"Resolved origin path for distribution lookup",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'bucket_pattern': bucket_pattern,
+                        'stage_id': stage_id,
+                        'resolved_origin_path': resolved_origin_path,
+                        'operation': 'origin_path_resolution'
+                    }}
+                )
+                
+                # Step 4: Find matching CloudFront distributions
+                logger.info(
+                    f"Step 4: Finding CloudFront distributions",
+                    extra={'extra_fields': {
+                        'bucketName': bucket_name,
+                        'stageId': stage_id,
+                        'resolvedOriginPath': resolved_origin_path,
+                        'aboutToCallFindMatchingDistributions': True
+                    }}
+                )
+                
+                distribution_ids = find_matching_distributions(bucket_name, resolved_origin_path)
+                
+                logger.info(
+                    f"Step 4: Distribution search results",
+                    extra={'extra_fields': {
+                        'bucketName': bucket_name,
+                        'stageId': stage_id,
+                        'resolvedOriginPath': resolved_origin_path,
+                        'distributionIds': distribution_ids,
+                        'distributionCount': len(distribution_ids) if distribution_ids else 0,
+                        'distributionsFound': bool(distribution_ids)
+                    }}
+                )
+                
+                if not distribution_ids:
+                    logger.info(
+                        f"No distributions found for bucket {bucket_name} with stage {stage_id}",
+                        extra={'extra_fields': {
+                            'bucket_name': bucket_name,
+                            'stage_id': stage_id,
+                            'resolved_origin_path': resolved_origin_path,
+                            'noDistributionsFound': True,
+                            'messagesBeingDeleted': len(stage_messages)
+                        }}
+                    )
+                    # Delete messages even if no distributions found
+                    messages_to_delete.extend(stage_messages)
+                    continue
+                
+                summary['distributions_found'] += len(distribution_ids)
+                
+                # Step 5: Validate distribution tags and filter
+                valid_distributions = []
+                
+                logger.info(
+                    f"Step 5: Starting distribution tag validation",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'bucket_app_tag': bucket_app_tag,
+                        'stage_id': stage_id,
+                        'distribution_count': len(distribution_ids),
+                        'distribution_ids': distribution_ids,
+                        'expected_app_deployment_id': f"{bucket_app_tag}-{stage_id}"
+                    }}
+                )
+                
+                for dist_id in distribution_ids:
+                    is_valid = validate_distribution_tags(dist_id, bucket_app_tag, stage_id)
+                    
+                    logger.info(
+                        f"Distribution {dist_id} validation result: {is_valid}",
                         extra={'extra_fields': {
                             'distribution_id': dist_id,
                             'bucket_name': bucket_name,
-                            'origin_path': origin_path,
+                            'bucket_app_tag': bucket_app_tag,
+                            'stage_id': stage_id,
+                            'expected_app_deployment_id': f"{bucket_app_tag}-{stage_id}",
+                            'validation_passed': is_valid
+                        }}
+                    )
+                    
+                    if is_valid:
+                        valid_distributions.append(dist_id)
+                        summary['distributions_validated'] += 1
+                    else:
+                        logger.warning(
+                            f"Distribution {dist_id} failed tag validation",
+                            extra={'extra_fields': {
+                                'distribution_id': dist_id,
+                                'bucket_name': bucket_name,
+                                'stage_id': stage_id,
+                                'bucket_app_tag': bucket_app_tag,
+                                'expected_app_deployment_id': f"{bucket_app_tag}-{stage_id}"
+                            }}
+                        )
+                        summary['distributions_rejected'] += 1
+                
+                if not valid_distributions:
+                    logger.info(
+                        f"No valid distributions for bucket {bucket_name}, stage {stage_id} after tag validation",
+                        extra={'extra_fields': {
+                            'bucket_name': bucket_name,
                             'stage_id': stage_id
                         }}
                     )
-                    summary['distributions_rejected'] += 1
-            
-            if not valid_distributions:
+                    # Delete messages even if no valid distributions
+                    messages_to_delete.extend(stage_messages)
+                    continue
+                
+                # Step 6: Get bucket-specific consolidation configuration
                 logger.info(
-                    f"No valid distributions for bucket {bucket_name} after tag validation",
+                    f"Step 6: Resolving consolidation configuration for bucket {bucket_name}",
                     extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'origin_path': origin_path
+                        'bucketName': bucket_name,
+                        'aboutToCallGetBucketConsolidationConfig': True
                     }}
                 )
-                # Delete messages even if no valid distributions
-                messages_to_delete.extend(messages)
-                continue
-            
-            # Step 6: Get bucket-specific consolidation configuration
-            # DEBUG: Log configuration resolution start
-            logger.info(
-                f"Step 6: Resolving consolidation configuration for bucket {bucket_name}",
-                extra={'extra_fields': {
-                    'bucketName': bucket_name,
-                    'aboutToCallGetBucketConsolidationConfig': True
-                }}
-            )
-            
-            try:
-                bucket_config = get_bucket_consolidation_config(bucket_name)
                 
-                # DEBUG: Log configuration resolution result
-                # logger.info(
-                #     f"Step 6: Consolidation configuration resolved DEBUG",
-                #     extra={'extra_fields': {
-                #         'bucketName': bucket_name,
-                #         'bucketConfig': bucket_config,
-                #         'configResolutionSuccessful': True
-                #     }}
-                # )
+                try:
+                    bucket_config = get_bucket_consolidation_config(bucket_name)
+                    
+                    logger.info(
+                        f"Using consolidation configuration for bucket {bucket_name}",
+                        extra={'extra_fields': {
+                            'bucket_name': bucket_name,
+                            'directory_threshold': bucket_config['directory_threshold'],
+                            'stop_level': bucket_config['stop_level'],
+                            'directory_threshold_source': bucket_config['directory_threshold_source'],
+                            'stop_level_source': bucket_config['stop_level_source'],
+                            'operation': 'consolidation_config_applied'
+                        }}
+                    )
+                    
+                except Exception as e:
+                    logger.error(
+                        f"Failed to resolve consolidation configuration for bucket {bucket_name}, using defaults: {str(e)}",
+                        extra={'extra_fields': {
+                            'bucket_name': bucket_name,
+                            'error': str(e),
+                            'fallback_directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
+                            'fallback_stop_level': CONSOLIDATION_STOP_LEVEL,
+                            'fallback_reason': 'config_resolution_error'
+                        }}
+                    )
+                    
+                    bucket_config = {
+                        'directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
+                        'stop_level': CONSOLIDATION_STOP_LEVEL,
+                        'sibling_directory_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
+                        'directory_threshold_source': 'default_fallback',
+                        'stop_level_source': 'default_fallback',
+                        'sibling_directory_threshold_source': 'default_fallback'
+                    }
                 
-                # Log effective configuration being used for this bucket
+                # Step 7: Extract and consolidate paths for this stage
+                object_paths = []
+                for message in stage_messages:
+                    parsed_body = message.get('parsed_body', {})
+                    object_key = parsed_body.get('objectKey', '')
+                    if object_key:
+                        # Remove the resolved origin path prefix to get the relative path for invalidation
+                        # CloudFront invalidation paths should be relative to the origin
+                        if resolved_origin_path and object_key.startswith(resolved_origin_path):
+                            relative_path = object_key[len(resolved_origin_path):]
+                            # Ensure path starts with /
+                            if not relative_path.startswith('/'):
+                                relative_path = '/' + relative_path
+                            object_paths.append(relative_path)
+                        else:
+                            # Fallback: use full object key with leading slash
+                            fallback_path = object_key if object_key.startswith('/') else '/' + object_key
+                            object_paths.append(fallback_path)
+                
+                if not object_paths:
+                    logger.warning(
+                        f"No valid paths extracted from messages for bucket {bucket_name}, stage {stage_id}",
+                        extra={'extra_fields': {
+                            'bucket_name': bucket_name,
+                            'stage_id': stage_id
+                        }}
+                    )
+                    messages_to_delete.extend(stage_messages)
+                    continue
+                
                 logger.info(
-                    f"Using consolidation configuration for bucket {bucket_name}",
+                    f"Paths before consolidation",
                     extra={'extra_fields': {
                         'bucket_name': bucket_name,
-                        'directory_threshold': bucket_config['directory_threshold'],
-                        'stop_level': bucket_config['stop_level'],
-                        'directory_threshold_source': bucket_config['directory_threshold_source'],
-                        'stop_level_source': bucket_config['stop_level_source'],
-                        'operation': 'consolidation_config_applied'
-                    }}
-                )
-                
-            except Exception as e:
-                # Error handling: fall back to default configuration gracefully
-                logger.error(
-                    f"Failed to resolve consolidation configuration for bucket {bucket_name}, using defaults: {str(e)}",
-                    extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'error': str(e),
-                        'fallback_directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
-                        'fallback_stop_level': CONSOLIDATION_STOP_LEVEL,
-                        'fallback_reason': 'config_resolution_error'
-                    }}
-                )
-                
-                # Use default configuration
-                bucket_config = {
-                    'directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
-                    'stop_level': CONSOLIDATION_STOP_LEVEL,
-                    'sibling_directory_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
-                    'directory_threshold_source': 'default_fallback',
-                    'stop_level_source': 'default_fallback',
-                    'sibling_directory_threshold_source': 'default_fallback'
-                }
-            
-            # Step 7: Extract and consolidate paths
-            object_paths = []
-            for message in filtered_messages:  # Use filtered_messages instead of messages
-                parsed_body = message.get('parsed_body', {})
-                object_key = parsed_body.get('objectKey', '')
-                if object_key:
-                    # Remove the origin path prefix to get the relative path for invalidation
-                    # CloudFront invalidation paths should be relative to the origin
-                    # Note: objectKey should already have leading slash from normalization
-                    if object_key.startswith(origin_path):
-                        relative_path = object_key[len(origin_path):]
-                        # Ensure path starts with /
-                        if not relative_path.startswith('/'):
-                            relative_path = '/' + relative_path
-                        
-                        # Log invalidation path generation for debugging
-                        logger.debug(
-                            "Generated invalidation path from object key",
-                            extra={'extra_fields': {
-                                'object_key': object_key,
-                                'origin_path': origin_path,
-                                'relative_path': relative_path,
-                                'path_generation_method': 'origin_prefix_removal'
-                            }}
-                        )
-                        
-                        object_paths.append(relative_path)
-                    else:
-                        # Fallback: use full object key with leading slash
-                        fallback_path = object_key if object_key.startswith('/') else '/' + object_key
-                        
-                        # Log fallback path generation
-                        logger.debug(
-                            "Generated invalidation path using fallback method",
-                            extra={'extra_fields': {
-                                'object_key': object_key,
-                                'origin_path': origin_path,
-                                'fallback_path': fallback_path,
-                                'path_generation_method': 'fallback_full_key'
-                            }}
-                        )
-                        
-                        object_paths.append(fallback_path)
-            
-            if not object_paths:
-                logger.warning(
-                    f"No valid paths extracted from messages for bucket {bucket_name}",
-                    extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'origin_path': origin_path
-                    }}
-                )
-                messages_to_delete.extend(messages)
-                continue
-            
-            # DEBUG: Log paths before consolidation
-            logger.info(
-                f"Paths before consolidation",
-                extra={'extra_fields': {
-                    'bucket_name': bucket_name,
-                    'origin_path': origin_path,
-                    'path_count': len(object_paths),
-                    'paths': object_paths[:20] if len(object_paths) > 20 else object_paths  # Log first 20 paths
-                }}
-            )
-            
-            # Consolidate paths with bucket-specific configuration and bucket pattern
-            consolidated_by_stage = consolidate_paths(
-                object_paths,
-                directory_threshold=bucket_config['directory_threshold'],
-                stop_level=bucket_config['stop_level'],
-                sibling_threshold=bucket_config['sibling_directory_threshold'],
-                bucket_pattern=bucket_pattern
-            )
-            
-            # DEBUG: Log paths after consolidation
-            logger.info(
-                f"Paths after consolidation",
-                extra={'extra_fields': {
-                    'bucket_name': bucket_name,
-                    'origin_path': origin_path,
-                    'bucket_pattern': bucket_pattern,
-                    'stage_count': len(consolidated_by_stage),
-                    'stages': list(consolidated_by_stage.keys())
-                }}
-            )
-            
-            # Step 8: Submit invalidations for each valid distribution and each stage
-            for stage, consolidated_path_chunks in consolidated_by_stage.items():
-                logger.info(
-                    f"Processing stage {stage} with {len(consolidated_path_chunks)} chunks",
-                    extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'stage': stage,
                         'stage_id': stage_id,
-                        'chunk_count': len(consolidated_path_chunks)
+                        'path_count': len(object_paths),
+                        'paths': object_paths[:20] if len(object_paths) > 20 else object_paths
+                    }}
+                )
+                
+                # Consolidate paths with bucket-specific configuration
+                # Note: We don't pass bucket_pattern here because we've already grouped by stage
+                # and extracted relative paths. Passing bucket_pattern would cause re-grouping.
+                consolidated_by_stage = consolidate_paths(
+                    object_paths,
+                    directory_threshold=bucket_config['directory_threshold'],
+                    stop_level=bucket_config['stop_level'],
+                    sibling_threshold=bucket_config['sibling_directory_threshold'],
+                    bucket_pattern=None  # Don't re-group by stage
+                )
+                
+                logger.info(
+                    f"Paths after consolidation",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'stage_id': stage_id,
+                        'consolidated_path_count': len(consolidated_by_stage.get('default', [[]])[0]) if consolidated_by_stage.get('default') else 0,
+                        'chunk_count': len(consolidated_by_stage.get('default', []))
+                    }}
+                )
+                
+                # Step 8: Submit invalidations for each valid distribution
+                # Since we passed bucket_pattern=None, consolidate_paths returns {'default': [[paths]]}
+                consolidated_path_chunks = consolidated_by_stage.get('default', [[]])
+                
+                logger.info(
+                    f"Submitting {len(consolidated_path_chunks)} invalidation chunk(s) for stage {stage_id}",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'stage_id': stage_id,
+                        'chunk_count': len(consolidated_path_chunks),
+                        'total_paths': sum(len(chunk) for chunk in consolidated_path_chunks)
                     }}
                 )
                 
@@ -896,10 +792,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             if result:
                                 summary['invalidations_submitted'] += 1
                                 logger.info(
-                                    f"Successfully submitted invalidation for distribution {dist_id}, stage {stage}",
+                                    f"Successfully submitted invalidation",
                                     extra={'extra_fields': {
                                         'distribution_id': dist_id,
-                                        'stage': stage,
+                                        'bucket_name': bucket_name,
+                                        'stage_id': stage_id,
                                         'invalidation_id': result.get('Id'),
                                         'path_count': len(path_chunk),
                                         'chunk_index': chunk_idx,
@@ -909,10 +806,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             else:
                                 summary['invalidations_failed'] += 1
                                 logger.error(
-                                    f"Failed to submit invalidation for distribution {dist_id}, stage {stage}",
+                                    f"Failed to submit invalidation",
                                     extra={'extra_fields': {
                                         'distribution_id': dist_id,
-                                        'stage': stage,
+                                        'bucket_name': bucket_name,
+                                        'stage_id': stage_id,
                                         'path_count': len(path_chunk),
                                         'chunk_index': chunk_idx
                                     }}
@@ -920,18 +818,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         except Exception as e:
                             summary['invalidations_failed'] += 1
                             logger.error(
-                                f"Exception submitting invalidation for distribution {dist_id}, stage {stage}: {str(e)}",
+                                f"Exception submitting invalidation: {str(e)}",
                                 extra={'extra_fields': {
                                     'distribution_id': dist_id,
-                                    'stage': stage,
+                                    'bucket_name': bucket_name,
+                                    'stage_id': stage_id,
                                     'error': str(e),
                                     'path_count': len(path_chunk),
                                     'chunk_index': chunk_idx
                                 }}
                             )
-            
-            # Mark messages for deletion (processed successfully)
-            messages_to_delete.extend(messages)
+                
+                # Mark stage messages for deletion (processed successfully)
+                messages_to_delete.extend(stage_messages)
         
         # Step 9: Delete processed messages from SQS
         if messages_to_delete:

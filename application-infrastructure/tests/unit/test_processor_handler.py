@@ -1260,7 +1260,7 @@ class TestOriginPathResolution:
         # Assert
         assert result['statusCode'] == 200
         
-        # Verify find_matching_distributions was called with resolved origin path
+        # Verify find_matching_distributions was called with resolved origin path (stage substituted)
         mock_find_dist.assert_called_once_with('test-bucket', '/app/prod')
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
@@ -1476,7 +1476,7 @@ class TestOriginPathResolution:
         # Assert
         assert result['statusCode'] == 200
         
-        # Verify find_matching_distributions was called with static pattern
+        # Verify find_matching_distributions was called with the bucket pattern (no stage placeholder)
         mock_find_dist.assert_called_once_with('test-bucket', '/public')
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
@@ -1487,10 +1487,14 @@ class TestOriginPathResolution:
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
     @patch('functions.processor.handler.delete_messages_batch')
     @patch('functions.processor.handler.close_window')
     def test_missing_stageid_with_stage_placeholder(
-        self, mock_close_window, mock_delete, mock_find_dist,
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
         mock_filter, mock_resolve_pattern, mock_get_config,
         mock_get_tags, mock_validate_bucket, mock_receive
     ):
@@ -1530,6 +1534,10 @@ class TestOriginPathResolution:
         # Bucket has pattern with {stageId} placeholder
         mock_resolve_pattern.return_value = '/app/{stageId}'
         mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
         context = Mock()
@@ -1541,10 +1549,11 @@ class TestOriginPathResolution:
         # Assert
         assert result['statusCode'] == 200
         
-        # Verify find_matching_distributions was NOT called (events skipped)
+        # Pattern has {stageId} but stage extraction failed (empty string)
+        # The code correctly skips processing when pattern needs stage but stage is missing
         mock_find_dist.assert_not_called()
         
-        # Verify messages were deleted (processed, just skipped)
+        # Verify messages were deleted (processed, just skipped due to missing stage)
         mock_delete.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
@@ -1616,5 +1625,5 @@ class TestOriginPathResolution:
         # Assert
         assert result['statusCode'] == 200
         
-        # Verify find_matching_distributions was called with all placeholders replaced
+        # Verify find_matching_distributions was called with all placeholders replaced with same stage
         mock_find_dist.assert_called_once_with('test-bucket', '/app/prod/data/prod')

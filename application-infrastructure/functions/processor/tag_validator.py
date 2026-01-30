@@ -327,6 +327,17 @@ def validate_distribution_tags(
     **Feature: multi-bucket-cloudfront-invalidation, Property 16 & 17: Distribution tag validation**
     **Validates: Requirements 8.1, 8.2, 8.3, 8.4**
     """
+    # Log validation inputs
+    logger.info(
+        f"Validating distribution tags for {distribution_id}",
+        extra={'extra_fields': {
+            'distribution_id': distribution_id,
+            'bucket_app_tag': bucket_app_tag,
+            'stage_id': stage_id,
+            'expected_app_deployment_id': f"{bucket_app_tag}-{stage_id}"
+        }}
+    )
+    
     # Retrieve distribution tags
     tags = get_distribution_tags(distribution_id)
     
@@ -342,6 +353,16 @@ def validate_distribution_tags(
         )
         return False
     
+    # Log retrieved tags
+    logger.info(
+        f"Retrieved tags for distribution {distribution_id}",
+        extra={'extra_fields': {
+            'distribution_id': distribution_id,
+            'tags': tags,
+            'tag_count': len(tags)
+        }}
+    )
+    
     # Check for AllowInvalidationEvents tag
     allow_invalidation = tags.get('AllowInvalidationEvents', '')
     
@@ -350,6 +371,19 @@ def validate_distribution_tags(
     
     # Expected ApplicationDeploymentId format: <bucket-app>-<StageId>
     expected_app_deployment_id = f"{bucket_app_tag}-{stage_id}"
+    
+    # Log comparison details
+    logger.info(
+        f"Comparing distribution tags for {distribution_id}",
+        extra={'extra_fields': {
+            'distribution_id': distribution_id,
+            'allow_invalidation_events': allow_invalidation,
+            'app_deployment_id': app_deployment_id,
+            'expected_app_deployment_id': expected_app_deployment_id,
+            'allow_invalidation_match': allow_invalidation == 'true',
+            'app_deployment_id_match': app_deployment_id == expected_app_deployment_id
+        }}
+    )
     
     # Validate both tags
     allow_invalidation_valid = allow_invalidation == 'true'
