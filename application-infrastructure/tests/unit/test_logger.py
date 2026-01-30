@@ -171,6 +171,103 @@ class TestJSONFormatter:
         assert log_data['bucket'] == 'test-bucket'
         assert log_data['LastModifiedTime'] == test_datetime.isoformat()
         assert log_data['distributionList']['Items'][0]['LastModifiedTime'] == test_datetime.isoformat()
+    
+    def test_format_with_non_serializable_object(self):
+        """Test formatting a log message with non-serializable objects in extra fields."""
+        from unittest.mock import Mock
+        
+        formatter = JSONFormatter()
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname='',
+            lineno=0,
+            msg='Test message with mock',
+            args=(),
+            exc_info=None
+        )
+        
+        # Add a Mock object which is not JSON serializable
+        mock_context = Mock()
+        mock_context.aws_request_id = 'test-request-id'
+        record.extra_fields = {
+            'bucket': 'test-bucket',
+            'context': mock_context
+        }
+        
+        # This should not raise an error, but return valid JSON with error info
+        result = formatter.format(record)
+        log_data = json.loads(result)
+        
+        # Verify the log contains error information
+        assert log_data['message'] == 'Test message with mock'
+        assert log_data['level'] == 'INFO'
+        assert '_serialization_error' in log_data
+        assert log_data['extra_fields'] == '<non-serializable>'
+    
+    def test_format_with_circular_reference(self):
+        """Test formatting a log message with circular references."""
+        formatter = JSONFormatter()
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname='',
+            lineno=0,
+            msg='Test message with circular reference',
+            args=(),
+            exc_info=None
+        )
+        
+        # Create a circular reference
+        circular_dict = {'key': 'value'}
+        circular_dict['self'] = circular_dict
+        record.extra_fields = {
+            'bucket': 'test-bucket',
+            'circular': circular_dict
+        }
+        
+        # This should not raise an error, but return valid JSON with error info
+        result = formatter.format(record)
+        log_data = json.loads(result)
+        
+        # Verify the log contains error information
+        assert log_data['message'] == 'Test message with circular reference'
+        assert log_data['level'] == 'INFO'
+        assert '_serialization_error' in log_data
+        assert log_data['extra_fields'] == '<non-serializable>'
+    
+    def test_format_handles_complete_serialization_failure(self):
+        """Test formatting handles complete serialization failure gracefully."""
+        formatter = JSONFormatter()
+        
+        # Create a record with a message that could cause issues
+        record = logging.LogRecord(
+            name='test',
+            level=logging.ERROR,
+            pathname='',
+            lineno=0,
+            msg='Critical error',
+            args=(),
+            exc_info=None
+        )
+        
+        # Add non-serializable object
+        class NonSerializable:
+            def __str__(self):
+                raise Exception("Cannot convert to string")
+        
+        record.extra_fields = {
+            'bad_object': NonSerializable()
+        }
+        
+        # This should not crash, but return minimal valid JSON
+        result = formatter.format(record)
+        log_data = json.loads(result)
+        
+        # Verify we get some valid output
+        assert 'message' in log_data
+        assert 'level' in log_data
+        assert log_data['level'] == 'ERROR'
 
 
 class TestGetLogLevel:

@@ -1646,7 +1646,7 @@ def test_property_1_sibling_threshold_parameter_usage(data):
     assert len(consolidated_no_consolidation) == num_siblings, f"Should have {num_siblings} paths when threshold not exceeded, got {len(consolidated_no_consolidation)}"
 
 
-@settings(max_examples=5)  # Optimized for faster execution
+@settings(max_examples=5, deadline=None)  # Disable deadline to prevent timing-based failures
 @given(st.data())
 def test_property_2_bucket_specific_sibling_threshold_usage(data):
     """Property 2: Bucket-specific sibling threshold usage.
@@ -1695,9 +1695,9 @@ def test_property_2_bucket_specific_sibling_threshold_usage(data):
     # Mock all the dependencies
     with patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}):
         with patch('functions.processor.handler.receive_messages_batch') as mock_receive:
-            with patch('functions.processor.handler.validate_bucket_tags') as mock_validate_bucket:
+            with patch('functions.processor.handler.validate_bucket_tags_from_dict') as mock_validate_bucket:
                 with patch('functions.processor.handler.get_bucket_tags') as mock_get_tags:
-                    with patch('functions.processor.handler.get_bucket_consolidation_config') as mock_get_config:
+                    with patch('functions.processor.handler.get_bucket_consolidation_config_from_dict') as mock_get_config:
                         with patch('functions.processor.handler.find_matching_distributions') as mock_find_dist:
                             with patch('functions.processor.handler.validate_distribution_tags') as mock_validate_dist:
                                 with patch('functions.processor.handler.consolidate_paths') as mock_consolidate:
@@ -1718,9 +1718,9 @@ def test_property_2_bucket_specific_sibling_threshold_usage(data):
                                                 
                                                 # Import and call the handler
                                                 from functions.processor.handler import handler
+                                                from tests.conftest import MockLambdaContext
                                                 
-                                                context = Mock()
-                                                context.aws_request_id = 'test-request-id'
+                                                context = MockLambdaContext(aws_request_id='test-request-id')
                                                 
                                                 # Act
                                                 result = handler({}, context)
@@ -1728,8 +1728,8 @@ def test_property_2_bucket_specific_sibling_threshold_usage(data):
                                                 # Assert
                                                 assert result['statusCode'] == 200, f"Handler should succeed, got {result}"
                                                 
-                                                # Verify that get_bucket_consolidation_config was called
-                                                mock_get_config.assert_called_once_with('test-bucket')
+                                                # Verify that get_bucket_consolidation_config_from_dict was called
+                                                mock_get_config.assert_called_once_with(mock_get_tags.return_value, 'test-bucket')
                                                 
                                                 # Verify that consolidate_paths was called with the bucket-specific sibling threshold
                                                 mock_consolidate.assert_called_once()

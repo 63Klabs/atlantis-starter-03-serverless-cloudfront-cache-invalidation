@@ -46,7 +46,31 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, 'extra_fields'):
             log_data.update(record.extra_fields)
         
-        return json.dumps(log_data, cls=DateTimeEncoder)
+        try:
+            return json.dumps(log_data, cls=DateTimeEncoder)
+        except (TypeError, ValueError) as e:
+            # Fallback to string representation if JSON serialization fails
+            # Create a new log_data dict to avoid modifying the original
+            fallback_data = {
+                'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                'level': record.levelname,
+                'message': str(record.getMessage()),
+                'logger': record.name,
+                '_serialization_error': str(e),
+                'extra_fields': '<non-serializable>'
+            }
+            # Try again with sanitized data
+            try:
+                return json.dumps(fallback_data)
+            except Exception:
+                # Last resort: return minimal JSON
+                return json.dumps({
+                    'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                    'level': record.levelname,
+                    'message': str(record.getMessage()),
+                    'logger': record.name,
+                    'error': 'Failed to serialize log data'
+                })
 
 
 def get_log_level() -> str:
