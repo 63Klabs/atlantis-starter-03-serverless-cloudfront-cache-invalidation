@@ -24,7 +24,7 @@ from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_ST
 try:
     # Lambda environment - files are at root level
     from queue_client import receive_messages_batch, delete_messages_batch
-    from tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags, get_bucket_consolidation_config
+    from tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags, get_bucket_consolidation_config, validate_bucket_tags_from_dict, get_bucket_consolidation_config_from_dict
     from distribution_finder import find_matching_distributions
     from path_consolidator import consolidate_paths
     from invalidation_client import create_invalidation
@@ -32,7 +32,7 @@ try:
 except ImportError:
     # Development/test environment - use relative imports
     from .queue_client import receive_messages_batch, delete_messages_batch
-    from .tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags, get_bucket_consolidation_config
+    from .tag_validator import validate_bucket_tags, get_bucket_tags, validate_distribution_tags, get_bucket_consolidation_config, validate_bucket_tags_from_dict, get_bucket_consolidation_config_from_dict
     from .distribution_finder import find_matching_distributions
     from .path_consolidator import consolidate_paths
     from .invalidation_client import create_invalidation
@@ -351,19 +351,53 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }}
             )
             
-            # Step 3: Validate bucket tags
+            # Step 3: Fetch bucket tags once (single API call per bucket)
             logger.info(
-                f"Step 3: Validating bucket tags for {bucket_name}",
+                f"Step 3: Fetching bucket tags for {bucket_name}",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
-                    'aboutToCallValidateBucketTags': True
+                    'aboutToCallGetBucketTags': True
                 }}
             )
             
-            bucket_validation_result = validate_bucket_tags(bucket_name)
+            bucket_tags = get_bucket_tags(bucket_name)
+            
+            # Early exit if tag fetch fails
+            if bucket_tags is None:
+                logger.error(
+                    f"Failed to retrieve bucket tags for {bucket_name}, skipping",
+                    extra={'extra_fields': {
+                        'bucket_name': bucket_name,
+                        'bucketTagsRetrievalFailed': True,
+                        'messagesBeingDeleted': len(messages)
+                    }}
+                )
+                summary['buckets_rejected'] += 1
+                messages_to_delete.extend(messages)
+                continue
             
             logger.info(
-                f"Step 3: Bucket validation result",
+                f"Successfully fetched {len(bucket_tags)} tags for bucket {bucket_name}",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'tagCount': len(bucket_tags),
+                    'tagKeys': list(bucket_tags.keys())
+                }}
+            )
+            
+            # Step 3.1: Validate bucket tags from fetched dictionary
+            logger.info(
+                f"Step 3.1: Validating bucket tags for {bucket_name}",
+                extra={'extra_fields': {
+                    'bucketName': bucket_name,
+                    'aboutToCallValidateBucketTagsFromDict': True
+                }}
+            )
+            
+            bucket_validation_result = validate_bucket_tags_from_dict(bucket_tags)
+            
+            logger.info(
+                f"Step 3.1: Bucket validation result",
                 extra={'extra_fields': {
                     'bucketName': bucket_name,
                     'validationResult': bucket_validation_result,
@@ -387,20 +421,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             summary['buckets_validated'] += 1
             
-            # Get bucket tags for later use
-            bucket_tags = get_bucket_tags(bucket_name)
-            
-            if not bucket_tags:
-                logger.error(
-                    f"Failed to retrieve bucket tags for {bucket_name}, skipping",
-                    extra={'extra_fields': {
-                        'bucket_name': bucket_name,
-                        'bucketTagsRetrievalFailed': True
-                    }}
-                )
-                messages_to_delete.extend(messages)
-                continue
-            
+            # Extract application tag from fetched tags
             bucket_app_tag = bucket_tags.get('atlantis:Application', '')
             
             if not bucket_app_tag:
@@ -664,17 +685,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     messages_to_delete.extend(stage_messages)
                     continue
                 
-                # Step 6: Get bucket-specific consolidation configuration
+                # Step 6: Get bucket-specific consolidation configuration from fetched tags
                 logger.info(
                     f"Step 6: Resolving consolidation configuration for bucket {bucket_name}",
                     extra={'extra_fields': {
                         'bucketName': bucket_name,
-                        'aboutToCallGetBucketConsolidationConfig': True
+                        'aboutToCallGetBucketConsolidationConfigFromDict': True
                     }}
                 )
                 
                 try:
-                    bucket_config = get_bucket_consolidation_config(bucket_name)
+                    bucket_config = get_bucket_consolidation_config_from_dict(bucket_tags, bucket_name)
                     
                     logger.info(
                         f"Using consolidation configuration for bucket {bucket_name}",
@@ -682,8 +703,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             'bucket_name': bucket_name,
                             'directory_threshold': bucket_config['directory_threshold'],
                             'stop_level': bucket_config['stop_level'],
+                            'sibling_directory_threshold': bucket_config['sibling_directory_threshold'],
                             'directory_threshold_source': bucket_config['directory_threshold_source'],
                             'stop_level_source': bucket_config['stop_level_source'],
+                            'sibling_directory_threshold_source': bucket_config['sibling_directory_threshold_source'],
                             'operation': 'consolidation_config_applied'
                         }}
                     )
@@ -696,6 +719,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             'error': str(e),
                             'fallback_directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
                             'fallback_stop_level': CONSOLIDATION_STOP_LEVEL,
+                            'fallback_sibling_directory_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
                             'fallback_reason': 'config_resolution_error'
                         }}
                     )

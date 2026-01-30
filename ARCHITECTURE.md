@@ -92,8 +92,8 @@ The system consists of two primary Lambda functions that work together to proces
 
 **Responsibilities**:
 - Parse S3 event notifications
+- Filter events based on application-wide origin path pattern
 - Filter events based on StageId (production environments: p*, s*, b*)
-- Filter events based on path pattern (`/<StageId>/public/*`)
 - Send valid events to SQS queue
 - Track aggregation windows in DynamoDB
 - Create EventBridge one-time schedules for processing (schedule runs then self-deletes)
@@ -122,18 +122,6 @@ The system consists of two primary Lambda functions that work together to proces
 - Message Retention: 4 days
 - Long Polling: 20 seconds
 - Dead Letter Queue: Enabled after 3 receives
-
-**Message Format**:
-```json
-{
-  "bucketName": "acme-static-assets",
-  "objectKey": "/prod/public/images/logo.png",
-  "originPath": "/prod/public",
-  "stageId": "prod",
-  "eventTime": "2025-12-09T10:30:00.000Z",
-  "eventType": "ObjectCreated:Put"
-}
-```
 
 ### 4. DynamoDB Tracking Table
 
@@ -183,6 +171,8 @@ The aggregation window mechanism batches S3 events over a 5-minute period to pro
    - The next S3 event will create a new aggregation window
    - The cycle repeats
 
+> Note: Often multiple S3 events may come in at the same time creating a race condition where multiple schedules will be created (up to around 4 or 5). This does not affect processing.
+
 ### Benefits
 
 - **Cost Savings**: No constant cron job running
@@ -204,6 +194,7 @@ Set system-wide defaults for all buckets:
 - **SiblingDirectoryConsolidationThreshold**: Number of sibling directories that triggers consolidation to parent wildcard (default: 10, range: 1-1000)
 - **ConsolidationStopLevel**: Directory depth from root where consolidation stops (default: 1, range: 0-20)
 - **AggregationWindowSeconds**: Event aggregation window duration (default: 300, range: 60-900)
+- **OriginPathPattern**: Pattern for expected paths from S3. Default: `/{stageId}/public` where `{stageId}` is a placeholder for a variable stage. Use `/` to turn off ingestion filtering and use root or allow buckets to specify their own pattern.
 
 #### Per-Bucket Configuration (S3 Bucket Tags)
 
@@ -218,7 +209,12 @@ Value: 15  (range: 1-1000)
 
 Key: invalidator:ConsolidationStopLevel  
 Value: 2  (range: 0-20)
+
+Key: invalidator:OriginPathPattern
+Value: /@stageId@/public (examples: / , /@stageId@ , /web)
 ```
+
+> Note: Since AWS resource tags do not accept `{}` characters in values, `@` is used to surround the `stageId` placeholder instead. This is only for tags. Use `{stageId}` for all other patterns.
 
 To configure, refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#configuration)
 
@@ -321,7 +317,7 @@ Output: Request 1: 1000 paths
 
 The system uses the following priority order for configuration values:
 
-1. **Bucket Tags** (highest priority): `invalidator:DirectoryConsolidationThreshold`, `invalidator:SiblingDirectoryConsolidationThreshold`, `invalidator:ConsolidationStopLevel`
+1. **Bucket Tags** (highest priority): `invalidator:DirectoryConsolidationThreshold`, `invalidator:SiblingDirectoryConsolidationThreshold`, `invalidator:ConsolidationStopLevel`, `invalidator:OriginPathPattern`
 2. **CloudFormation Parameters**: `DirectoryConsolidationThreshold`, `SiblingDirectoryConsolidationThreshold`, `ConsolidationStopLevel`
 3. **Hardcoded Defaults** (fallback): directory_threshold=3, sibling_threshold=10, stop_level=1
 
@@ -404,6 +400,9 @@ Value: 1-1000 (number of sibling directories that triggers consolidation to pare
 
 Key: invalidator:ConsolidationStopLevel
 Value: 0-20 (directory depth from root where consolidation stops)
+
+Key: invalidator:OriginPathPattern
+Value: /@stageId@/public (origin path to match and filter against)
 ```
 
 **Configuration Tag Behavior**:
@@ -473,22 +472,39 @@ Refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#deployment-ste
 ### Environment Variables
 
 #### Ingestor Lambda
+- `DEPLOY_ENVIRONMENT`: Deployment environment (PROD, TEST, or DEV)
+- `LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
+- `LAMBDA_TIMEOUT_IN_SEC`: Lambda timeout in seconds (matches IngestorTimeoutInSeconds parameter)
+- `AWS_LAMBDA_LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
+- `AWS_LAMBDA_LOG_FORMAT`: json
+- `PREFIX`: Resource naming prefix
+- `PROJECT_ID`: Project identifier
+- `STAGE_ID`: Stage identifier
 - `QUEUE_URL`: SQS queue URL for event messages
 - `TRACKING_TABLE`: DynamoDB table name for window tracking
 - `PROCESSOR_FUNCTION_ARN`: ARN of Processor Lambda
+- `SCHEDULER_ROLE_ARN`: ARN of EventBridge Scheduler execution role
 - `AGGREGATION_WINDOW_SECONDS`: Window duration (default: 300)
-- `LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
+- `ORIGIN_PATH_PATTERN`: Pattern for expected paths from S3 (default: /{stageId}/public)
 
 #### Processor Lambda
+- `DEPLOY_ENVIRONMENT`: Deployment environment (PROD, TEST, or DEV)
+- `LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
+- `LAMBDA_TIMEOUT_IN_SEC`: Lambda timeout in seconds (matches ProcessorTimeoutInSeconds parameter)
+- `AWS_LAMBDA_LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
+- `AWS_LAMBDA_LOG_FORMAT`: json
+- `PREFIX`: Resource naming prefix
+- `PROJECT_ID`: Project identifier
+- `STAGE_ID`: Stage identifier
 - `QUEUE_URL`: SQS queue URL for event messages
 - `TRACKING_TABLE`: DynamoDB table name for window tracking
 - `MAX_BATCH_SIZE`: SQS batch size (default: 10)
 - `MAX_PATHS_PER_INVALIDATION`: CloudFront limit (default: 1000)
-- `DIRECTORY_CONSOLIDATION_THRESHOLD`: Default directory consolidation threshold (default: 3)
-- `SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD`: Default sibling directory consolidation threshold (default: 10)
-- `CONSOLIDATION_STOP_LEVEL`: Default consolidation stop level (default: 1)
+- `ORIGIN_PATH_PATTERN`: Pattern for expected paths from S3 (default: /{stageId}/public)
 - `AGGREGATION_WINDOW_SECONDS`: Event aggregation window duration (default: 300)
-- `LOG_LEVEL`: INFO (PROD) or DEBUG (TEST/DEV)
+- `DIRECTORY_CONSOLIDATION_THRESHOLD`: Default directory consolidation threshold (default: 3)
+- `CONSOLIDATION_STOP_LEVEL`: Default consolidation stop level (default: 1)
+- `SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD`: Default sibling directory consolidation threshold (default: 10)
 
 ### CloudFormation Parameters
 
@@ -517,14 +533,15 @@ Refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#deployment-ste
 - `SiblingDirectoryConsolidationThreshold`: Default threshold for sibling directory consolidation (default: 10, range: 1-1000)
 - `ConsolidationStopLevel`: Directory depth from root where consolidation stops (default: 1, range: 0-20)
 - `MaxPathsPerInvalidation`: Maximum paths per CloudFront invalidation request (default: 1000, range: 1-3000)
+- `OriginPathPattern`: Pattern for expected paths from S3 (default: /{stageId}/public)
 
 #### Lambda Function Settings
 
-- `IngestorTimeoutInSeconds`: Ingestor Lambda timeout (default: 10)
-- `IngestorMemoryInMB`: Ingestor Lambda memory (default: 256)
-- `ProcessorTimeoutInSeconds`: Processor Lambda timeout (default: 300)
-- `ProcessorMemoryInMB`: Processor Lambda memory (default: 512)
-- `FunctionArchitecture`: Lambda architecture (x86_64 or arm64)
+- `IngestorTimeoutInSeconds`: Ingestor Lambda timeout (default: 10, range: 3-30)
+- `IngestorMemoryInMB`: Ingestor Lambda memory (default: 256, range: 128-10240)
+- `ProcessorTimeoutInSeconds`: Processor Lambda timeout (default: 300, range: 60-900)
+- `ProcessorMemoryInMB`: Processor Lambda memory (default: 512, range: 128-10240)
+- `FunctionArchitecture`: Lambda architecture (default: arm64, options: x86_64 or arm64)
 
 ## Monitoring and Troubleshooting
 

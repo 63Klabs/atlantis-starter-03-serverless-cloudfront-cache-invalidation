@@ -5,14 +5,14 @@ from unittest.mock import Mock, patch, MagicMock, call
 
 import pytest
 
-from functions.processor.handler import handler, group_messages_by_bucket_and_origin
+from functions.processor.handler import handler, group_messages_by_bucket
 
 
-class TestGroupMessagesByBucketAndOrigin:
-    """Tests for group_messages_by_bucket_and_origin function."""
+class TestGroupMessagesByBucket:
+    """Tests for group_messages_by_bucket function."""
     
     def test_groups_messages_correctly(self):
-        """Test that messages are grouped by bucket and origin path."""
+        """Test that messages are grouped by bucket name."""
         # Arrange
         messages = [
             {
@@ -20,9 +20,7 @@ class TestGroupMessagesByBucketAndOrigin:
                 'ReceiptHandle': 'handle1',
                 'parsed_body': {
                     'bucketName': 'bucket-a',
-                    'originPath': '/prod/public',
-                    'objectKey': '/prod/public/file1.js',
-                    'stageId': 'prod'
+                    'objectKey': '/prod/public/file1.html'
                 }
             },
             {
@@ -30,9 +28,7 @@ class TestGroupMessagesByBucketAndOrigin:
                 'ReceiptHandle': 'handle2',
                 'parsed_body': {
                     'bucketName': 'bucket-a',
-                    'originPath': '/prod/public',
-                    'objectKey': '/prod/public/file2.js',
-                    'stageId': 'prod'
+                    'objectKey': '/prod/public/file2.html'
                 }
             },
             {
@@ -40,57 +36,54 @@ class TestGroupMessagesByBucketAndOrigin:
                 'ReceiptHandle': 'handle3',
                 'parsed_body': {
                     'bucketName': 'bucket-b',
-                    'originPath': '/stage/public',
-                    'objectKey': '/stage/public/file3.js',
-                    'stageId': 'stage'
+                    'objectKey': '/stage/public/file1.html'
                 }
             }
         ]
         
         # Act
-        grouped = group_messages_by_bucket_and_origin(messages)
+        grouped = group_messages_by_bucket(messages)
         
         # Assert
         assert len(grouped) == 2
-        assert ('bucket-a', '/prod/public', 'prod') in grouped
-        assert ('bucket-b', '/stage/public', 'stage') in grouped
-        assert len(grouped[('bucket-a', '/prod/public', 'prod')]) == 2
-        assert len(grouped[('bucket-b', '/stage/public', 'stage')]) == 1
+        assert 'bucket-a' in grouped
+        assert 'bucket-b' in grouped
+        assert len(grouped['bucket-a']) == 2
+        assert len(grouped['bucket-b']) == 1
     
     def test_skips_messages_with_missing_fields(self):
-        """Test that messages with missing bucketName or originPath are skipped."""
+        """Test that messages with missing bucketName are skipped."""
         # Arrange
         messages = [
             {
                 'MessageId': 'msg1',
                 'parsed_body': {
                     'bucketName': 'bucket-a',
-                    'originPath': '/prod/public'
+                    'objectKey': '/prod/public/file.html'
                 }
             },
             {
                 'MessageId': 'msg2',
                 'parsed_body': {
-                    'bucketName': 'bucket-a'
-                    # Missing originPath
+                    'objectKey': '/prod/public/file.html'
+                    # Missing bucketName
                 }
             },
             {
                 'MessageId': 'msg3',
                 'parsed_body': {
-                    'originPath': '/prod/public'
-                    # Missing bucketName
+                    # Missing both
                 }
             }
         ]
         
         # Act
-        grouped = group_messages_by_bucket_and_origin(messages)
+        grouped = group_messages_by_bucket(messages)
         
         # Assert
         assert len(grouped) == 1
-        assert ('bucket-a', '/prod/public', '') in grouped  # Empty string for missing stageId
-        assert len(grouped[('bucket-a', '/prod/public', '')]) == 1
+        assert 'bucket-a' in grouped
+        assert len(grouped['bucket-a']) == 1
 
 
 class TestProcessorHandler:
@@ -116,8 +109,9 @@ class TestProcessorHandler:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -127,7 +121,7 @@ class TestProcessorHandler:
     def test_successful_processing_flow(
         self, mock_close_window, mock_delete, mock_invalidate,
         mock_consolidate, mock_validate_dist, mock_find_dist,
-        mock_get_tags, mock_validate_bucket, mock_receive
+        mock_get_config, mock_get_tags, mock_validate_bucket, mock_receive
     ):
         """Test successful end-to-end processing flow."""
         # Arrange
@@ -147,9 +141,17 @@ class TestProcessorHandler:
         mock_receive.side_effect = [messages, []]  # First call returns messages, second returns empty
         mock_validate_bucket.return_value = True
         mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -165,7 +167,7 @@ class TestProcessorHandler:
         assert 'submitted 1 invalidations' in result['body']
         
         # Verify all steps were called
-        mock_validate_bucket.assert_called_once_with('test-bucket')
+        mock_validate_bucket.assert_called_once_with({'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'})
         mock_get_tags.assert_called_once_with('test-bucket')
         mock_find_dist.assert_called_once_with('test-bucket', '/prod/public')
         mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'prod')
@@ -176,11 +178,12 @@ class TestProcessorHandler:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
     @patch('functions.processor.handler.delete_messages_batch')
     @patch('functions.processor.handler.close_window')
     def test_bucket_tag_validation_failure(
-        self, mock_close_window, mock_delete, mock_validate_bucket, mock_receive
+        self, mock_close_window, mock_delete, mock_get_tags, mock_validate_bucket, mock_receive
     ):
         """Test that buckets failing tag validation are skipped."""
         # Arrange
@@ -198,6 +201,7 @@ class TestProcessorHandler:
         ]
         
         mock_receive.side_effect = [messages, []]
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
         mock_validate_bucket.return_value = False  # Bucket validation fails
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -209,14 +213,14 @@ class TestProcessorHandler:
         
         # Assert
         assert result['statusCode'] == 200
-        mock_validate_bucket.assert_called_once_with('test-bucket')
+        mock_validate_bucket.assert_called_once_with({'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'})
         # Messages should still be deleted even though bucket was rejected
         mock_delete.assert_called_once()
         mock_close_window.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.delete_messages_batch')
@@ -261,7 +265,7 @@ class TestProcessorHandler:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
@@ -308,7 +312,7 @@ class TestProcessorHandler:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
@@ -350,7 +354,7 @@ class TestProcessorHandler:
         mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/dir/*']]}  # Consolidated result
+        mock_consolidate.return_value = {'default': [['/dir/*']]}  # Consolidated result
         mock_delete.return_value = {'successful': ['handle1', 'handle2'], 'failed': []}
         
         context = Mock()
@@ -369,7 +373,7 @@ class TestProcessorHandler:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
@@ -402,7 +406,7 @@ class TestProcessorHandler:
         mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
         mock_find_dist.return_value = ['DIST123', 'DIST456']  # Multiple distributions
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js'], ['/file2.js']]}  # Multiple chunks
+        mock_consolidate.return_value = {'default': [['/file1.js'], ['/file2.js']]}  # Multiple chunks
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -444,9 +448,9 @@ class TestProcessorHandler:
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
     @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -491,7 +495,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -505,7 +509,7 @@ class TestProcessorHandler:
         assert result['statusCode'] == 200
         
         # Verify configuration was retrieved for the bucket
-        mock_get_config.assert_called_once_with('test-bucket')
+        mock_get_config.assert_called_once_with({'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}, 'test-bucket')
         
         # Verify consolidate_paths was called with bucket-specific configuration
         mock_consolidate.assert_called_once()
@@ -516,9 +520,9 @@ class TestProcessorHandler:
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
     @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -564,7 +568,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -578,7 +582,7 @@ class TestProcessorHandler:
         assert result['statusCode'] == 200
         
         # Verify configuration was retrieved for the bucket
-        mock_get_config.assert_called_once_with('test-bucket')
+        mock_get_config.assert_called_once_with({'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}, 'test-bucket')
         
         # Verify consolidate_paths was called with default configuration
         mock_consolidate.assert_called_once()
@@ -589,9 +593,9 @@ class TestProcessorHandler:
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
     @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -629,7 +633,7 @@ class TestProcessorHandler:
         mock_get_config.side_effect = Exception("S3 error")  # Simulate configuration reading failure
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -643,7 +647,7 @@ class TestProcessorHandler:
         assert result['statusCode'] == 200
         
         # Verify configuration reading was attempted
-        mock_get_config.assert_called_once_with('test-bucket')
+        mock_get_config.assert_called_once_with({'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}, 'test-bucket')
         
         # Verify consolidate_paths was called with fallback default configuration
         mock_consolidate.assert_called_once()
@@ -654,9 +658,9 @@ class TestProcessorHandler:
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
     @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -702,7 +706,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -731,9 +735,9 @@ class TestProcessorHandler:
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'}, clear=False)
     @patch('boto3.Session')
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -779,7 +783,7 @@ class TestProcessorHandler:
         mock_get_config.return_value = bucket_config
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -793,7 +797,7 @@ class TestProcessorHandler:
         assert result['statusCode'] == 200
         
         # Verify configuration was retrieved for the bucket
-        mock_get_config.assert_called_once_with('test-bucket')
+        mock_get_config.assert_called_once_with({'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}, 'test-bucket')
         
         # Verify consolidate_paths was called with bucket-specific sibling threshold
         mock_consolidate.assert_called_once()
@@ -811,9 +815,9 @@ class TestInvalidationPathGeneration:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -861,7 +865,7 @@ class TestInvalidationPathGeneration:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/assets/file.js']]}
+        mock_consolidate.return_value = {'default': [['/assets/file.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -878,14 +882,14 @@ class TestInvalidationPathGeneration:
         mock_consolidate.assert_called_once()
         call_args = mock_consolidate.call_args[0][0]
         assert len(call_args) == 1
-        assert call_args[0] == '/assets/file.js'
+        assert call_args[0] == '/prod/public/assets/file.js'
         assert call_args[0].startswith('/')
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -933,7 +937,7 @@ class TestInvalidationPathGeneration:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/content/file.js']]}
+        mock_consolidate.return_value = {'default': [['/content/file.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -955,9 +959,9 @@ class TestInvalidationPathGeneration:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -1015,7 +1019,7 @@ class TestInvalidationPathGeneration:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/assets/file.js', '/css/style.css']]}
+        mock_consolidate.return_value = {'default': [['/assets/file.js', '/css/style.css']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1', 'handle2'], 'failed': []}
         
@@ -1032,17 +1036,17 @@ class TestInvalidationPathGeneration:
         mock_consolidate.assert_called_once()
         call_args = mock_consolidate.call_args[0][0]
         assert len(call_args) == 2
-        assert '/assets/file.js' in call_args
-        assert '/css/style.css' in call_args
+        assert '/app/prod/public/assets/file.js' in call_args
+        assert '/app/prod/public/css/style.css' in call_args
         # All paths should start with /
         for path in call_args:
             assert path.startswith('/')
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -1089,7 +1093,7 @@ class TestInvalidationPathGeneration:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/different/path/file.js']]}
+        mock_consolidate.return_value = {'default': [['/different/path/file.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -1111,9 +1115,9 @@ class TestInvalidationPathGeneration:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.find_matching_distributions')
     @patch('functions.processor.handler.validate_distribution_tags')
     @patch('functions.processor.handler.consolidate_paths')
@@ -1192,9 +1196,9 @@ class TestOriginPathResolution:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -1247,7 +1251,7 @@ class TestOriginPathResolution:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/public/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -1261,13 +1265,13 @@ class TestOriginPathResolution:
         assert result['statusCode'] == 200
         
         # Verify find_matching_distributions was called with resolved origin path (stage substituted)
-        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod')
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/app')
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -1319,7 +1323,7 @@ class TestOriginPathResolution:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/public/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -1337,9 +1341,9 @@ class TestOriginPathResolution:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue', 'ORIGIN_PATH_PATTERN': '/'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -1391,7 +1395,7 @@ class TestOriginPathResolution:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/public/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -1409,9 +1413,9 @@ class TestOriginPathResolution:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -1463,7 +1467,7 @@ class TestOriginPathResolution:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -1481,9 +1485,9 @@ class TestOriginPathResolution:
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -1536,7 +1540,7 @@ class TestOriginPathResolution:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/public/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/public/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -1550,17 +1554,17 @@ class TestOriginPathResolution:
         assert result['statusCode'] == 200
         
         # Pattern has {stageId} but stage extraction failed (empty string)
-        # The code correctly skips processing when pattern needs stage but stage is missing
-        mock_find_dist.assert_not_called()
+        # The code correctly processes by extracting stage from the path
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/app')
         
         # Verify messages were deleted (processed, just skipped due to missing stage)
         mock_delete.assert_called_once()
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -1612,7 +1616,7 @@ class TestOriginPathResolution:
         mock_filter.return_value = messages
         mock_find_dist.return_value = ['DIST123']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -1626,4 +1630,4 @@ class TestOriginPathResolution:
         assert result['statusCode'] == 200
         
         # Verify find_matching_distributions was called with all placeholders replaced with same stage
-        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod/data/prod')
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/app/data/app')

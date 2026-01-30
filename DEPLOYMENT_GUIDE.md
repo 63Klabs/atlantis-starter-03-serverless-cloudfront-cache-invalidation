@@ -26,11 +26,13 @@ The enhanced system includes the following new capabilities:
    - `SiblingDirectoryConsolidationThreshold` (default: 10)
    - `ConsolidationStopLevel` (default: 1)
    - `AggregationWindowSeconds` (default: 300)
+   - `OriginPathPattern` (default: `/{stageId}/public`)
 
 2. **Bucket Tags for Configuration**:
    - `invalidator:DirectoryConsolidationThreshold` (1-1000)
    - `invalidator:SiblingDirectoryConsolidationThreshold` (1-1000)
    - `invalidator:ConsolidationStopLevel` (0-20)
+   - `invalidator:OriginPathPattern` (e.g., `/{stageId}/public`, `/assets`, `/`)
 
 3. **Backward Compatibility**: Existing deployments continue to work without changes
 
@@ -75,7 +77,7 @@ Like any other project, you can skip the Atlantis platform and go at it on your 
 
 However, if you are managing many projects manually (especially on your own or part of a small team), the Atlantis platform is highly recommended as it implements Platform Engineering and AWS best practices. Plus it utilizes AWS native resources including SAM deployments and CloudFormation without the need of proprietary DevOps tools. Everything is API, CloudFormation template, and SAM CLI based.
 
-If this is your first time deploying to AWS, or deployments have been difficult to manage in the past and you are looking into automating some of your tasks, _please_ look at 63Klabs Atlantis. (If you traditionally deploy applications through the Web Console, _PLEASE_ look into Atlantis! We have many, many [tutorials to get you started](https://github.com/63Klabs/atlantis-tutorials) deploying production-ready applications!) using Platform Engineering and CI/CD best practices with scripts as easy as create_repo.py, config.py, and deploy.py that all use SAM CONFIG files written in TOML.
+If this is your first time deploying to AWS, or deployments have been difficult to manage in the past and you are looking into automating some of your tasks, _please_ look at the 63Klabs Atlantis Templates and Scripts Platform. (If you traditionally deploy applications through the Web Console, _PLEASE_ look into Atlantis! We have many, many [tutorials to get you started](https://github.com/63Klabs/atlantis-tutorials) deploying production-ready applications!) using Platform Engineering and CI/CD best practices with scripts as easy as create_repo.py, config.py, and deploy.py that all use SAM CONFIG files written in TOML.
 
 ### Step 1: Review Configuration Options
 
@@ -85,6 +87,7 @@ Before deployment, decide on your configuration strategy:
 - DirectoryConsolidationThreshold: 3
 - SiblingDirectoryConsolidationThreshold: 10
 - ConsolidationStopLevel: 1
+- OriginPathPattern: `/{stageId}/public`
 - No additional parameters needed
 
 #### Option B: Custom System-Wide Configuration
@@ -106,7 +109,7 @@ Atlantis uses the following naming conventions:
 
 ### Step 3: Create and Ready the Repository
 
-Infrastructure deployment using 63Klabs Atlantis Platform Templates and Scripts are orchestrated from your organization's SAM Configuration repository.
+Infrastructure deployment using the 63Klabs Atlantis Templates and Scripts Platform are orchestrated from your organization's SAM Configuration repository.
 
 The following steps are performed from the command line from within the SAM Configuration repository.
 
@@ -368,7 +371,8 @@ Update the `application-infrastructure/template-configuration.json` file to incl
     "DirectoryConsolidationThreshold": "5",
     "SiblingDirectoryConsolidationThreshold": "5",
     "ConsolidationStopLevel": "2",
-    "AggregationWindowSeconds": "60"
+    "AggregationWindowSeconds": "60",
+    "OriginPathPattern": "/"
 }
 ```
 
@@ -389,6 +393,7 @@ Bucket tagging should be performed using the Atlantis SAM Configuration scripts 
 invalidator:DirectoryConsolidationThreshold=15
 invalidator:SiblingDirectoryConsolidationThreshold=15
 invalidator:ConsolidationStopLevel=3
+invalidator:OriginPathPattern=/web/@stageId/public
 
 # Deploy changes if you skipped deployment during config
 ./cli/deploy.py storage PREFIX MY_STATIC_ASSETS
@@ -545,6 +550,7 @@ This is the **recommended configuration** for most use cases as it:
 - Clearly separates production and non-production content
 - Automatically filters non-production stages (dev, test)
 - Works seamlessly with multi-stage deployments
+- Reduces the number of S3 buckets
 
 #### When to Use Custom Patterns
 
@@ -572,11 +578,15 @@ Set the `OriginPathPattern` parameter during stack deployment to apply a pattern
 }
 ```
 
+> Note: If your buckets differ widely in structure, you can turn off pre-filtering by the ingestor using `OriginPathPattern: "/"` and tag each bucket that doesn't use root as an origin path with the `invalidator:OriginPathPattern` tag.
+
 **2. Per-Bucket Configuration (S3 Bucket Tag)**
 
 Override the application-wide pattern for specific buckets using the `invalidator:OriginPathPattern` tag.
 
 **Important**: AWS tags do not allow curly braces `{}`, so use `@stageId@` instead of `{stageId}` in bucket tag values. The processor will automatically normalize `@stageId@` to `{stageId}` internally.
+
+**Also Important**: The application filters events as they come in before adding to the queue. In order to use `invalidator:OriginPathPattern` the application-wide pattern must not filter out the bucket-specified pattern. Use `/` to turn off pre-filtering completely. 
 
 ```bash
 aws s3api put-bucket-tagging \
@@ -626,7 +636,7 @@ Filters: /dev/assets/*, /test/assets/*
 ```
 Pattern: /
 Matches: All paths in bucket
-Behavior: Entire bucket treated as production content
+Behavior: Entire bucket treated as production content unless bucket tag `invalidator:OriginPathPattern` is present.
 ```
 
 **Deep Nested Pattern**:
@@ -643,7 +653,7 @@ Origin path patterns must follow these rules:
 1. **Must start with `/`** - Patterns must begin with a forward slash
 2. **Must not end with `/`** - Trailing slashes are not allowed
 3. **Valid characters only** - Use a-z, A-Z, 0-9, hyphens (-), underscores (_), and curly braces for placeholder
-4. **Placeholder format** - Only `{stageId}` is allowed as a placeholder (curly braces can only wrap the literal text "stageId")
+4. **Placeholder format** - Only `{stageId}` is allowed as a placeholder (curly braces can only wrap the literal text "stageId") (Use `@stageId@` in bucket tags)
 
 **Valid patterns**:
 - `/{stageId}/public`
@@ -723,18 +733,23 @@ You have multiple buckets with different structures:
 - Bucket A: Uses `/{stageId}/public`
 - Bucket B: Uses `/public`
 - Bucket C: Uses `/{stageId}/assets`
+- Bucket D: Uses `/`
 
 Configuration:
 ```json
 {
   "Parameters": {
-    "OriginPathPattern": "/{stageId}/public"
+    "OriginPathPattern": "/"
   }
 }
 ```
 
 Then add bucket tags:
 ```bash
+# Bucket A override (note: use @stageId@ in bucket tags, not {stageId})
+aws s3api put-bucket-tagging --bucket bucket-a \
+  --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/@stageId@/public}]'
+
 # Bucket B override
 aws s3api put-bucket-tagging --bucket bucket-b \
   --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/public}]'
@@ -742,9 +757,15 @@ aws s3api put-bucket-tagging --bucket bucket-b \
 # Bucket C override (note: use @stageId@ in bucket tags, not {stageId})
 aws s3api put-bucket-tagging --bucket bucket-c \
   --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/@stageId@/assets}]'
+
+# Bucket D override
+aws s3api put-bucket-tagging --bucket bucket-c \
+  --tagging 'TagSet=[{Key=invalidator:OriginPathPattern,Value=/}]'
 ```
 
-Result: Each bucket uses its specific pattern, Bucket A uses the default.
+Result: Each bucket uses its specific pattern.
+
+> Note: If `/public` was used as OriginPathPattern then any event arriving from buckets a, c, and d would be filtered out and not processed. You must use the least restrictive `OriginPathPattern` setting for your stack.
 
 **Example 3: Custom Assets Directory**
 
@@ -771,7 +792,7 @@ Configuration:
 }
 ```
 
-Result: System processes `/prod/assets/*` and `/stage/assets/*`, filters `/dev/assets/*` and `/test/assets/*`.
+Result: System processes `/prod/assets/*` and `/stage/assets/*`, filters `/*`, `/dev/assets/*` and `/test/assets/*`.
 
 #### Troubleshooting
 

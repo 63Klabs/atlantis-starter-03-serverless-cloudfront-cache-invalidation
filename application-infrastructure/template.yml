@@ -5,7 +5,7 @@
 # Atlantis for AWS SAM Deployments
 # Starter 03 - CloudFront Cache Invalidator
 # Author: Chad Kluck - 63klabs.net
-# Version: v0.0.2/2026-01-27
+# Version: v0.0.2/2026-01-31
 
 # Documentation, Issues/Feature Requests, Latest Updates, and Security Reports on GitHub:
 # https://github.com/63Klabs/atlantis-starter-03-serverless-cloudfront-cache-invalidation
@@ -266,7 +266,7 @@ Parameters:
 
   OriginPathPattern:
     Type: String
-    Description: "Origin path pattern for S3 bucket structure. Use {stageId} as placeholder for stage identifiers (prod, beta, stage, dev, test). Must start with / and not end with / (except for root /). Examples: /{stageId}/public (default), /public, /{stageId}/assets, /content/{stageId}/public, /"
+    Description: "Origin path pattern for S3 bucket structure. Use {stageId} as placeholder for stage identifiers (prod, beta, stage, dev, test). Must start with / and not end with / (except for root /). Use / to prevent pre-filtering to exclusively use root or bucket-supplied tags. Examples: /{stageId}/public (default), /public, /{stageId}/assets, /content/{stageId}/public, /"
     Default: "/{stageId}/public"
     AllowedPattern: "^$|^/|/([a-zA-Z0-9\\-_]+|\\{stageId\\})(/([a-zA-Z0-9\\-_]+|\\{stageId\\}))*$"
     ConstraintDescription: "Must be empty (uses default), start with /, not end with / (except root /), and only use {stageId} placeholder. Valid characters: a-z, A-Z, 0-9, -, _, {, }. Curly braces may only wrap the literal text 'stageId'."

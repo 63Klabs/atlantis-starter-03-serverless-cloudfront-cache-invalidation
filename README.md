@@ -61,8 +61,6 @@ If you discover any security related issues, please see the [SECURITY](SECURITY)
 
 Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
-- [Chad Kluck](https://chadkluck.me)
-
 ## AI Context
 
 See [AI_CONTEXT.md](AI_CONTEXT.md) for important context and guidelines for AI-generated code in this repository.

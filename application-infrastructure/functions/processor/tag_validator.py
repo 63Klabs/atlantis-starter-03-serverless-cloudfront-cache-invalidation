@@ -228,6 +228,62 @@ def validate_bucket_tags(bucket_name: str) -> bool:
     return is_valid
 
 
+def validate_bucket_tags_from_dict(tags: Optional[Dict[str, str]]) -> bool:
+    """Validate bucket tags from pre-fetched tag dictionary.
+    
+    Checks that the bucket has AllowInvalidationEvents tag set to "true".
+    This function does not make any API calls - it validates from a
+    pre-fetched tag dictionary.
+    
+    Args:
+        tags: Dictionary of bucket tags (key-value pairs), or None if fetch failed
+        
+    Returns:
+        True if AllowInvalidationEvents=true, False otherwise.
+        Returns False if tags is None or tag is missing/incorrect.
+        
+    **Feature: s3-api-optimization**
+    **Validates: Requirements FR-2**
+    """
+    # If tags could not be retrieved, fail validation
+    if tags is None:
+        logger.warning(
+            "Bucket tag validation failed: tags is None",
+            extra={'extra_fields': {
+                'validation_result': False,
+                'reason': 'tags_none'
+            }}
+        )
+        return False
+    
+    # Check for AllowInvalidationEvents tag
+    allow_invalidation = tags.get('AllowInvalidationEvents', '')
+    
+    # Validate tag value (must be exactly "true")
+    is_valid = allow_invalidation == 'true'
+    
+    if is_valid:
+        logger.debug(
+            "Bucket tag validation passed (from dict)",
+            extra={'extra_fields': {
+                'validation_result': True,
+                'allow_invalidation_events': allow_invalidation
+            }}
+        )
+    else:
+        logger.warning(
+            f"Bucket tag validation failed (from dict): "
+            f"AllowInvalidationEvents={allow_invalidation}",
+            extra={'extra_fields': {
+                'validation_result': False,
+                'allow_invalidation_events': allow_invalidation,
+                'reason': 'tag_missing_or_incorrect'
+            }}
+        )
+    
+    return is_valid
+
+
 def get_distribution_tags(distribution_id: str) -> Optional[Dict[str, str]]:
     """Retrieve tags for a CloudFront distribution.
     
@@ -619,6 +675,163 @@ def get_bucket_consolidation_config(bucket_name: str) -> Dict[str, any]:
     # Log final configuration
     logger.info(
         f"Effective consolidation configuration for bucket {bucket_name}",
+        extra={'extra_fields': {
+            'bucket_name': bucket_name,
+            'directory_threshold': config['directory_threshold'],
+            'stop_level': config['stop_level'],
+            'sibling_directory_threshold': config['sibling_directory_threshold'],
+            'directory_threshold_source': config['directory_threshold_source'],
+            'stop_level_source': config['stop_level_source'],
+            'sibling_directory_threshold_source': config['sibling_directory_threshold_source'],
+            'configuration_tags_found': {
+                'DirectoryConsolidationThreshold': threshold_tag,
+                'ConsolidationStopLevel': stop_level_tag,
+                'SiblingDirectoryConsolidationThreshold': sibling_threshold_tag
+            }
+        }}
+    )
+    
+    return config
+
+
+
+def get_bucket_consolidation_config_from_dict(
+    tags: Optional[Dict[str, str]], 
+    bucket_name: str
+) -> Dict[str, any]:
+    """Get consolidation config from pre-fetched tag dictionary.
+    
+    Extracts DirectoryConsolidationThreshold, ConsolidationStopLevel, and
+    SiblingDirectoryConsolidationThreshold from tags. Falls back to defaults
+    for missing or invalid values. This function does not make any API calls.
+    
+    Args:
+        tags: Dictionary of bucket tags (key-value pairs), or None if fetch failed
+        bucket_name: Bucket name (for logging context only)
+        
+    Returns:
+        Dictionary with keys:
+        - 'directory_threshold': Effective directory consolidation threshold
+        - 'stop_level': Effective consolidation stop level
+        - 'sibling_directory_threshold': Effective sibling directory consolidation threshold
+        - 'directory_threshold_source': 'tag' or 'default'
+        - 'stop_level_source': 'tag' or 'default'
+        - 'sibling_directory_threshold_source': 'tag' or 'default'
+        
+    **Feature: s3-api-optimization**
+    **Validates: Requirements FR-3**
+    """
+    # Initialize configuration with defaults
+    config = {
+        'directory_threshold': DIRECTORY_CONSOLIDATION_THRESHOLD,
+        'stop_level': CONSOLIDATION_STOP_LEVEL,
+        'sibling_directory_threshold': SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD,
+        'directory_threshold_source': 'default',
+        'stop_level_source': 'default',
+        'sibling_directory_threshold_source': 'default'
+    }
+    
+    # If tags could not be retrieved, use defaults
+    if tags is None:
+        logger.warning(
+            f"Could not use tags for bucket {bucket_name} (tags is None), using default consolidation configuration",
+            extra={'extra_fields': {
+                'bucket_name': bucket_name,
+                'directory_threshold': config['directory_threshold'],
+                'stop_level': config['stop_level'],
+                'sibling_directory_threshold': config['sibling_directory_threshold'],
+                'directory_threshold_source': config['directory_threshold_source'],
+                'stop_level_source': config['stop_level_source'],
+                'sibling_directory_threshold_source': config['sibling_directory_threshold_source'],
+                'reason': 'tags_none'
+            }}
+        )
+        return config
+    
+    # Check for DirectoryConsolidationThreshold tag
+    threshold_tag = tags.get('invalidator:DirectoryConsolidationThreshold')
+    if threshold_tag is not None:
+        validated_threshold = validate_consolidation_tag_value(threshold_tag, 1, 1000)
+        if validated_threshold is not None:
+            config['directory_threshold'] = validated_threshold
+            config['directory_threshold_source'] = 'tag'
+            logger.info(
+                f"Using bucket-specific directory consolidation threshold: {validated_threshold}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'tag_value': threshold_tag,
+                    'effective_value': validated_threshold,
+                    'source': 'tag'
+                }}
+            )
+        else:
+            logger.warning(
+                f"Invalid DirectoryConsolidationThreshold tag value '{threshold_tag}' for bucket {bucket_name}, using default: {config['directory_threshold']}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'invalid_tag_value': threshold_tag,
+                    'default_value': config['directory_threshold'],
+                    'fallback_reason': 'invalid_tag_value'
+                }}
+            )
+    
+    # Check for ConsolidationStopLevel tag
+    stop_level_tag = tags.get('invalidator:ConsolidationStopLevel')
+    if stop_level_tag is not None:
+        validated_stop_level = validate_consolidation_tag_value(stop_level_tag, 0, 20)
+        if validated_stop_level is not None:
+            config['stop_level'] = validated_stop_level
+            config['stop_level_source'] = 'tag'
+            logger.info(
+                f"Using bucket-specific consolidation stop level: {validated_stop_level}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'tag_value': stop_level_tag,
+                    'effective_value': validated_stop_level,
+                    'source': 'tag'
+                }}
+            )
+        else:
+            logger.warning(
+                f"Invalid ConsolidationStopLevel tag value '{stop_level_tag}' for bucket {bucket_name}, using default: {config['stop_level']}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'invalid_tag_value': stop_level_tag,
+                    'default_value': config['stop_level'],
+                    'fallback_reason': 'invalid_tag_value'
+                }}
+            )
+    
+    # Check for SiblingDirectoryConsolidationThreshold tag
+    sibling_threshold_tag = tags.get('invalidator:SiblingDirectoryConsolidationThreshold')
+    if sibling_threshold_tag is not None:
+        validated_sibling_threshold = validate_consolidation_tag_value(sibling_threshold_tag, 1, 1000)
+        if validated_sibling_threshold is not None:
+            config['sibling_directory_threshold'] = validated_sibling_threshold
+            config['sibling_directory_threshold_source'] = 'tag'
+            logger.info(
+                f"Using bucket-specific sibling directory consolidation threshold: {validated_sibling_threshold}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'tag_value': sibling_threshold_tag,
+                    'effective_value': validated_sibling_threshold,
+                    'source': 'tag'
+                }}
+            )
+        else:
+            logger.warning(
+                f"Invalid SiblingDirectoryConsolidationThreshold tag value '{sibling_threshold_tag}' for bucket {bucket_name}, using default: {config['sibling_directory_threshold']}",
+                extra={'extra_fields': {
+                    'bucket_name': bucket_name,
+                    'invalid_tag_value': sibling_threshold_tag,
+                    'default_value': config['sibling_directory_threshold'],
+                    'fallback_reason': 'invalid_tag_value'
+                }}
+            )
+    
+    # Log final configuration
+    logger.info(
+        f"Effective consolidation configuration for bucket {bucket_name} (from dict)",
         extra={'extra_fields': {
             'bucket_name': bucket_name,
             'directory_threshold': config['directory_threshold'],

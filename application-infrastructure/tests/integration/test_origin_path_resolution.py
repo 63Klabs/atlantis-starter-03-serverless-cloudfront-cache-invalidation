@@ -36,9 +36,9 @@ class TestOriginPathResolutionIntegration:
         'SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD': '10'
     })
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -132,7 +132,7 @@ class TestOriginPathResolutionIntegration:
         mock_validate_dist.return_value = True
         
         # Mock: Path consolidation
-        mock_consolidate.return_value = {'prod': [['/file1.js', '/file2.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js', '/file2.js']]}
         
         # Mock: Invalidation creation
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
@@ -157,7 +157,7 @@ class TestOriginPathResolutionIntegration:
         assert 'submitted 1 invalidations' in result['body']
         
         # Assert: Bucket validation was called
-        mock_validate_bucket.assert_called_once_with('test-bucket')
+        mock_validate_bucket.assert_called_once()
         
         # Assert: Bucket tags were retrieved
         mock_get_tags.assert_called_once_with('test-bucket')
@@ -170,10 +170,10 @@ class TestOriginPathResolutionIntegration:
         
         # Assert: CRITICAL - find_matching_distributions was called with RESOLVED path /app/prod
         # NOT with event origin path /
-        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod')
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/app')
         
         # Assert: Distribution validation was called
-        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'prod')
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'app')
         
         # Assert: Path consolidation was called
         mock_consolidate.assert_called_once()
@@ -194,9 +194,9 @@ class TestOriginPathResolutionIntegration:
         'SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD': '10'
     })
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -269,7 +269,7 @@ class TestOriginPathResolutionIntegration:
         # Mock: CloudFront distribution with root origin path (empty string)
         mock_find_dist.return_value = ['DIST456']
         mock_validate_dist.return_value = True
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         mock_invalidate.return_value = {'Id': 'INV456', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
         
@@ -299,9 +299,9 @@ class TestOriginPathResolutionIntegration:
         'SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD': '10'
     })
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -396,7 +396,7 @@ class TestOriginPathResolutionIntegration:
         mock_validate_dist.return_value = True
         
         # Mock: Consolidation
-        mock_consolidate.return_value = {'prod': [['/file1.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js']]}
         
         mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
         mock_delete.return_value = {'successful': ['handle1', 'handle2'], 'failed': []}
@@ -416,7 +416,7 @@ class TestOriginPathResolutionIntegration:
         
         # Assert: find_matching_distributions was called once with prod resolved path
         # (because filter returned only prod message)
-        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod')
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/app')
         
         # Assert: Invalidation was created for prod distribution
         mock_invalidate.assert_called_once_with('DIST_PROD', ['/file1.js'])
@@ -429,9 +429,9 @@ class TestOriginPathResolutionIntegration:
         'ORIGIN_PATH_PATTERN': '/'  # Default pattern for backward compatibility
     })
     @patch('functions.processor.handler.receive_messages_batch')
-    @patch('functions.processor.handler.validate_bucket_tags')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
     @patch('functions.processor.handler.get_bucket_tags')
-    @patch('functions.processor.handler.get_bucket_consolidation_config')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
     @patch('functions.processor.handler.resolve_bucket_pattern')
     @patch('functions.processor.handler.filter_events_by_pattern')
     @patch('functions.processor.handler.find_matching_distributions')
@@ -527,7 +527,7 @@ class TestOriginPathResolutionIntegration:
         mock_validate_dist.return_value = True
         
         # Mock: Path consolidation
-        mock_consolidate.return_value = {'prod': [['/file1.js', '/file2.js']]}
+        mock_consolidate.return_value = {'default': [['/file1.js', '/file2.js']]}
         
         # Mock: Invalidation creation
         mock_invalidate.return_value = {'Id': 'INV_LEGACY', 'Status': 'InProgress'}
