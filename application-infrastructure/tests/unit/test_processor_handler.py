@@ -1631,3 +1631,682 @@ class TestOriginPathResolution:
         
         # Verify find_matching_distributions was called with all placeholders replaced with same stage
         mock_find_dist.assert_called_once_with('test-bucket', '/app/app/data/app')
+
+
+
+class TestStageExtraction:
+    """Tests for stage extraction logic in handler.
+    
+    These tests verify that the handler correctly extracts stage identifiers
+    from object keys using bucket patterns with {stageId} placeholders at
+    various positions.
+    
+    Requirements: 1.1, 1.2, 1.3, 1.4, 1.5
+    """
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_stage_at_first_position(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test stage extraction when {stageId} is at first position.
+        
+        Pattern: /{stageId}/public
+        Object key: /prod/public/file.html
+        Expected stage: "prod"
+        
+        Requirement 1.1: Stage at first position
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/prod/public/file.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/{stageId}/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/file.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with correct resolved origin path
+        # Pattern /{stageId}/public + stage "prod" = /prod/public
+        mock_find_dist.assert_called_once_with('test-bucket', '/prod/public')
+        
+        # Verify validate_distribution_tags was called with correct stage
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'prod')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_stage_at_second_position(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test stage extraction when {stageId} is at second position.
+        
+        Pattern: /app/{stageId}/web
+        Object key: /app/prod/web/file.html
+        Expected stage: "prod"
+        
+        Requirement 1.2: Stage at second position
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/app/prod/web/file.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/app/{stageId}/web'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/file.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with correct resolved origin path
+        # Pattern /app/{stageId}/web + stage "prod" = /app/prod/web
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod/web')
+        
+        # Verify validate_distribution_tags was called with correct stage
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'prod')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_stage_at_third_position(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test stage extraction when {stageId} is at third position.
+        
+        Pattern: /app/web/{stageId}/public
+        Object key: /app/web/prod/public/file.html
+        Expected stage: "prod"
+        
+        Requirement 1.3: Stage at third position
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/app/web/prod/public/file.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/app/web/{stageId}/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/file.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with correct resolved origin path
+        # Pattern /app/web/{stageId}/public + stage "prod" = /app/web/prod/public
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/web/prod/public')
+        
+        # Verify validate_distribution_tags was called with correct stage
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'prod')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_no_stage_placeholder(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test stage extraction when pattern has no {stageId} placeholder.
+        
+        Pattern: /public
+        Object key: /public/file.html
+        Expected stage: ""
+        
+        Requirement 1.4: No stage placeholder
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/public/file.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/file.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with pattern as-is (no stage)
+        mock_find_dist.assert_called_once_with('test-bucket', '/public')
+        
+        # Verify validate_distribution_tags was called with empty stage
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', '')
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_multiple_segments_after_stage(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test stage extraction with multiple segments after stage.
+        
+        Pattern: /{stageId}/public
+        Object key: /dev/public/assets/file.html
+        Expected stage: "dev"
+        
+        Requirement 1.5: Multiple segments after stage
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/dev/public/assets/file.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/{stageId}/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/assets/file.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called with correct resolved origin path
+        # Pattern /{stageId}/public + stage "dev" = /dev/public
+        mock_find_dist.assert_called_once_with('test-bucket', '/dev/public')
+        
+        # Verify validate_distribution_tags was called with correct stage
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'dev')
+
+
+
+class TestMessageGroupingByStage:
+    """Tests for message grouping by extracted stage.
+    
+    These tests verify that messages are correctly grouped by stage identifier
+    after extraction, and that each stage group is processed separately.
+    
+    Requirements: 3.1, 3.2, 3.3
+    """
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_messages_grouped_by_different_stages(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test that messages with different stages are grouped separately.
+        
+        Create messages with different stages (prod, dev, staging) and verify
+        that each stage group is processed separately with correct stage identifier.
+        
+        Requirement 3.1: Messages grouped by stage
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/prod/public/file1.html'
+                }
+            },
+            {
+                'MessageId': 'msg2',
+                'ReceiptHandle': 'handle2',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/dev/public/file2.html'
+                }
+            },
+            {
+                'MessageId': 'msg3',
+                'ReceiptHandle': 'handle3',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/staging/public/file3.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/{stageId}/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/file.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1', 'handle2', 'handle3'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called 3 times (once per stage)
+        assert mock_find_dist.call_count == 3
+        
+        # Verify each stage was processed with correct origin path
+        expected_calls = [
+            call('test-bucket', '/prod/public'),
+            call('test-bucket', '/dev/public'),
+            call('test-bucket', '/staging/public')
+        ]
+        mock_find_dist.assert_has_calls(expected_calls, any_order=True)
+        
+        # Verify validate_distribution_tags was called with each stage
+        assert mock_validate_dist.call_count == 3
+        expected_validation_calls = [
+            call('DIST123', 'test-app', 'prod'),
+            call('DIST123', 'test-app', 'dev'),
+            call('DIST123', 'test-app', 'staging')
+        ]
+        mock_validate_dist.assert_has_calls(expected_validation_calls, any_order=True)
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_empty_stage_handling(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test handling of messages with no stage placeholder.
+        
+        When pattern has no {stageId}, all messages should be grouped together
+        with empty stage identifier.
+        
+        Requirement 3.2: Empty stage handling
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/public/file1.html'
+                }
+            },
+            {
+                'MessageId': 'msg2',
+                'ReceiptHandle': 'handle2',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/public/file2.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/public'  # No {stageId}
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/file1.html', '/file2.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1', 'handle2'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called once (all messages in one group)
+        mock_find_dist.assert_called_once_with('test-bucket', '/public')
+        
+        # Verify validate_distribution_tags was called with empty stage
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', '')
+        
+        # Verify consolidate_paths was called once with both paths
+        # Note: Handler strips origin path prefix, so paths are relative
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args[0][0]
+        assert len(call_args) == 2
+        assert '/file1.html' in call_args
+        assert '/file2.html' in call_args
+    
+    @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
+    @patch('functions.processor.handler.receive_messages_batch')
+    @patch('functions.processor.handler.validate_bucket_tags_from_dict')
+    @patch('functions.processor.handler.get_bucket_tags')
+    @patch('functions.processor.handler.get_bucket_consolidation_config_from_dict')
+    @patch('functions.processor.handler.resolve_bucket_pattern')
+    @patch('functions.processor.handler.filter_events_by_pattern')
+    @patch('functions.processor.handler.find_matching_distributions')
+    @patch('functions.processor.handler.validate_distribution_tags')
+    @patch('functions.processor.handler.consolidate_paths')
+    @patch('functions.processor.handler.create_invalidation')
+    @patch('functions.processor.handler.delete_messages_batch')
+    @patch('functions.processor.handler.close_window')
+    def test_same_stage_messages_grouped_together(
+        self, mock_close_window, mock_delete, mock_invalidate,
+        mock_consolidate, mock_validate_dist, mock_find_dist,
+        mock_filter, mock_resolve_pattern, mock_get_config,
+        mock_get_tags, mock_validate_bucket, mock_receive
+    ):
+        """Test that messages with same stage are grouped together.
+        
+        Multiple messages with the same stage identifier should be processed
+        together in a single stage group.
+        
+        Requirement 3.3: Same stage grouping
+        """
+        # Arrange
+        messages = [
+            {
+                'MessageId': 'msg1',
+                'ReceiptHandle': 'handle1',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/prod/public/file1.html'
+                }
+            },
+            {
+                'MessageId': 'msg2',
+                'ReceiptHandle': 'handle2',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/prod/public/file2.html'
+                }
+            },
+            {
+                'MessageId': 'msg3',
+                'ReceiptHandle': 'handle3',
+                'parsed_body': {
+                    'bucketName': 'test-bucket',
+                    'objectKey': '/prod/public/assets/file3.html'
+                }
+            }
+        ]
+        
+        mock_receive.side_effect = [messages, []]
+        mock_validate_bucket.return_value = True
+        mock_get_tags.return_value = {'atlantis:Application': 'test-app', 'AllowInvalidationEvents': 'true'}
+        mock_get_config.return_value = {
+            'directory_threshold': 3,
+            'stop_level': 1,
+            'sibling_directory_threshold': 10,
+            'directory_threshold_source': 'default',
+            'stop_level_source': 'default',
+            'sibling_directory_threshold_source': 'default'
+        }
+        mock_resolve_pattern.return_value = '/{stageId}/public'
+        mock_filter.return_value = messages
+        mock_find_dist.return_value = ['DIST123']
+        mock_validate_dist.return_value = True
+        mock_consolidate.return_value = {'default': [['/file1.html', '/file2.html', '/assets/file3.html']]}
+        mock_invalidate.return_value = {'Id': 'INV123', 'Status': 'InProgress'}
+        mock_delete.return_value = {'successful': ['handle1', 'handle2', 'handle3'], 'failed': []}
+        
+        context = Mock()
+        context.aws_request_id = 'test-request-id'
+        
+        # Act
+        result = handler({}, context)
+        
+        # Assert
+        assert result['statusCode'] == 200
+        
+        # Verify find_matching_distributions was called once (all messages have same stage)
+        mock_find_dist.assert_called_once_with('test-bucket', '/prod/public')
+        
+        # Verify validate_distribution_tags was called once with "prod" stage
+        mock_validate_dist.assert_called_once_with('DIST123', 'test-app', 'prod')
+        
+        # Verify consolidate_paths was called once with all three paths
+        # Note: Handler strips origin path prefix, so paths are relative
+        mock_consolidate.assert_called_once()
+        call_args = mock_consolidate.call_args[0][0]
+        assert len(call_args) == 3
+        assert '/file1.html' in call_args
+        assert '/file2.html' in call_args
+        assert '/assets/file3.html' in call_args

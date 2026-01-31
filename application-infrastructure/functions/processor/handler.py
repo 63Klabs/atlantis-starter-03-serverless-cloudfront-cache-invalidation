@@ -19,6 +19,7 @@ from typing import Dict, Any, List, Tuple
 from common.logger import setup_logger # pyright: ignore[reportMissingImports]
 from common.window_tracker import close_window # pyright: ignore[reportMissingImports]
 from common.constants import DIRECTORY_CONSOLIDATION_THRESHOLD, CONSOLIDATION_STOP_LEVEL, SIBLING_DIRECTORY_CONSOLIDATION_THRESHOLD # pyright: ignore[reportMissingImports]
+from common.path_utils import extract_stage_from_path # pyright: ignore[reportMissingImports]
 
 # Import function-specific modules (compatible with both Lambda and test environments)
 try:
@@ -501,15 +502,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 object_key = parsed_body.get('objectKey', '')
                 
                 # Extract stage from object key using the bucket pattern
-                stage_id = ''
-                if '{stageId}' in bucket_pattern:
-                    # Extract stage from object key
-                    # Pattern: /{stageId}/public -> extract first path segment
-                    parts = [p for p in object_key.split('/') if p]
-                    if len(parts) >= 1:
-                        # First non-empty segment is the stage
-                        stage_id = parts[0]
-                # else: no stage in pattern, use empty string
+                stage_id = extract_stage_from_path(object_key, bucket_pattern)
                 
                 # Group by stage
                 if stage_id not in messages_by_stage:
