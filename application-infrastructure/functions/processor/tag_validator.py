@@ -365,15 +365,26 @@ def validate_distribution_tags(
     
     Checks that the distribution has:
     1. AllowInvalidationEvents tag set to "true"
-    2. atlantis:ApplicationDeploymentId matching pattern <bucket-app>-<StageId>
+    2. atlantis:ApplicationDeploymentId matching the expected pattern
     
     This tag-based validation ensures only authorized distributions can receive
     CloudFront invalidations and that the distribution matches the bucket's application.
     
+    Validation Modes:
+    - When stage_id is empty or None:
+      * Expected ApplicationDeploymentId: {bucket_app_tag} (no trailing hyphen)
+      * Validation: Prefix match (distribution tag must start with expected value)
+      * Example: bucket_app_tag="xcme-cdninval-a" matches "xcme-cdninval-a-prod"
+    
+    - When stage_id is non-empty:
+      * Expected ApplicationDeploymentId: {bucket_app_tag}-{stage_id}
+      * Validation: Exact match (existing behavior)
+      * Example: bucket_app_tag="xcme-cdninval-a", stage_id="prod" matches "xcme-cdninval-a-prod" only
+    
     Args:
         distribution_id: ID of the CloudFront distribution to validate
         bucket_app_tag: Value of the bucket's atlantis:Application tag
-        stage_id: StageId extracted from the object key path
+        stage_id: StageId extracted from the object key path (may be empty or None)
         
     Returns:
         True if the distribution has AllowInvalidationEvents=true and matching
@@ -382,7 +393,19 @@ def validate_distribution_tags(
         
     **Feature: multi-bucket-cloudfront-invalidation, Property 16 & 17: Distribution tag validation**
     **Validates: Requirements 8.1, 8.2, 8.3, 8.4**
+    **Feature: distribution-tag-validation-no-stage-fix**
+    **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, FR-1, FR-2, FR-3, FR-4**
     """
+    # Determine validation strategy based on stage_id
+    if not stage_id:  # Empty string or None
+        # Construct expected value without trailing hyphen
+        expected_app_deployment_id = bucket_app_tag
+        match_type = "prefix"
+    else:
+        # Construct expected value with stage_id
+        expected_app_deployment_id = f"{bucket_app_tag}-{stage_id}"
+        match_type = "exact"
+    
     # Log validation inputs
     logger.info(
         f"Validating distribution tags for {distribution_id}",
@@ -390,7 +413,8 @@ def validate_distribution_tags(
             'distribution_id': distribution_id,
             'bucket_app_tag': bucket_app_tag,
             'stage_id': stage_id,
-            'expected_app_deployment_id': f"{bucket_app_tag}-{stage_id}"
+            'expected_app_deployment_id': expected_app_deployment_id,
+            'match_type': match_type
         }}
     )
     
@@ -425,34 +449,41 @@ def validate_distribution_tags(
     # Check for atlantis:ApplicationDeploymentId tag
     app_deployment_id = tags.get('atlantis:ApplicationDeploymentId', '')
     
-    # Expected ApplicationDeploymentId format: <bucket-app>-<StageId>
-    expected_app_deployment_id = f"{bucket_app_tag}-{stage_id}"
+    # Validate AllowInvalidationEvents
+    allow_invalidation_valid = allow_invalidation == 'true'
+    
+    # Validate ApplicationDeploymentId based on match type
+    if match_type == "prefix":
+        # Use prefix matching for empty stage_id
+        app_deployment_id_valid = app_deployment_id.startswith(expected_app_deployment_id)
+    else:
+        # Use exact matching for non-empty stage_id
+        app_deployment_id_valid = app_deployment_id == expected_app_deployment_id
     
     # Log comparison details
     logger.info(
         f"Comparing distribution tags for {distribution_id}",
         extra={'extra_fields': {
             'distribution_id': distribution_id,
+            'match_type': match_type,
             'allow_invalidation_events': allow_invalidation,
             'app_deployment_id': app_deployment_id,
             'expected_app_deployment_id': expected_app_deployment_id,
-            'allow_invalidation_match': allow_invalidation == 'true',
-            'app_deployment_id_match': app_deployment_id == expected_app_deployment_id
+            'allow_invalidation_match': allow_invalidation_valid,
+            'app_deployment_id_match': app_deployment_id_valid
         }}
     )
     
-    # Validate both tags
-    allow_invalidation_valid = allow_invalidation == 'true'
-    app_deployment_id_valid = app_deployment_id == expected_app_deployment_id
-    
+    # Overall validation result
     is_valid = allow_invalidation_valid and app_deployment_id_valid
     
     if is_valid:
         logger.info(
-            f"Distribution tag validation passed for {distribution_id}",
+            f"Distribution tag validation passed for {distribution_id} ({match_type} match)",
             extra={'extra_fields': {
                 'distribution_id': distribution_id,
                 'validation_result': True,
+                'match_type': match_type,
                 'allow_invalidation_events': allow_invalidation,
                 'app_deployment_id': app_deployment_id,
                 'expected_app_deployment_id': expected_app_deployment_id
@@ -465,7 +496,7 @@ def validate_distribution_tags(
             reasons.append(f"AllowInvalidationEvents={allow_invalidation}")
         if not app_deployment_id_valid:
             reasons.append(
-                f"ApplicationDeploymentId mismatch: "
+                f"ApplicationDeploymentId mismatch ({match_type} match): "
                 f"expected={expected_app_deployment_id}, actual={app_deployment_id}"
             )
         
@@ -474,6 +505,7 @@ def validate_distribution_tags(
             extra={'extra_fields': {
                 'distribution_id': distribution_id,
                 'validation_result': False,
+                'match_type': match_type,
                 'allow_invalidation_events': allow_invalidation,
                 'app_deployment_id': app_deployment_id,
                 'expected_app_deployment_id': expected_app_deployment_id,
