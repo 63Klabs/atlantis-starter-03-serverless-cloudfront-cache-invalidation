@@ -54,6 +54,7 @@ def test_property_1_pattern_validation_completeness(pattern_string):
     # Determine if pattern should be valid based on requirements
     should_be_valid = (
         pattern_string == '' or  # Empty is allowed (uses default)
+        pattern_string == '/' or  # Root path is allowed
         (
             pattern_string.startswith('/') and  # Must start with /
             not pattern_string.endswith('/') and  # Must not end with /

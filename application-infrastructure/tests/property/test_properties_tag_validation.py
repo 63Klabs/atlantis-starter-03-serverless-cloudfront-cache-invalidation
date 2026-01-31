@@ -134,7 +134,7 @@ class TestGetBucketConsolidationConfigFromDictProperties:
         assert config['stop_level'] == 1  # Default
         assert config['stop_level_source'] == 'default'
     
-    @given(st.text().filter(lambda x: not x.isdigit()))
+    @given(st.text().filter(lambda x: not x.strip().isdigit() if x.strip() else True))
     def test_non_numeric_threshold_falls_back_to_default(self, non_numeric):
         """Property: Non-numeric threshold values fall back to defaults."""
         tags = {

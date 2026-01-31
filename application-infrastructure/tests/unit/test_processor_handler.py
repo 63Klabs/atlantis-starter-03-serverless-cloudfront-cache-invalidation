@@ -1036,8 +1036,9 @@ class TestInvalidationPathGeneration:
         mock_consolidate.assert_called_once()
         call_args = mock_consolidate.call_args[0][0]
         assert len(call_args) == 2
-        assert '/app/prod/public/assets/file.js' in call_args
-        assert '/app/prod/public/css/style.css' in call_args
+        # After origin path /app/prod/public is removed, we get relative paths
+        assert '/assets/file.js' in call_args
+        assert '/css/style.css' in call_args
         # All paths should start with /
         for path in call_args:
             assert path.startswith('/')
@@ -1265,7 +1266,7 @@ class TestOriginPathResolution:
         assert result['statusCode'] == 200
         
         # Verify find_matching_distributions was called with resolved origin path (stage substituted)
-        mock_find_dist.assert_called_once_with('test-bucket', '/app/app')
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod')
     
     @patch.dict(os.environ, {'QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123456789012/test-queue'})
     @patch('functions.processor.handler.receive_messages_batch')
@@ -1553,9 +1554,8 @@ class TestOriginPathResolution:
         # Assert
         assert result['statusCode'] == 200
         
-        # Pattern has {stageId} but stage extraction failed (empty string)
-        # The code correctly processes by extracting stage from the path
-        mock_find_dist.assert_called_once_with('test-bucket', '/app/app')
+        # Pattern has {stageId} and stage is correctly extracted as "prod" from the path
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod')
         
         # Verify messages were deleted (processed, just skipped due to missing stage)
         mock_delete.assert_called_once()
@@ -1629,8 +1629,8 @@ class TestOriginPathResolution:
         # Assert
         assert result['statusCode'] == 200
         
-        # Verify find_matching_distributions was called with all placeholders replaced with same stage
-        mock_find_dist.assert_called_once_with('test-bucket', '/app/app/data/app')
+        # Verify find_matching_distributions was called with all placeholders replaced with extracted stage "prod"
+        mock_find_dist.assert_called_once_with('test-bucket', '/app/prod/data/prod')
 
 
 
