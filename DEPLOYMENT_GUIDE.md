@@ -240,8 +240,8 @@ The following steps are performed from the command line from within the SAM CONF
 # Don't forget:
 # - PARAMETER: OriginBucketDomainForCloudFront
 # - ADD NEW TAG: AllowInvalidationEvents=true
-./cli/config.py network PREFIX MY_STATIC_ASSETS test
-./cli/deploy.py network PREFIX MY_STATIC_ASSETS test
+./cli/config.py network PREFIX MY_STATIC_ASSETS prod
+./cli/deploy.py network PREFIX MY_STATIC_ASSETS prod
 ```
 
 ### Step 7: Test
