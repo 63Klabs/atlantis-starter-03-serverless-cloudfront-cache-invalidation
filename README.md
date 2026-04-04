@@ -1,8 +1,14 @@
 # Serverless Multi-Bucket CloudFront Invalidation Service
 
-> For use with [Atlantis Platform Templates and Scripts](https://github.com/63Klabs/atlantis-cfn-configuration-repo-for-serverless-deployments) using AWS SAM.
-
 An application stack that provisions a solution to invalidate CloudFront caches when objects are updated in an S3 bucket storing static web content.
+
+| | Build/Deploy | Application Stack |
+|---|---|---|
+| **Languages** | Python, Shell | Python |
+| **Frameworks** | Atlantis, Hypothesis | Atlantis |
+| **Features** | SSM Parameters | EventBridge Scheduler, DynamoDB, SQS, Lambda, CloudWatch Logs, CloudWatch Alarms |
+
+> **Ready-to-Deploy-and-Run** with the [63Klabs Atlantis Templates and Scripts Platform for Serverless Deployments on AWS](https://github.com/63Klabs/atlantis)
 
 ## Architecture
 
@@ -63,7 +69,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for d
 
 ## AI Context
 
-See [AGENT.md](AGENT.md) for important context and guidelines for AI-generated code in this repository.
+See [AGENTS.md](AGENTS.md) for important context and guidelines for AI-generated code in this repository.
 
 The context file is also helpful (and perhaps essential) for HUMANS developing within the application's structured platform as well.
 
