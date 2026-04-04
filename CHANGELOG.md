@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.0.3 (2026-04-03)
+
+- Documentation Update: Added features table to README.md
+- No changes in application or functionality
+
 ## v0.0.2 - 2026-01-31
 
 ### Enhancements
