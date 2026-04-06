@@ -240,7 +240,7 @@ To run these tests in a CI/CD pipeline:
 
 ## Additional Resources
 
-- **DEPLOYMENT_GUIDE.md**: Instructions for deploying the stack
+- **DEPLOYMENT.md**: Instructions for deploying the stack
 - **TESTING_GUIDE.md**: Comprehensive testing documentation
 - **README.md**: Integration test overview
 - **run_integration_tests.sh**: Automated test runner script

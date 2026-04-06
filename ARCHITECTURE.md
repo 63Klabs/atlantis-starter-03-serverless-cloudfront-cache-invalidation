@@ -216,7 +216,7 @@ Value: /@stageId@/public (examples: / , /@stageId@ , /web)
 
 > Note: Since AWS resource tags do not accept `{}` characters in values, `@` is used to surround the `stageId` placeholder instead. This is only for tags. Use `{stageId}` for all other patterns.
 
-To configure, refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#configuration)
+To configure, refer to: [Deployment Guide: Configuration](./DEPLOYMENT.md#configuration)
 
 ### Consolidation Rules
 
@@ -385,7 +385,7 @@ Value: true
 
 This tag is automatically added to buckets created by the Atlantis Template for stacks that provision S3 buckets using OAC (Object Access Control) for use with CloudFront distributions when the Invalidator Service ARN is provided as a parameter during CloudFormation stack deployment.
 
-Refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#deployment-steps)
+Refer to: [Deployment Guide: Configuration](./DEPLOYMENT.md#deployment-steps)
 
 #### Optional Configuration Tags
 
@@ -458,7 +458,7 @@ However, when prompted to add new tags during configuration be sure to add the `
 AllowInvalidationEvents=true
 ```
 
-Refer to: [Deployment Guide: Configuration](./DEPLOYMENT_GUIDE.md#deployment-steps)
+Refer to: [Deployment Guide: Configuration](./DEPLOYMENT.md#deployment-steps)
 
 ### Tag Validation Flow
 
@@ -840,7 +840,7 @@ The system scales automatically with S3 event volume:
 ## Related Documentation
 
 ### Project Documentation
-- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Step-by-step deployment instructions for enhanced system
+- [Deployment Guide](DEPLOYMENT.md) - Step-by-step deployment instructions for enhanced system
 - [Configuration Troubleshooting Guide](CONFIGURATION_TROUBLESHOOTING.md) - Detailed troubleshooting for configuration issues
 
 ### AWS Documentation

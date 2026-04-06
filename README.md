@@ -49,35 +49,51 @@ For a complete architectural review, see [ARCHITECTURE.md](./ARCHITECTURE.md)
 2. Deploy the S3 stack
 3. Deploy the CloudFront stack
 
-See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for deployment instructions.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment instructions.
 
 ## Tutorials
 
 Read the [Atlantis Tutorials introductory page](https://github.com/63Klabs/atlantis-tutorials) for overall usage of Atlantis Platform Templates and Scripts.
 
-## License
+## Tutorial
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+> For near production-ready examples, review the the other Atlantis starter applications.
 
-## Security
+1. Read the [Atlantis Tutorials introductory page](https://github.com/63Klabs/atlantis-tutorials)
+2. Then perform the steps outlined in the [Basic API Gateway with Lambda Node.js tutorial](https://github.com/63Klabs/atlantis-tutorials/tree/main/tutorials/00-basic-api-gateway-with-lambda-written-in-node).
+3. This application is based off of Starter #01 so the following tutorial will be helpful as well: [Tutorial #1: Basic API Gateway with Lambda written in Python](https://github.com/63Klabs/atlantis-tutorials/blob/main/tutorials/01-basic-api-gateway-with-lambda-written-in-python/)
 
-If you discover any security related issues, please see the [SECURITY](SECURITY) file for details.
+## Architecture
 
-## Contributing
+See [Architecture](./ARCHITECTURE.md)
 
-Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+## Deployment Guide
+
+See [Deployment Guide](./DEPLOYMENT.md)
+
+- [Configuration Troubleshooting](./CONFIGURATION_TROUBLESHOOTING.md)
+
+## Advanced Documentation
+
+See [Docs Directory](./docs/README.md)
 
 ## AI Context
 
-See [AGENTS.md](AGENTS.md) for important context and guidelines for AI-generated code in this repository.
+See [AGENTS.md](./AGENTS.md) for important context and guidelines for AI-generated code in this repository.
 
-The context file is also helpful (and perhaps essential) for HUMANS developing within the application's structured platform as well.
+The agents file is also helpful (and perhaps essential) for HUMANS developing within the application's structured platform as well.
 
-AI Assisted Engineering of this solution was provided by [Kiro](https://kiro.dev/). Steering documents are provided in the repository's [.kiro](./.kiro/steering/) directory. Because testing is tightly coupled with the implmenentation, it is suggested all documents, code, and tests are thouroughly reviewed before, and updated after, any changes.
+## Security
 
-## Additional Documents
+See [Security](./SECURITY.md)
 
-- [Deployment Guide](./DEPLOYMENT_GUIDE.md)
-- [Configuration Troubleshooting](./CONFIGURATION_TROUBLESHOOTING.md)
-- [Architecture](./ARCHITECTURE.md)
-- [Change Log](./CHANGELOG.md)
+## Changelog
+
+See [Change Log](./CHANGELOG.md)
+
+## Contributors
+
+Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+
+- [63Klabs](https://github.com/63klabs)
+- [Chad Kluck](https://github.com/chadkluck)
